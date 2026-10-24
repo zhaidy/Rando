@@ -2,6 +2,8 @@ package com.personal.rando.group
 
 import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
+import com.personal.rando.places.Hazard
+import com.personal.rando.places.HazardJson
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
 import org.json.JSONArray
@@ -80,6 +82,9 @@ sealed interface GroupEvent {
     data class RouteCleared(val id: String) : GroupEvent
     data class Sos(val alert: SosAlert) : GroupEvent
     data class SosCleared(val id: String) : GroupEvent
+    /** 队友标了一处路况；[hazard] 的 by 是队友的名字 */
+    data class HazardAdded(val hazard: Hazard) : GroupEvent
+    data class HazardRemoved(val hazardId: String) : GroupEvent
 }
 
 /** 和 server/src/index.js 约定的消息格式 */
@@ -116,6 +121,15 @@ object GroupProtocol {
     fun sos(at: LatLon): String = JSONObject().put("t", "sos").put("lat", at.lat).put("lon", at.lon).toString()
 
     const val SOS_CLEAR = """{"t":"sos_clear"}"""
+
+    /** 路况自己的 id 放在 hid 里，id 是服务器填的「谁标的」 */
+    fun hazard(h: Hazard): String = HazardJson.encode(h).apply {
+        put("hid", remove("id"))
+        remove("by")
+        put("t", "hazard")
+    }.toString()
+
+    fun hazardRemoved(id: String): String = JSONObject().put("t", "hazard_del").put("hid", id).toString()
 
     /** 认不出来的消息返回 null */
     fun parse(text: String, now: Long): GroupEvent? = try {
@@ -154,6 +168,9 @@ object GroupProtocol {
                 SosAlert(o.getString("id"), o.optString("name", "队友"), LatLon(o.getDouble("lat"), o.getDouble("lon")), o.optLong("ts")),
             )
             "sos_clear" -> GroupEvent.SosCleared(o.getString("id"))
+            "hazard" -> HazardJson.decode(JSONObject(o.toString()).put("id", o.getString("hid")).put("by", o.optString("name", "队友")))
+                ?.let { GroupEvent.HazardAdded(it) }
+            "hazard_del" -> GroupEvent.HazardRemoved(o.getString("hid"))
             else -> null
         }
     } catch (_: Exception) {

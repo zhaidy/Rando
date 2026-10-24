@@ -167,3 +167,21 @@ test("可能摔车了告诉队友，后来加入的也能收到，我没事就�
   await c.next("sos_clear");
   for (const x of [a, b, c]) x.ws.close();
 });
+
+test("标的路况转给队友", async () => {
+  const a = join("TEST04", "aaaaaaaa-12", "阿明");
+  const b = join("TEST04", "bbbbbbbb-13", "小红");
+  await Promise.all([a.opened, b.opened]);
+  await a.next("roster");
+  await b.next("roster");
+  a.send({ t: "hazard", hid: "h1", type: "CLOSED", lat: 1.3, lon: 103.8, ts: 42 });
+  const h = await b.next("hazard");
+  assert.equal(h.name, "阿明");
+  assert.equal(h.hid, "h1");
+  assert.equal(h.type, "CLOSED");
+  assert.equal(h.ts, 42);
+  a.send({ t: "hazard_del", hid: "h1" });
+  assert.equal((await b.next("hazard_del")).hid, "h1");
+  a.ws.close();
+  b.ws.close();
+});

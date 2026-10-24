@@ -62,6 +62,10 @@ import com.personal.rando.ride.Fix
 import com.personal.rando.group.Teammate
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.nextOfEach
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import com.personal.rando.places.HazardType
+import com.personal.rando.places.Hazard
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.Climate
 import com.personal.rando.routing.LatLon
@@ -105,6 +109,8 @@ fun RideView(
     teammates: String? = null,
     /** 一起骑时对讲的状态 */
     walkie: String? = null,
+    /** 在现在的位置标一处路况 */
+    onReport: (HazardType) -> Unit = {},
     map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation?.progress
@@ -189,6 +195,7 @@ fun RideView(
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
+                        ReportButton(onReport, Modifier.weight(1f))
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
                             Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
@@ -419,6 +426,29 @@ private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<Ame
     }
 }
 
+/** 「路况」：点开选施工、封路、路面不好，标在现在的位置 */
+@Composable
+private fun ReportButton(onReport: (HazardType) -> Unit, modifier: Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        GlassButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth(), tone = GlassTone.Dark) {
+            Text("路况", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = GlassShapes.Card, containerColor = Color(0xF2222624)) {
+            HazardType.entries.forEach { type ->
+                DropdownMenuItem(
+                    text = { Text("这里${type.label}", color = Color.White, fontSize = 17.sp) },
+                    leadingIcon = { Dot(type.color) },
+                    onClick = {
+                        open = false
+                        onReport(type)
+                    },
+                )
+            }
+        }
+    }
+}
+
 /** 补给点在这么远以内才在骑行视图上说 */
 private const val AMENITY_SHOWN_METERS = 5000.0
 
@@ -438,7 +468,14 @@ private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
 /** 黑底地图，镜头倾斜跟着人、朝骑行方向转；路线照样按路的种类上色 */
 @SuppressLint("MissingPermission")
 @Composable
-fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, teammates: List<Teammate>, modifier: Modifier) {
+fun RideMap(
+    navigation: NavigationState?,
+    fix: Fix?,
+    track: List<LatLon>,
+    teammates: List<Teammate>,
+    modifier: Modifier,
+    hazards: List<Hazard> = emptyList(),
+) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
     val mapView = rememberMapView(textureMode = true)
@@ -484,6 +521,10 @@ fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, teamma
     LaunchedEffect(map, teammates) {
         val s = map?.style ?: return@LaunchedEffect
         MapLayers.showTeam(s, teammates)
+    }
+    LaunchedEffect(map, hazards) {
+        val s = map?.style ?: return@LaunchedEffect
+        MapLayers.showHazards(s, hazards)
     }
     // 骑过的轨迹；按点数变化重画
     LaunchedEffect(map, track.size) {

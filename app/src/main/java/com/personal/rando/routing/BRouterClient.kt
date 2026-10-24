@@ -1,5 +1,6 @@
 package com.personal.rando.routing
 
+import com.personal.rando.nav.Geo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -19,6 +20,8 @@ class BRouterClient(
         .readTimeout(60, TimeUnit.SECONDS)
         .build(),
     private val baseUrl: String = "https://brouter.de/brouter",
+    /** 要绕开的点（标了施工、封路的地方） */
+    private val avoid: () -> List<LatLon> = { emptyList() },
 ) {
 
     suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
@@ -26,18 +29,19 @@ class BRouterClient(
     /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点 */
     suspend fun route(stops: List<LatLon>, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
         val watts = prefs.pace.watts
+        val nogos = Nogos.near(stops, avoid())
         val route = run {
-            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts))
+            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos))
             // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
             val cached = uploaded[custom]
             if (cached != null) {
                 try {
-                    return@run fetch(url(stops, cached, watts))
+                    return@run fetch(url(stops, cached, watts, nogos))
                 } catch (_: IOException) {
                     uploaded.remove(custom)
                 }
             }
-            fetch(url(stops, upload(custom), watts))
+            fetch(url(stops, upload(custom), watts, nogos))
         }
         route.copy(durationSeconds = prefs.duration(route))
     }
@@ -72,7 +76,7 @@ class BRouterClient(
     }
 
     /** [watts]：骑手平均功率，只影响预计时间，不影响走哪条路；null 用配置里的默认（100 瓦） */
-    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null): String =
+    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null, nogos: List<LatLon> = emptyList()): String =
         baseUrl.toHttpUrl().newBuilder()
             .addQueryParameter("lonlats", stops.joinToString("|", transform = ::coord))
             .addQueryParameter("profile", profileName)
@@ -81,6 +85,11 @@ class BRouterClient(
             // 带上路口转向提示（voicehints），导航播报要用
             .addQueryParameter("timode", "2")
             .apply { if (watts != null) addQueryParameter("profile:bikerPower", watts.toString()) }
+            .apply {
+                if (nogos.isNotEmpty()) {
+                    addQueryParameter("nogos", nogos.joinToString("|") { String.format(Locale.US, "%.6f,%.6f,%d", it.lon, it.lat, Nogos.RADIUS_METERS) })
+                }
+            }
             .build()
             .toString()
 
@@ -89,5 +98,27 @@ class BRouterClient(
     private companion object {
         /** 配置内容 → 服务器给的名字；进程内共用，规划和导航里重新算路都不用重复上传 */
         val uploaded = ConcurrentHashMap<String, String>()
+    }
+}
+
+/** 算路时绕开的点：每个点周围 [RADIUS_METERS] 米不走 */
+object Nogos {
+    const val RADIUS_METERS = 30
+    /** 离起点、途经点、终点太近的不绕：要去的地方本身就在里面会算不出路 */
+    private const val KEEP_CLEAR_METERS = 80.0
+    /** 只带路线附近的：起点终点围出的范围再往外扩这么多（度，约 5 公里） */
+    private const val MARGIN_DEG = 0.05
+    private const val MAX = 50
+
+    fun near(stops: List<LatLon>, points: List<LatLon>): List<LatLon> {
+        if (stops.isEmpty() || points.isEmpty()) return emptyList()
+        val minLat = stops.minOf { it.lat } - MARGIN_DEG
+        val maxLat = stops.maxOf { it.lat } + MARGIN_DEG
+        val minLon = stops.minOf { it.lon } - MARGIN_DEG
+        val maxLon = stops.maxOf { it.lon } + MARGIN_DEG
+        return points
+            .filter { it.lat in minLat..maxLat && it.lon in minLon..maxLon }
+            .filter { p -> stops.none { Geo.distance(it, p) < KEEP_CLEAR_METERS } }
+            .take(MAX)
     }
 }

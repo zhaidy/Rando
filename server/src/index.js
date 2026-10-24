@@ -9,11 +9,13 @@
 //           "stops":[[lat,lon],...]}（开始导航时分享路线；队友按同样的点和配置算，得到同一条路）
 //          {"t":"route_clear"}（结束导航）
 //          {"t":"sos","lat":..,"lon":..}（可能摔车了） {"t":"sos_clear"}（我没事）
+//          {"t":"hazard","hid":..,"type":"CONSTRUCTION","lat":..,"lon":..,"ts":..}（标了一处路况） {"t":"hazard_del","hid":..}
 // 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
 //          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
 //          {"t":"route",id,name,ts,title,meters,profile,avoidRoads,avoidBridges,stops} {"t":"route_clear",id}
 //          {"t":"sos",id,name,lat,lon,ts} {"t":"sos_clear",id}
+//          {"t":"hazard",id,name,hid,type,lat,lon,ts} {"t":"hazard_del",id,hid}（只转发，不存；各人手机自己存）
 //          分享的路线、求助存在房间里，后来加入的人连上就能收到；本人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
 
@@ -123,6 +125,16 @@ export class Room extends DurableObject {
       const out = { t: "sos", id: me.id, name: me.name, lat: msg.lat, lon: msg.lon, ts };
       await this.ctx.storage.put(`sos:${me.id}`, out);
       this.broadcast(out, me.id);
+    } else if (msg.t === "hazard" && Number.isFinite(msg.lat) && Number.isFinite(msg.lon) && typeof msg.hid === "string") {
+      this.broadcast(
+        {
+          t: "hazard", id: me.id, name: me.name, hid: msg.hid.slice(0, 64), type: String(msg.type ?? "").slice(0, 20),
+          lat: msg.lat, lon: msg.lon, ts: Number(msg.ts) || ts,
+        },
+        me.id,
+      );
+    } else if (msg.t === "hazard_del" && typeof msg.hid === "string") {
+      this.broadcast({ t: "hazard_del", id: me.id, hid: msg.hid.slice(0, 64) }, me.id);
     } else if (msg.t === "sos_clear") {
       await this.ctx.storage.delete(`sos:${me.id}`);
       this.broadcast({ t: "sos_clear", id: me.id }, me.id);

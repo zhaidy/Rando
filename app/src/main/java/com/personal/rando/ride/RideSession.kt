@@ -17,6 +17,11 @@ import com.personal.rando.group.GroupRide
 import com.personal.rando.nav.Geo
 import com.personal.rando.places.AmenityClient
 import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.group.GroupEvent
+import com.personal.rando.places.HazardType
+import com.personal.rando.places.HazardStore
+import com.personal.rando.places.HazardAlerts
+import com.personal.rando.places.Hazard
 import com.personal.rando.places.onRoute
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.WeatherClient
@@ -78,6 +83,8 @@ class RideSession(
     private val amenityClient: AmenityClient = AmenityClient(),
     private val climateClient: ClimateClient = ClimateClient(),
     private val group: GroupRide? = null,
+    /** 标过的路况：骑近了提醒；施工封路由 [router] 算路时绕开 */
+    private val hazards: HazardStore? = null,
 ) {
     private val app = context.applicationContext
     private val speaker by lazy { Speaker(app) }
@@ -126,6 +133,9 @@ class RideSession(
     private var spokenWeather: String? = null
     private var spokenClimate: String? = null
     private val hydration = HydrationReminder()
+    private val hazardAlerts = HazardAlerts()
+    /** 当前导航路线的时间线，路况提醒用 */
+    private var navTimeline: RouteTimeline? = null
     private var navigator: Navigator? = null
     private var roadAlerts: RoadAlerts? = null
     private val prompter = VoicePrompter()
@@ -137,6 +147,18 @@ class RideSession(
     private var shared: SharedRoute? = null
 
     init {
+        // 队友标的路况存下来；删掉的也跟着删
+        if (group != null && hazards != null) {
+            scope.launch {
+                group.hazards.collect { e ->
+                    when (e) {
+                        is GroupEvent.HazardAdded -> hazards.add(e.hazard)
+                        is GroupEvent.HazardRemoved -> hazards.remove(e.hazardId)
+                        else -> Unit
+                    }
+                }
+            }
+        }
         group?.let { g ->
             scope.launch {
                 g.state.map { it?.code }.distinctUntilChanged().collect { code -> if (code != null) shared?.let(g::shareRoute) }
@@ -183,6 +205,7 @@ class RideSession(
             if (precise) navigate(fix.location)
         }
         if (navigator != null || recorder != null) daylight.next(System.currentTimeMillis())?.let(speaker::say)
+        if (precise && (navigator != null || recorder != null)) hazardAlert(fix.location)?.let(speaker::say)
         group?.let { g ->
             g.onFix(fix)
             if (precise && recorder != null) g.stragglerAlert(fix.location)?.let(speaker::say)
@@ -194,6 +217,31 @@ class RideSession(
             _recording.value = state
             hydration.next(System.currentTimeMillis(), state.startedAt, _climate.value?.hot == true, waterAhead())?.let(speaker::say)
         }
+    }
+
+    private fun hazardAlert(me: LatLon): String? {
+        val list = hazards?.all?.value.orEmpty()
+        if (list.isEmpty()) return null
+        val nav = _navigation.value
+        val progress = nav?.progress?.takeIf { !it.offRoute }
+        return hazardAlerts.next(list, me, progress?.let { navTimeline }, progress?.alongMeters)
+    }
+
+    /** 在现在的位置标一处路况，顺便告诉队友；还没定位到返回 false */
+    fun reportHazard(type: HazardType): Boolean {
+        val at = _location.value ?: return false
+        val h = Hazard.new(type, at)
+        hazards?.add(h)
+        group?.shareHazard(h)
+        // 自己标的不用再提醒自己
+        hazardAlerts.skip(h.id)
+        return true
+    }
+
+    /** 删掉一处路况（修好了、标错了），队友那边也删 */
+    fun removeHazard(id: String) {
+        hazards?.remove(id)
+        group?.shareHazardRemoved(id)
     }
 
     /** 检测到可能摔车：倒计时，到时间还没说没事就告诉队友 */
@@ -245,6 +293,7 @@ class RideSession(
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
         hydration.reset(r.state().startedAt)
+        hazardAlerts.reset()
         _recording.value = r.state()
         daylight.reset()
         watchWeather()
@@ -322,6 +371,7 @@ class RideSession(
 
     /** 换一条路线来跟；记下每个途经点在这条路线上的位置，骑过了就划掉 */
     private fun follow(route: Route, via: List<LatLon>) {
+        navTimeline = RouteTimeline(route)
         val nav = Navigator(route)
         navigator = nav
         viaAlong = via.map { nav.alongOf(it) }
