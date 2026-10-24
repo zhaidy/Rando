@@ -25,6 +25,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -60,7 +63,7 @@ data class PlannerState(
 data class LoopRequest(val targetMeters: Int, val attempt: Int = 0)
 
 /** 规划路线；开始导航后交给 [RideSession]，它跟着进程走，界面关了也继续 */
-class RouteViewModel(app: Application) : AndroidViewModel(app) {
+class RouteViewModel(app: Application, private val saved: SavedStateHandle) : AndroidViewModel(app) {
 
     private val router = BRouterClient()
     private val places = PlaceSearch()
@@ -69,7 +72,9 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 记住上次选的路线偏好 */
     private val stored = app.getSharedPreferences("planner", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(PlannerState(prefs = loadPrefs()))
+    private val _state = MutableStateFlow(
+        saved.get<String>(KEY_PLAN)?.let { PlanCodec.decode(it, PlannerState(prefs = loadPrefs())) } ?: PlannerState(prefs = loadPrefs())
+    )
     val state: StateFlow<PlannerState> = _state
 
     private var myLocation: LatLon? = null
@@ -78,6 +83,12 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { session.location.filterNotNull().collect(::onMyLocation) }
+        // 被系统关掉后恢复的：路线没存，重新算
+        planRoute()
+        // 起点、终点、途经点一变就存下来
+        viewModelScope.launch {
+            _state.map { PlanCodec.encode(it) }.distinctUntilChanged().collect { saved[KEY_PLAN] = it }
+        }
     }
 
     fun setPrefs(prefs: RoutePrefs) {
@@ -285,6 +296,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         const val LOOP_TRIES = 3
         /** 圈的长度差这么多以内就不调了 */
         const val LOOP_TOLERANCE = 0.15
+        const val KEY_PLAN = "plan"
         const val KEY_PROFILE = "profile"
         const val KEY_AVOID_ROADS = "avoid_roads"
         const val KEY_AVOID_BRIDGES = "avoid_bridges"
