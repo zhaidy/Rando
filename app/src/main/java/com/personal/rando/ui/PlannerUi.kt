@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -1195,6 +1196,7 @@ fun FinishedCard(
     modifier: Modifier = Modifier,
     /** 骑过的路：和以前比的那句 */
     record: String? = null,
+    onShare: () -> Unit = {},
 ) {
     val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
     Row(
@@ -1214,6 +1216,7 @@ fun FinishedCard(
                 Text("原路返回", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        IconTap(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "分享", tint = InkSoft) }
         IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关掉", tint = InkSoft) }
     }
 }

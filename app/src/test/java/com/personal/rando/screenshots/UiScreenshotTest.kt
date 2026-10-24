@@ -242,6 +242,17 @@ class UiScreenshotTest {
         RiddenMap(rides, {}) { m -> Image(mapImage("map_light.png"), null, m, contentScale = ContentScale.Crop) }
     }
 
+    /** 分享图：没网时轨迹画在纯色底上；有地图时叠在地图上 */
+    @Test fun shareCard() {
+        val ride = rides[0]
+        val track = ride.points.map { it.location }
+        val plain = com.personal.rando.ui.ShareCard.draw(
+            null, com.personal.rando.ui.ShareCard.fit(track, 1080f, 900f), ride, "这条路第 3 次骑，比上次快 1 分 20 秒，最好成绩！",
+        )
+        File("build/screenshots").mkdirs()
+        File("build/screenshots/12_share_card.png").outputStream().use { plain.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun rideDetail() {
         compose.setContent {
             RandoTheme {

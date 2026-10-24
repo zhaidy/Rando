@@ -39,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -280,7 +281,11 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     val r = ride
     if (r != null) {
-        RideDetail(r, onBack = onBack, onDelete = { confirmDelete = true }, record = record) { modifier -> TrackMap(r, modifier) }
+        val context = LocalContext.current
+        RideDetail(
+            r, onBack = onBack, onDelete = { confirmDelete = true }, record = record,
+            onShare = { scope.launch { ShareCard.share(context, r, record) } },
+        ) { modifier -> TrackMap(r, modifier) }
     }
     if (confirmDelete) {
         AlertDialog(
@@ -314,6 +319,7 @@ fun RideDetail(
     onDelete: () -> Unit,
     /** 骑过的路：和其他几次比的那句 */
     record: String? = null,
+    onShare: () -> Unit = {},
     map: @Composable (Modifier) -> Unit,
 ) {
     val haze = rememberHazeState()
@@ -335,6 +341,8 @@ fun RideDetail(
                         Text(DATE.format(Date(ride.startedAt)), color = InkSoft, fontSize = 12.sp)
                     }
                 }
+                Spacer(Modifier.width(10.dp))
+                GlassIconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "分享", tint = Ink) }
                 Spacer(Modifier.width(10.dp))
                 GlassIconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "删除", tint = RandoRed) }
             }
