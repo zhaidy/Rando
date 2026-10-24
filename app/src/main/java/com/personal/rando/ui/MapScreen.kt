@@ -617,9 +617,9 @@ private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, profile: BikeProfile) {
     val push = breakdown[RoadKind.PUSH] ?: 0
     Spacer(Modifier.size(6.dp))
     if (road > 0) {
-        val hint = if (profile == BikeProfile.NO_ROADS) "，绕不开" else "；选「不上马路」可以尽量避开"
+        val hint = if (profile == BikeProfile.NO_ROADS) "，附近没有别的路可走" else "；选「不上马路」可以尽量避开"
         Text(
-            "有 ${Format.distance(road)} 要在马路上骑，需要戴头盔$hint",
+            "有 ${Format.distance(road)} 要在马路上骑$hint",
             style = MaterialTheme.typography.bodyMedium,
             color = RandoRed,
         )

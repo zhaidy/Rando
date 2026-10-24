@@ -9,9 +9,6 @@ enum class RoadKind(val label: String, val color: String) {
     ROAD("马路", "#D93A2B"),
     PUSH("推车", "#8A8A8A");
 
-    /** 新加坡在马路上骑车必须戴头盔 */
-    val onRoad: Boolean get() = this == ROAD
-
     companion object {
         fun of(tags: Map<String, String>): RoadKind {
             val highway = tags["highway"]
