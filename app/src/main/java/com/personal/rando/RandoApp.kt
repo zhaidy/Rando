@@ -9,6 +9,7 @@ import com.personal.rando.routing.BRouterClient
 import com.personal.rando.ride.RideSession
 import com.personal.rando.group.GroupRide
 import com.personal.rando.group.Walkie
+import com.personal.rando.voice.VoiceControl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +31,9 @@ class RandoApp : Application() {
 
     /** 一起骑时的声控对讲 */
     val walkie: Walkie by lazy { Walkie(this, appScope, group) }
+
+    /** 语音指令：点麦克风或者按耳机键说话 */
+    val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
 

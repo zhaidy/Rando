@@ -339,6 +339,9 @@ fun SideRail(
     /** 一起骑；null 就不显示 */
     onGroup: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** 语音指令；null 就不显示 */
+    onVoice: (() -> Unit)? = null,
+    listening: Boolean = false,
 ) {
     Column(
         modifier
@@ -353,6 +356,9 @@ fun SideRail(
         }
         onGroup?.let {
             IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = "一起骑", tint = Color(0xFF6A3FA0)) }
+        }
+        onVoice?.let {
+            IconTap(onClick = it) { Icon(MicIcon, contentDescription = "语音指令", tint = if (listening) RandoRed else RandoBlue) }
         }
         if (showLocation) {
             IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen) }
