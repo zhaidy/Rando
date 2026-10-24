@@ -7,6 +7,9 @@
     <!-- 导航时的前台服务：锁屏、切到别的 App 后继续收 GPS、继续播报 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- 一起骑的声控对讲：锁屏后也要听麦克风 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- 应用内更新：下载新版 APK 后直接安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 12+：安装来源是 Rando 自己时，应用内更新不再弹系统确认 -->
@@ -38,7 +41,7 @@
         <service
             android:name=".ride.RideService"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location|microphone" />
 
         <receiver
             android:name=".update.InstallResultReceiver"

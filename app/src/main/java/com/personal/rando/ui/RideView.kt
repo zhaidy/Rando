@@ -102,6 +102,8 @@ fun RideView(
     amenities: List<AmenityOnRoute> = emptyList(),
     /** 一起骑时队友离我多远的一行 */
     teammates: String? = null,
+    /** 一起骑时对讲的状态 */
+    walkie: String? = null,
     map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation?.progress
@@ -134,6 +136,7 @@ fun RideView(
                     }
                     Extras(weather, amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                     teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
+                    walkie?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                 }
             }
             GlassPanel(

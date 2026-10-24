@@ -44,7 +44,7 @@ class RideService : Service() {
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value),
-                if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0,
+                serviceTypes(),
             )
         } catch (_: Exception) {
             // 定位权限被收回之类的，系统不让开定位前台服务
@@ -68,6 +68,13 @@ class RideService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    /** 开着对讲时再加上麦克风，锁屏后也能听 */
+    private fun serviceTypes(): Int {
+        if (Build.VERSION.SDK_INT < 29) return 0
+        val mic = Build.VERSION.SDK_INT >= 30 && rando.walkie.state.value.on && rando.walkie.hasMicPermission()
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
     }
 
     override fun onDestroy() {

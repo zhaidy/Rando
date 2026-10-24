@@ -44,6 +44,7 @@ import com.personal.rando.ui.PlannerActions
 import com.personal.rando.ui.LoopRequest
 import com.personal.rando.ui.GroupPill
 import com.personal.rando.group.GroupState
+import com.personal.rando.group.WalkieState
 import com.personal.rando.group.Teammate
 import com.personal.rando.places.Amenity
 import com.personal.rando.places.AmenityOnRoute
@@ -110,7 +111,7 @@ class UiScreenshotTest {
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
-            group?.let { GroupPill(it, {}, {}) }
+            group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, playing = "小红")) }
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
                 state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities),
