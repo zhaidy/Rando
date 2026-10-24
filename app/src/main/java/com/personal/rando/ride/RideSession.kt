@@ -148,6 +148,7 @@ class RideSession(
     private var lastRerouteAt = 0L
     /** 这次导航分享给队友的路线；导航中才进队的，进队时补发 */
     private var shared: SharedRoute? = null
+    private var autoStopJob: Job? = null
 
     init {
         // 队友标的路况存下来；删掉的也跟着删
@@ -247,6 +248,31 @@ class RideSession(
         group?.shareHazardRemoved(id)
     }
 
+    /**
+     * 自动开始的记录：在骑的时间 [AUTO_STOP_MS] 没涨（停下来了），就自动结束保存。
+     * 开始导航说明是人在用，不再自动结束
+     */
+    private fun watchAutoStop() {
+        autoStopJob = scope.launch {
+            var lastMoving = _recording.value?.movingSeconds ?: 0
+            var lastChange = System.currentTimeMillis()
+            while (true) {
+                delay(30_000)
+                if (_navigation.value != null) return@launch
+                val moving = _recording.value?.movingSeconds ?: return@launch
+                val now = System.currentTimeMillis()
+                if (moving != lastMoving) {
+                    lastMoving = moving
+                    lastChange = now
+                } else if (now - lastChange >= AUTO_STOP_MS) {
+                    val ride = stopRecording()
+                    speaker.say(ride?.let { "停了一会儿，已经结束记录，骑了 ${Format.distance(it.distanceMeters.toInt())}" } ?: "停了一会儿，已经结束记录")
+                    return@launch
+                }
+            }
+        }
+    }
+
     /** 念一句话（语音指令的回答） */
     fun say(text: String) = speaker.say(text)
 
@@ -308,10 +334,13 @@ class RideSession(
         return _amenities.value.filter { it.amenity.type == AmenityType.WATER && it.alongMeters > along }.minOfOrNull { it.alongMeters - along }
     }
 
-    fun startRecording() {
+    /** [auto]：认出在骑车自动开始的；停下来很久没动就自动结束保存 */
+    fun startRecording(auto: Boolean = false) {
         if (recorder != null) return
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
+        autoStopJob?.cancel()
+        if (auto) watchAutoStop()
         hydration.reset(r.state().startedAt)
         RideWidget.refresh(app)
         hazardAlerts.reset()
@@ -325,6 +354,7 @@ class RideSession(
     fun stopRecording(): Ride? {
         val r = recorder ?: return null
         recorder = null
+        autoStopJob?.cancel()
         _recording.value = null
         // 都结束骑行了，人肯定没事
         imOk()
@@ -522,5 +552,7 @@ class RideSession(
         const val VIA_PASSED_METERS = 50.0
         /** 可能摔车后等这么久没回答就告诉队友 */
         const val CRASH_COUNTDOWN_MS = 30_000L
+        /** 自动开始的记录停下来这么久就自动结束 */
+        const val AUTO_STOP_MS = 10 * 60_000L
     }
 }

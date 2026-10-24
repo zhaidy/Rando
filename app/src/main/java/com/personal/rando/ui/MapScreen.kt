@@ -131,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.ride.AutoStart
 import androidx.core.content.FileProvider
 import com.personal.rando.ride.Calories
 import com.personal.rando.voice.VoiceState
@@ -178,6 +179,16 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val settingsStore = LocalContext.current.rando.settings
     val settings by settingsStore.settings.collectAsStateWithLifecycle()
     var settingsDialog by remember { mutableStateOf(false) }
+    val photoAppContext = LocalContext.current.applicationContext
+    val recognitionPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            AutoStart.apply(photoAppContext, true)
+        } else {
+            settingsStore.update(settingsStore.settings.value.copy(autoStart = false))
+            Toast.makeText(photoAppContext, "没有「身体活动」权限，认不出在骑车", Toast.LENGTH_LONG).show()
+        }
+    }
+    val backgroundPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val parking = LocalContext.current.rando.parking
     val parked by parking.bike.collectAsStateWithLifecycle()
     var parkedDialog by remember { mutableStateOf(false) }
@@ -719,8 +730,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onSave = {
                 settingsStore.update(it)
                 settingsDialog = false
+                if (it.autoStart && !AutoStart.hasRecognitionPermission(context) && Build.VERSION.SDK_INT >= 29) {
+                    recognitionPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                } else {
+                    AutoStart.apply(context, it.autoStart)
+                }
             },
             onDismiss = { settingsDialog = false },
+            backgroundLocation = AutoStart.hasBackgroundLocation(context),
+            onAskBackgroundLocation = {
+                if (Build.VERSION.SDK_INT >= 29) backgroundPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            },
         )
     }
     if (offlineDialog) {

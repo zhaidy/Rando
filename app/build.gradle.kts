@@ -79,6 +79,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.maplibre)
+    // 活动识别：检测到在骑车就自动开始记录
+    implementation(libs.play.services.location)
     // 液态玻璃：面板折射、模糊后面的地图
     implementation(libs.haze)
     implementation(libs.haze.glass)
