@@ -208,7 +208,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
         vm.returnTrip { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
     }
-    val canReturn = remember(recording?.track?.size, navigating) { !navigating && vm.session.canReturn(recording) }
+    val canReturnFree = remember(recording?.track?.size) { vm.session.canReturn(recording) }
+    val canReturn = !navigating && canReturnFree
 
     // 记录中把骑过的轨迹画出来；按点数变化重画，不用每次重组都画
     val trackSize = recording?.track?.size ?: 0
@@ -223,8 +224,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     // 骑行视图：上次导航用了它，这次开始导航就直接进
     val viewPrefs = remember { context.getSharedPreferences("planner", Context.MODE_PRIVATE) }
     var rideView by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(navigating) {
-        if (navigating && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
+    val riding = navigating || recording != null
+    LaunchedEffect(riding) {
+        if (riding && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
     }
     val openRideView = { show: Boolean ->
         rideView = show
@@ -326,7 +328,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         AnimatedContent(
             targetState = when {
                 showDashboard -> Layer.DASHBOARD
-                navigation != null && rideView -> Layer.RIDE_VIEW
+                riding && rideView -> Layer.RIDE_VIEW
                 navigation != null -> Layer.NAVIGATION
                 else -> Layer.PLANNER
             },
@@ -338,14 +340,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                     BackHandler { dashboard = false }
                     BikeComputer(rec, navigation, onMap = { dashboard = false }, onStop = finishRide)
                 }
-                Layer.RIDE_VIEW -> navigation?.let { nav ->
+                Layer.RIDE_VIEW -> {
                     BackHandler { openRideView(false) }
                     RideView(
-                        nav, recording,
+                        navigation, recording,
                         onMap = { openRideView(false) },
                         onStop = finishRide,
-                        onReturn = returnTrip,
-                    ) { RideMap(nav, fix, it) }
+                        onReturn = returnTrip.takeIf { navigating || canReturnFree },
+                        onDashboard = { dashboard = true }.takeIf { !navigating },
+                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), it) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
                     Box(Modifier.fillMaxSize()) {
@@ -414,7 +417,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
                             exit = fadeOut() + slideOutVertically { it },
                         ) {
-                            recording?.let { RecordingPill(it, onDashboard = { dashboard = true }, onStop = finishRide) }
+                            recording?.let { RecordingPill(it, onRideView = { openRideView(true) }, onStop = finishRide) }
                         }
                         AnimatedContent(
                             targetState = focus,

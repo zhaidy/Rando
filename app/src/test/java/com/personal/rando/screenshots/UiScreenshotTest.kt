@@ -196,4 +196,16 @@ class UiScreenshotTest {
         compose.mainClock.advanceTimeBy(2_000)
         compose.onRoot().captureRoboImage("build/screenshots/10_ride_view.png")
     }
+
+    @Test fun freeRide() {
+        compose.setContent {
+            RandoTheme {
+                RideView(null, RecordingState(0, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, onReturn = {}, onDashboard = {}, map = { m ->
+                    Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
+                })
+            }
+        }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onRoot().captureRoboImage("build/screenshots/11_free_ride.png")
+    }
 }
