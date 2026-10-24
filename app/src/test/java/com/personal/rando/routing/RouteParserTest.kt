@@ -16,6 +16,7 @@ class RouteParserTest {
               "track-length": "15863",
               "filtered ascend": "40",
               "total-time": "2794",
+              "voicehints": [[1, 4, 0, 139.0, -125], [2, 14, 2, 24.0, 29], [2, 13, 0, 0.0, 0], [9, 2, 0, 10.0, -90]],
               "messages": [
                 ["Longitude", "Latitude", "Elevation", "Distance", "CostPerKm", "ElevCost", "TurnCost", "NodeCost", "InitialCost", "WayTags", "NodeTags", "Time", "Energy"],
                 ["103826931", "1353220", "44", "860", "9050", "321", "73", "0", "0", "reversedirection=yes highway=path surface=dirt bicycle=no", "", "119", "10756"],
@@ -52,6 +53,19 @@ class RouteParserTest {
         assertEquals("path", segments[0].wayTags["highway"])
         assertEquals("no", segments[0].wayTags["bicycle"])
         assertEquals("residential", segments[1].wayTags["highway"])
+    }
+
+    @Test
+    fun `读出路口动作，不认识的代码和越界的序号跳过`() {
+        val maneuvers = RouteParser.parse(sample).maneuvers
+        assertEquals(
+            listOf(
+                Maneuver(pointIndex = 1, turn = Turn.SHARP_LEFT, exit = 0, angle = -125),
+                Maneuver(pointIndex = 2, turn = Turn.ROUNDABOUT, exit = 2, angle = 29),
+            ),
+            maneuvers,
+        )
+        assertEquals("进入环岛，从第 2 个出口出", maneuvers[1].text)
     }
 
     @Test

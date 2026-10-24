@@ -33,6 +33,8 @@ class BRouterClient(
             .addQueryParameter("profile", profile.brouterName)
             .addQueryParameter("alternativeidx", "0")
             .addQueryParameter("format", "geojson")
+            // 带上路口转向提示（voicehints），导航播报要用
+            .addQueryParameter("timode", "2")
             .build()
             .toString()
 

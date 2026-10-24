@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -58,7 +59,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -68,6 +71,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.personal.rando.nav.Speaker
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.SafetyScore
@@ -78,6 +82,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
@@ -129,7 +134,35 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         val s = style ?: return@LaunchedEffect
         if (hasLocation) enableMyLocation(context, m, s)
     }
-    LocationUpdates(enabled = hasLocation) { vm.onMyLocation(it) }
+    val navigating = state.navigation != null
+    LocationUpdates(enabled = hasLocation, navigating = navigating) { vm.onMyLocation(it) }
+
+    val speaker = remember { Speaker(context) }
+    DisposableEffect(speaker) { onDispose { speaker.shutdown() } }
+    LaunchedEffect(vm) { vm.speech.collect { speaker.say(it) } }
+
+    // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
+    val view = LocalView.current
+    DisposableEffect(navigating) {
+        view.keepScreenOn = navigating
+        onDispose { view.keepScreenOn = false }
+    }
+    LaunchedEffect(map, style, hasLocation, navigating) {
+        val m = map ?: return@LaunchedEffect
+        if (style == null || !hasLocation || !m.locationComponent.isLocationComponentActivated) return@LaunchedEffect
+        m.locationComponent.apply {
+            if (navigating) {
+                renderMode = RenderMode.GPS
+                cameraMode = CameraMode.TRACKING_GPS
+                zoomWhileTracking(17.0)
+                tiltWhileTracking(40.0)
+            } else {
+                cameraMode = CameraMode.NONE
+                renderMode = RenderMode.COMPASS
+                m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(m.cameraPosition).bearing(0.0).tilt(0.0).build()))
+            }
+        }
+    }
 
     // 路线变了就重画，并把镜头框住整条路线（上下留出搜索框和底部卡片的位置）
     val route = (state.route as? RouteState.Ready)?.route
@@ -137,6 +170,8 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         val s = style ?: return@LaunchedEffect
         MapLayers.show(s, route?.points, state.start?.location, state.destination?.location)
         val m = map ?: return@LaunchedEffect
+        // 导航中重新算路时镜头还跟着人，不要跳去看全程
+        if (state.navigation != null) return@LaunchedEffect
         if (route != null && route.points.size >= 2) {
             val bounds = LatLngBounds.Builder()
                 .includes(route.points.map { LatLng(it.lat, it.lon) })
@@ -155,6 +190,12 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+
+        val navigation = state.navigation
+        if (navigation != null) {
+            NavigationOverlay(navigation, onStop = vm::stopNavigation)
+            return@Box
+        }
 
         Column(
             Modifier
@@ -320,7 +361,13 @@ private fun PlannerCard(state: PlannerState, vm: RouteViewModel) {
                     Text("算路失败：${r.message}", Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     TextButton(onClick = vm::retry) { Text("重试") }
                 }
-                is RouteState.Ready -> RouteSummary(r)
+                is RouteState.Ready -> {
+                    RouteSummary(r)
+                    Spacer(Modifier.size(12.dp))
+                    Button(onClick = vm::startNavigation, modifier = Modifier.fillMaxWidth()) {
+                        Text("开始导航")
+                    }
+                }
             }
         }
     }
@@ -431,28 +478,115 @@ private fun enableMyLocation(context: Context, map: MapLibreMap, style: Style) {
     flyToMyLocation(map)
 }
 
-/** 算路要用的位置：GPS 和网络定位都听，哪个先到用哪个 */
+/**
+ * 算路要用的位置：平时 GPS 和网络定位都听，哪个先到用哪个；
+ * 导航时只要 GPS、每秒一次，网络定位误差上百米，会被当成骑偏了
+ */
 @SuppressLint("MissingPermission")
 @Composable
-private fun LocationUpdates(enabled: Boolean, onLocation: (LatLon) -> Unit) {
+private fun LocationUpdates(enabled: Boolean, navigating: Boolean, onLocation: (LatLon) -> Unit) {
     val context = LocalContext.current
-    DisposableEffect(enabled) {
+    DisposableEffect(enabled, navigating) {
         val manager = context.getSystemService(LocationManager::class.java)
         if (!enabled || manager == null) return@DisposableEffect onDispose {}
-        val listener = LocationListener { onLocation(LatLon(it.latitude, it.longitude)) }
-        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        val listener = LocationListener {
+            if (navigating && it.hasAccuracy() && it.accuracy > NAV_MAX_ACCURACY_METERS) return@LocationListener
+            onLocation(LatLon(it.latitude, it.longitude))
+        }
+        val enabledProviders = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             .filter { manager.isProviderEnabled(it) }
-            .forEach { provider ->
-                manager.getLastKnownLocation(provider)?.let { onLocation(LatLon(it.latitude, it.longitude)) }
+        // GPS 关着的话导航也只能将就用网络定位
+        val providers = if (navigating && LocationManager.GPS_PROVIDER in enabledProviders) {
+            listOf(LocationManager.GPS_PROVIDER)
+        } else {
+            enabledProviders
+        }
+        providers.forEach { provider ->
+            if (!navigating) manager.getLastKnownLocation(provider)?.let { onLocation(LatLon(it.latitude, it.longitude)) }
+            if (navigating) {
+                manager.requestLocationUpdates(provider, 1_000L, 0f, listener, Looper.getMainLooper())
+            } else {
                 manager.requestLocationUpdates(provider, 2_000L, 5f, listener, Looper.getMainLooper())
             }
+        }
         onDispose { manager.removeUpdates(listener) }
     }
 }
+
+/** 导航时精度比这差的定位不要 */
+private const val NAV_MAX_ACCURACY_METERS = 50f
 
 private fun flyToMyLocation(map: MapLibreMap) {
     val component = map.locationComponent
     if (!component.isLocationComponentActivated) return
     val location = component.lastKnownLocation ?: return
     map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15.0))
+}
+
+@Composable
+private fun NavigationOverlay(navigation: NavigationState, onStop: () -> Unit) {
+    val progress = navigation.progress
+    Column(Modifier.fillMaxSize()) {
+        Surface(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(12.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = RandoGreen,
+            contentColor = Color.White,
+            shadowElevation = 6.dp,
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    progress == null -> NavText("等待 GPS 定位…")
+                    progress.arrived -> NavText("已到达目的地")
+                    navigation.rerouting || progress.offRoute -> NavText("已偏离路线，正在重新规划…")
+                    else -> {
+                        val next = progress.next
+                        Text(next?.turn?.arrow ?: "⚑", fontSize = 44.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                Format.distance(progress.distanceToNext.toInt()),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(next?.text ?: "到达终点", style = MaterialTheme.typography.titleMedium)
+                            val following = progress.following
+                            if (following != null && progress.distanceNextToFollowing <= 100) {
+                                Text("然后${following.text}", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Surface(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(12.dp),
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 6.dp,
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (progress != null) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Stat(Format.distance(progress.remainingMeters.toInt()), "剩余")
+                        Stat(Format.duration(progress.remainingSeconds), "还要")
+                    }
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Button(onClick = onStop) { Text("结束") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavText(text: String) {
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
 }
