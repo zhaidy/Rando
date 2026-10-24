@@ -28,7 +28,7 @@ data class NavigationState(
 )
 
 /**
- * 一次骑行：导航状态和语音都放在这里，跟着进程而不是界面走。
+ * 一次骑行：导航、轨迹记录和语音都放在这里，跟着进程而不是界面走。
  * 锁屏、切到别的 App 时由 [RideService] 继续喂定位进来。
  */
 class RideSession(
@@ -38,6 +38,7 @@ class RideSession(
 ) {
     private val app = context.applicationContext
     private val speaker by lazy { Speaker(app) }
+    val rides = RideStore(app)
 
     private val _location = MutableStateFlow<LatLon?>(null)
     /** 最近一次定位，规划路线时当起点 */
@@ -47,6 +48,11 @@ class RideSession(
     /** 不为 null 就是在导航中 */
     val navigation: StateFlow<NavigationState?> = _navigation
 
+    private val _recording = MutableStateFlow<RecordingState?>(null)
+    /** 不为 null 就是在记录轨迹 */
+    val recording: StateFlow<RecordingState?> = _recording
+
+    private var recorder: RideRecorder? = null
     private var navigator: Navigator? = null
     private val prompter = VoicePrompter()
     private var rerouteJob: Job? = null
@@ -57,6 +63,29 @@ class RideSession(
         // 网络定位误差上百米，导航时会被当成骑偏了
         val precise = fix.accuracy == null || fix.accuracy <= NAV_MAX_ACCURACY_METERS
         if (navigator != null && precise) navigate(fix.location)
+        recorder?.let {
+            it.add(fix)
+            _recording.value = it.state()
+        }
+    }
+
+    fun startRecording() {
+        if (recorder != null) return
+        val r = RideRecorder(System.currentTimeMillis())
+        recorder = r
+        _recording.value = r.state()
+        RideService.start(app)
+    }
+
+    /** 结束记录并保存；太短的（没怎么动）不存，返回 null */
+    fun stopRecording(): Ride? {
+        val r = recorder ?: return null
+        recorder = null
+        _recording.value = null
+        val ride = r.toRide(System.currentTimeMillis())
+        if (ride.distanceMeters < MIN_RIDE_METERS) return null
+        scope.launch { rides.save(ride) }
+        return ride
     }
 
     fun startNavigation(route: Route, destination: LatLon, profile: BikeProfile) {
@@ -65,6 +94,8 @@ class RideSession(
         rerouteJob?.cancel()
         _navigation.value = NavigationState(route, destination, profile)
         speaker.say(prompter.start(route.distanceMeters.toDouble()))
+        // 导航顺便记录轨迹，结束时一起保存
+        startRecording()
         RideService.start(app)
     }
 
@@ -111,5 +142,6 @@ class RideSession(
         const val REROUTE_INTERVAL_MS = 15_000L
         /** 导航时精度比这差的定位不要 */
         const val NAV_MAX_ACCURACY_METERS = 50f
+        const val MIN_RIDE_METERS = 100.0
     }
 }

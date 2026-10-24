@@ -23,11 +23,12 @@ import com.personal.rando.ui.Format
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
- * 导航时的前台服务：锁屏、切到别的 App 后系统照样每秒给 GPS，进程也不会被回收。
- * 通知栏常驻一条，显示下一个路口；导航结束就自己退出。
+ * 导航、记录轨迹时的前台服务：锁屏、切到别的 App 后系统照样每秒给 GPS，进程也不会被回收。
+ * 通知栏常驻一条，显示下一个路口或者骑了多远；都结束了就自己退出。
  */
 class RideService : Service() {
 
@@ -42,7 +43,7 @@ class RideService : Service() {
         val session = rando.session
         try {
             ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, notification(text(session.navigation.value)),
+                this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value),
                 if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0,
             )
         } catch (_: Exception) {
@@ -53,14 +54,14 @@ class RideService : Service() {
         if (listener == null) startLocation(session)
         if (watchJob == null) {
             watchJob = scope.launch {
-                session.navigation.collect { nav ->
-                    if (nav == null) {
+                combine(session.navigation, session.recording) { nav, rec -> nav to rec }.collect { (nav, rec) ->
+                    if (nav == null && rec == null) {
                         stopSelf()
                     } else {
-                        val text = text(nav)
+                        val text = text(nav, rec)
                         if (text != lastText) {
                             lastText = text
-                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(nav, rec))
                         }
                     }
                 }
@@ -94,8 +95,12 @@ class RideService : Service() {
         }
     }
 
-    private fun text(nav: NavigationState?): String {
-        val progress = nav?.progress ?: return "等待 GPS 定位…"
+    private fun text(nav: NavigationState?, rec: RecordingState?): String {
+        if (nav == null) {
+            return rec?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}" }
+                ?: "等待 GPS 定位…"
+        }
+        val progress = nav.progress ?: return "等待 GPS 定位…"
         return when {
             progress.arrived -> "已到达目的地"
             nav.rerouting || progress.offRoute -> "已偏离路线，正在重新规划"
@@ -106,11 +111,11 @@ class RideService : Service() {
         }
     }
 
-    private fun notification(text: String): Notification {
+    private fun notification(nav: NavigationState?, rec: RecordingState?): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "骑行导航", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "导航时常驻通知栏，显示下一个路口"
+            NotificationChannel(CHANNEL, "骑行中", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "导航、记录轨迹时常驻通知栏"
             }
         )
         // 和桌面图标点进来一样，回到已经开着的界面
@@ -119,8 +124,8 @@ class RideService : Service() {
         }
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Rando 导航中")
-            .setContentText(text)
+            .setContentTitle(if (nav != null) "Rando 导航中" else "Rando 记录中")
+            .setContentText(text(nav, rec))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)

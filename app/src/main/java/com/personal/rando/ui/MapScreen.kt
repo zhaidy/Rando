@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
@@ -30,6 +31,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
@@ -74,6 +77,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.personal.rando.ride.Fix
 import com.personal.rando.ride.NavigationState
+import com.personal.rando.ride.RecordingState
+import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.SafetyScore
@@ -94,9 +99,10 @@ import org.maplibre.android.maps.Style
 private val SINGAPORE = LatLng(1.3521, 103.8198)
 
 @Composable
-fun MapScreen(vm: RouteViewModel = viewModel()) {
+fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
+    val recording by vm.session.recording.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -138,14 +144,25 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         if (hasLocation) enableMyLocation(context, m, s)
     }
     val navigating = navigation != null
-    // 导航时由 RideService 收定位（锁屏也不停），这里只管规划时的
-    LocationUpdates(enabled = hasLocation && !navigating) { vm.session.onFix(it) }
+    // 导航、记录时由 RideService 收定位（锁屏也不停），这里只管规划时的
+    LocationUpdates(enabled = hasLocation && !navigating && recording == null) { vm.session.onFix(it) }
 
     // 导航结束的通知栏提示要这个权限；不给也能导航，只是通知栏看不到
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    val startNavigation = {
+    val askNotifications = {
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    val startNavigation = {
+        askNotifications()
         vm.startNavigation()
+    }
+    val finishRide = { finishRide(context, vm.session) }
+
+    // 记录中把骑过的轨迹画出来；按点数变化重画，不用每次重组都画
+    val trackSize = recording?.track?.size ?: 0
+    LaunchedEffect(style, trackSize) {
+        val s = style ?: return@LaunchedEffect
+        MapLayers.showTrack(s, recording?.track?.map { it.location })
     }
 
     // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
@@ -200,7 +217,7 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
         navigation?.let {
-            NavigationOverlay(it, onStop = vm.session::stopNavigation)
+            NavigationOverlay(it, recording, onStop = finishRide)
             return@Box
         }
 
@@ -225,13 +242,36 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
                 .padding(12.dp),
             horizontalAlignment = Alignment.End,
         ) {
+            SmallFloatingActionButton(
+                onClick = onOpenRides,
+                containerColor = MaterialTheme.colorScheme.surface,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = RandoGreen)
+            }
+            Spacer(Modifier.size(8.dp))
             if (hasLocation) {
+                if (recording == null) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            askNotifications()
+                            vm.session.startRecording()
+                        },
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "开始记录", tint = RandoOrange)
+                    }
+                    Spacer(Modifier.size(8.dp))
+                }
                 SmallFloatingActionButton(
                     onClick = { map?.let(::flyToMyLocation) },
                     containerColor = MaterialTheme.colorScheme.surface,
                 ) {
                     Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen)
                 }
+                Spacer(Modifier.size(8.dp))
+            }
+            recording?.let {
+                RecordingCard(it, onStop = finishRide)
                 Spacer(Modifier.size(8.dp))
             }
             PlannerCard(state, vm, startNavigation)
@@ -440,35 +480,6 @@ private fun Stat(value: String, label: String) {
     }
 }
 
-/** MapView 要跟着 Activity 的生命周期走，否则地图不渲染或者泄漏 */
-@Composable
-private fun rememberMapView(): MapView {
-    val context = LocalContext.current
-    val mapView = remember {
-        MapLibre.getInstance(context)
-        MapView(context)
-    }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle, mapView) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_CREATE -> mapView.onCreate(null)
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            mapView.onDestroy()
-        }
-    }
-    return mapView
-}
-
 private fun hasLocationPermission(context: Context): Boolean =
     listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION).any {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -512,7 +523,7 @@ private fun flyToMyLocation(map: MapLibreMap) {
 }
 
 @Composable
-private fun NavigationOverlay(navigation: NavigationState, onStop: () -> Unit) {
+private fun NavigationOverlay(navigation: NavigationState, recording: RecordingState?, onStop: () -> Unit) {
     val progress = navigation.progress
     Column(Modifier.fillMaxSize()) {
         Surface(
@@ -564,6 +575,7 @@ private fun NavigationOverlay(navigation: NavigationState, onStop: () -> Unit) {
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         Stat(Format.distance(progress.remainingMeters.toInt()), "剩余")
                         Stat(Format.duration(progress.remainingSeconds), "还要")
+                        recording?.let { Stat(Format.distance(it.distanceMeters.toInt()), "已骑") }
                     }
                 } else {
                     Spacer(Modifier.weight(1f))
@@ -577,4 +589,40 @@ private fun NavigationOverlay(navigation: NavigationState, onStop: () -> Unit) {
 @Composable
 private fun NavText(text: String) {
     Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+}
+
+@Composable
+private fun RecordingCard(recording: RecordingState, onStop: () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = RandoOrange,
+        contentColor = Color.White,
+        shadowElevation = 6.dp,
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                RecordingStat(Format.clock(recording.movingSeconds), "骑行时间")
+                RecordingStat(Format.distance(recording.distanceMeters.toInt()), "距离")
+                RecordingStat(Format.speed(recording.currentSpeed), "速度")
+            }
+            TextButton(onClick = onStop) { Text("结束", color = Color.White, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+@Composable
+private fun RecordingStat(value: String, label: String) {
+    Column {
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */
+private fun finishRide(context: Context, session: RideSession) {
+    session.stopNavigation()
+    val ride = session.stopRecording()
+    val text = if (ride != null) "已保存骑行记录：${Format.distance(ride.distanceMeters.toInt())}" else "骑得太短，没有保存记录"
+    Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
 }
