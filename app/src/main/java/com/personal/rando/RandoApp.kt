@@ -10,6 +10,7 @@ import com.personal.rando.ride.RideSession
 import com.personal.rando.group.GroupRide
 import com.personal.rando.group.Walkie
 import com.personal.rando.voice.VoiceControl
+import com.personal.rando.ui.OfflineMaps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +39,9 @@ class RandoApp : Application() {
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
 
     val savedRoutes: SavedRouteStore by lazy { SavedRouteStore(this) }
+
+    /** 存在手机里的新加坡地图 */
+    val offlineMaps: OfflineMaps by lazy { OfflineMaps(this) }
 }
 
 val Context.rando: RandoApp get() = applicationContext as RandoApp

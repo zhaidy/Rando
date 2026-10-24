@@ -170,6 +170,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val savedRoutes by vm.savedRoutes.routes.collectAsStateWithLifecycle()
     var savingRoute by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val offlineMaps = LocalContext.current.rando.offlineMaps
+    val offlineState by offlineMaps.state.collectAsStateWithLifecycle()
+    var offlineDialog by remember { mutableStateOf(false) }
     val voice = LocalContext.current.rando.voice
     val voiceState by voice.state.collectAsStateWithLifecycle()
     val sosList by group.sos.collectAsStateWithLifecycle()
@@ -516,6 +519,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             },
                             onOpenRides = onOpenRides,
                             onCheckUpdate = onCheckUpdate,
+                            onOfflineMaps = {
+                                offlineMaps.refresh()
+                                offlineDialog = true
+                            },
                         )
                         PrefsRow(state.prefs, vm::setPrefs)
                         (voiceState as? VoiceState.Listening)?.let { HintPill("正在听：${it.partial.ifEmpty { "请说…" }}", onCancel = voice::cancel) }
@@ -654,6 +661,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    if (offlineDialog) {
+        OfflineMapsDialog(
+            offlineState,
+            onDownload = offlineMaps::download,
+            onCancel = offlineMaps::cancel,
+            onDelete = offlineMaps::delete,
+            onDismiss = { offlineDialog = false },
+        )
     }
     if (savingRoute) {
         val suggested = state.destination?.name?.takeUnless { it.startsWith("地图上") }
