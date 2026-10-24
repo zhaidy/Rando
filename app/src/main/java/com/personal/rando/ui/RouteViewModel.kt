@@ -143,7 +143,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         searchJob = viewModelScope.launch {
             delay(350) // 停手再搜，别每敲一个字就请求一次
             val results = try {
-                places.search(query.trim())
+                places.search(query.trim(), _state.value.start?.location ?: myLocation)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

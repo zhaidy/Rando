@@ -9,7 +9,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.personal.rando.nav.NavProgress
@@ -127,6 +133,18 @@ class UiScreenshotTest {
     @Test fun plannerEmpty() = shot("1_planner_empty") { Planner() }
 
     @Test fun plannerRoute() = shot("2_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+
+    /** 卡片中间往下划收起，再往上划展开，不用非得拖顶上的拖动条 */
+    @Test fun plannerSwipeAnywhere() {
+        compose.setContent { OverMap { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) } }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithText("距离").performTouchInput { swipeDown(startY = centerY, endY = centerY + 400f) }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onAllNodesWithText("距离").assertCountEquals(0)
+        compose.onNodeWithText("开始导航").performTouchInput { swipeUp(startY = centerY, endY = centerY - 400f) }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithText("距离").assertExists()
+    }
 
     @Test fun plannerOutlook() = shot("2d_planner_outlook") {
         val p = route.points
