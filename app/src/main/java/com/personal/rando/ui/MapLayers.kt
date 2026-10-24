@@ -7,6 +7,7 @@ import com.personal.rando.routing.RoadPiece
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pieces
+import com.personal.rando.routing.structures
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -17,6 +18,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.maps.Style
@@ -35,12 +37,13 @@ object MapLayers {
     private const val TRACK = "rando-track"
     private const val ROUTE = "rando-route"
     private const val CROSSINGS = "rando-crossings"
+    private const val STRUCTURES = "rando-structures"
     private const val START = "rando-start"
     private const val END = "rando-end"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, ROUTE, CROSSINGS, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, ROUTE, STRUCTURES, CROSSINGS, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -62,6 +65,13 @@ object MapLayers {
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
+        // 天桥、地下通道：路线上再压一条白色虚线
+        style.addLayer(
+            LineLayer(STRUCTURES, STRUCTURES).withProperties(
+                lineColor(Color.WHITE), lineWidth(2.5f),
+                lineDasharray(arrayOf(1.5f, 1.2f)),
+            )
+        )
         // 过马路的地方：小圆点，颜色按路口种类
         style.addLayer(
             CircleLayer(CROSSINGS, CROSSINGS).withProperties(
@@ -75,6 +85,13 @@ object MapLayers {
 
     fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?) {
         style.getSourceAs<GeoJsonSource>(ROUTE)?.setGeoJson(route?.let(::coloredRoute) ?: EMPTY)
+        style.getSourceAs<GeoJsonSource>(STRUCTURES)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                route?.structures().orEmpty().filter { it.path.size >= 2 }.map { st ->
+                    Feature.fromGeometry(LineString.fromLngLats(st.path.map { Point.fromLngLat(it.lon, it.lat) }))
+                }
+            )
+        )
         style.getSourceAs<GeoJsonSource>(CROSSINGS)?.setGeoJson(
             FeatureCollection.fromFeatures(
                 route?.crossings().orEmpty().map { c ->

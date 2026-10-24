@@ -11,6 +11,7 @@ import com.personal.rando.rando
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BRouterClient
 import com.personal.rando.routing.BikeProfile
+import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.search.Place
@@ -34,7 +35,7 @@ sealed interface RouteState {
 }
 
 data class PlannerState(
-    val profile: BikeProfile = BikeProfile.PCN,
+    val prefs: RoutePrefs = RoutePrefs(),
     /** null 表示从我的位置出发 */
     val start: Place? = null,
     val destination: Place? = null,
@@ -54,14 +55,8 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
     val savedPlaces: SavedPlaceStore = app.rando.savedPlaces
 
     /** 记住上次选的路线偏好 */
-    private val prefs = app.getSharedPreferences("planner", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(
-        PlannerState(
-            profile = prefs.getString(KEY_PROFILE, null)
-                ?.let { name -> BikeProfile.entries.firstOrNull { it.name == name } }
-                ?: BikeProfile.PCN,
-        )
-    )
+    private val stored = app.getSharedPreferences("planner", Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(PlannerState(prefs = loadPrefs()))
     val state: StateFlow<PlannerState> = _state
 
     private var myLocation: LatLon? = null
@@ -72,10 +67,25 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { session.location.filterNotNull().collect(::onMyLocation) }
     }
 
-    fun setProfile(profile: BikeProfile) {
-        prefs.edit { putString(KEY_PROFILE, profile.name) }
-        _state.update { it.copy(profile = profile) }
+    fun setPrefs(prefs: RoutePrefs) {
+        stored.edit {
+            putString(KEY_PROFILE, prefs.profile.name)
+            putBoolean(KEY_AVOID_ROADS, prefs.avoidRoads)
+            putBoolean(KEY_AVOID_BRIDGES, prefs.avoidBridges)
+        }
+        _state.update { it.copy(prefs = prefs) }
         planRoute()
+    }
+
+    private fun loadPrefs(): RoutePrefs {
+        val name = stored.getString(KEY_PROFILE, null)
+        // 旧版本把「不上马路」存成单独的一种配置
+        if (name == "NO_ROADS") return RoutePrefs(BikeProfile.PCN, avoidRoads = true)
+        return RoutePrefs(
+            profile = BikeProfile.entries.firstOrNull { it.name == name } ?: BikeProfile.PCN,
+            avoidRoads = stored.getBoolean(KEY_AVOID_ROADS, false),
+            avoidBridges = stored.getBoolean(KEY_AVOID_BRIDGES, false),
+        )
     }
 
     fun onQueryChange(query: String) {
@@ -142,7 +152,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         val ready = s.route as? RouteState.Ready ?: return
         val destination = s.destination ?: return
         _state.update { it.copy(results = emptyList(), query = "") }
-        session.startNavigation(ready.route, destination.location, s.profile)
+        session.startNavigation(ready.route, destination.location, s.prefs)
     }
 
     fun retry() = planRoute()
@@ -159,7 +169,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(route = RouteState.Loading) }
         routeJob = viewModelScope.launch {
             val next = try {
-                val route = router.route(from, to, s.profile)
+                val route = router.route(from, to, s.prefs)
                 RouteState.Ready(route)
             } catch (e: CancellationException) {
                 throw e
@@ -172,5 +182,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val KEY_PROFILE = "profile"
+        const val KEY_AVOID_ROADS = "avoid_roads"
+        const val KEY_AVOID_BRIDGES = "avoid_bridges"
     }
 }

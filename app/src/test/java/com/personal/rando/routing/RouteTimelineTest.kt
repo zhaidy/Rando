@@ -48,4 +48,12 @@ class RouteTimelineTest {
         assertEquals(0.0, t.nextCrossing(step + 3)!!.distance, 0.0)
         assertNull(t.nextCrossing(step + 20))
     }
+
+    @Test
+    fun `前方天桥从桥头算距离，走在桥上时是 0`() {
+        val t = RouteTimeline(route(pcn to "", "highway=footway bridge=yes" to "", pcn to ""))
+        assertEquals(step - 30, t.nextStructure(30.0)!!.distance, 1.0)
+        assertEquals(0.0, t.nextStructure(step + 50)!!.distance, 0.0)
+        assertNull(t.nextStructure(2 * step + 10))
+    }
 }

@@ -132,6 +132,7 @@ private fun Clock(modifier: Modifier) {
 private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier) {
     val ahead = timeline.ahead(along) ?: return
     val crossing = timeline.nextCrossing(along)?.takeIf { it.distance <= CROSSING_SHOWN_METERS }
+    val structure = timeline.nextStructure(along)?.takeIf { it.distance <= CROSSING_SHOWN_METERS }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(ahead.current.kind.color)
@@ -145,6 +146,16 @@ private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        structure?.let { a ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot("#FFFFFF")
+                Text(
+                    "前方 ${Format.distance(a.distance.toInt())} ${a.structure.kind.label} · ${a.structure.access}",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                )
+            }
         }
         crossing?.let { c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
