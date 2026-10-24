@@ -94,4 +94,15 @@ class RouteParserTest {
     fun `标签里没有等号的词跳过`() {
         assertEquals(mapOf("highway" to "cycleway"), RouteParser.parseTags("highway=cycleway  junk =x"))
     }
+
+    @Test
+    fun `坐标第三个数是海拔`() {
+        assertEquals(listOf(44.0, 40.0, 34.0), RouteParser.parse(sample).elevations)
+    }
+
+    @Test
+    fun `坐标没带海拔时海拔是空的`() {
+        val json = """{"features":[{"properties":{},"geometry":{"coordinates":[[103.8,1.3],[103.9,1.4]]}}]}"""
+        assertEquals(emptyList<Double>(), RouteParser.parse(json).elevations)
+    }
 }

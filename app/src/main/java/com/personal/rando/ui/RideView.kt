@@ -56,15 +56,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.ride.NavigationState
+import com.personal.rando.ride.Fix
 import com.personal.rando.ride.RecordingState
 import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RouteTimeline
 import kotlinx.coroutines.delay
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
-import org.maplibre.android.location.modes.CameraMode
-import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.Style
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.geometry.LatLng
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -84,7 +86,9 @@ fun RideView(
     recording: RecordingState?,
     onMap: () -> Unit,
     onStop: () -> Unit,
-    map: @Composable (Modifier) -> Unit = { RideMap(navigation, it) },
+    /** 到了以后原路返回；null 就不显示 */
+    onReturn: (() -> Unit)? = null,
+    map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation.progress
     val timeline = remember(navigation.route) { RouteTimeline(navigation.route) }
@@ -147,6 +151,11 @@ fun RideView(
                     ) {
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        }
+                        if (onReturn != null && progress?.arrived == true) {
+                            GlassButton(onClick = onReturn, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoGreen)) {
+                                Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            }
                         }
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
                             Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
@@ -257,7 +266,7 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
     val progress = navigation.progress
     Column(modifier) {
         when {
-            progress == null -> RideMessage("等待 GPS 定位…")
+            progress == null -> RideMessage(navigation.waitingText)
             progress.arrived -> RideMessage("已到达目的地")
             navigation.rerouting || progress.offRoute -> RideMessage("已偏离路线，正在重新规划…")
             else -> {
@@ -300,42 +309,56 @@ private fun BigStat(value: String, unit: String, modifier: Modifier) {
 /** 黑底地图，镜头倾斜跟着人、朝骑行方向转；路线照样按路的种类上色 */
 @SuppressLint("MissingPermission")
 @Composable
-fun RideMap(navigation: NavigationState, modifier: Modifier) {
+fun RideMap(navigation: NavigationState, fix: Fix?, modifier: Modifier) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
     val mapView = rememberMapView(textureMode = true)
-    var style by remember { mutableStateOf<Style?>(null) }
+    var map by remember { mutableStateOf<MapLibreMap?>(null) }
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
+            // 一开始就放大到骑行的比例，不然没收到定位前停在整个地球的视角
+            val here = fix?.location ?: navigation.route.points.firstOrNull()
+            if (here != null) {
+                m.cameraPosition = CameraPosition.Builder().target(LatLng(here.lat, here.lon)).zoom(RIDE_ZOOM).tilt(RIDE_TILT).build()
+            }
             m.uiSettings.isRotateGesturesEnabled = false
             m.uiSettings.isAttributionEnabled = false
             m.uiSettings.isLogoEnabled = false
             m.setStyle(Style.Builder().fromJson(RideMapStyle.JSON)) { s ->
                 MapLayers.install(s, dark = true)
+                MapLayers.show(s, navigation.route, start = null, end = navigation.destination, via = navigation.via)
                 val puck = LocationComponentOptions.builder(context)
                     .foregroundTintColor(android.graphics.Color.parseColor("#2E7D4F"))
                     .bearingTintColor(android.graphics.Color.parseColor("#2E7D4F"))
                     .accuracyAlpha(0f)
                     .build()
-                m.locationComponent.apply {
-                    activateLocationComponent(
-                        LocationComponentActivationOptions.builder(context, s).locationComponentOptions(puck).build()
-                    )
-                    isLocationComponentEnabled = true
-                    renderMode = RenderMode.GPS
-                    cameraMode = CameraMode.TRACKING_GPS
-                    zoomWhileTracking(17.5)
-                    tiltWhileTracking(55.0)
-                }
-                style = s
+                // 定位用导航自己收到的，不另外开一路：两边一致，信号差时也不会一个有一个没有
+                m.locationComponent.activateLocationComponent(
+                    LocationComponentActivationOptions.builder(context, s)
+                        .locationComponentOptions(puck)
+                        .useDefaultLocationEngine(false)
+                        .build()
+                )
+                m.locationComponent.isLocationComponentEnabled = true
+                fix?.let { m.locationComponent.forceLocationUpdate(it.toLocation()) }
+                map = m
             }
         }
     }
-    LaunchedEffect(style, navigation.route) {
-        val s = style ?: return@LaunchedEffect
-        MapLayers.show(s, navigation.route, start = null, end = navigation.destination)
+    LaunchedEffect(map, fix) {
+        val m = map ?: return@LaunchedEffect
+        fix?.let { m.locationComponent.forceLocationUpdate(it.toLocation()) }
     }
+    LaunchedEffect(map, navigation.route, navigation.via) {
+        val s = map?.style ?: return@LaunchedEffect
+        MapLayers.show(s, navigation.route, start = null, end = navigation.destination, via = navigation.via)
+    }
+    val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT)
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp), dark = true)
     }
 }
+
+private const val RIDE_ZOOM = 17.5
+private const val RIDE_TILT = 55.0

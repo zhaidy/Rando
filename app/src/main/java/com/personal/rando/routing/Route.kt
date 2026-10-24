@@ -22,4 +22,6 @@ data class Route(
     val segments: List<RouteSegment>,
     /** 路口转向提示，按路线顺序 */
     val maneuvers: List<Maneuver> = emptyList(),
+    /** 每个坐标的海拔（米），和 [points] 一一对应；服务器没给就是空的 */
+    val elevations: List<Double> = emptyList(),
 )

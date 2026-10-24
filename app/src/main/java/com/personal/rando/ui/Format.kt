@@ -15,6 +15,9 @@ object Format {
         else "${minutes / 60} 小时 ${minutes % 60} 分"
     }
 
+    /** 第几公里：「3.2」，不带单位 */
+    fun km(meters: Double): String = String.format(Locale.US, "%.1f", meters / 1000)
+
     fun percent(share: Double): String = "${Math.round(share * 100)}%"
 
     /** 图例里的占比：有但不到 1% 的写「<1%」，不写「0%」 */

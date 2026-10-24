@@ -11,6 +11,7 @@ import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.RouteTimeline
+import com.personal.rando.routing.ReturnTrip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,11 +24,24 @@ data class NavigationState(
     /** 当前在走的路线；骑偏重新规划后会换成新的 */
     val route: Route,
     val destination: LatLon,
+    /** 还没经过的途经点，按顺序；骑偏重新算路时要接着经过它们 */
+    val via: List<LatLon> = emptyList(),
     val prefs: RoutePrefs,
     /** 还没定位到时是 null */
     val progress: NavProgress? = null,
     val rerouting: Boolean = false,
-)
+    /** 最近一次定位的误差（米）；信号差时告诉人为什么还没开始导航 */
+    val gpsAccuracy: Float? = null,
+) {
+    /** 还没对上路线时显示的话：信号太差就说出误差，免得以为卡住了 */
+    val waitingText: String
+        get() = gpsAccuracy?.takeIf { it > NAV_MAX_ACCURACY_METERS }
+            ?.let { "GPS 信号弱，误差约 ${Math.round(it)} 米，到空旷处会好些" }
+            ?: "等待 GPS 定位…"
+}
+
+/** 导航时精度比这差的定位不要 */
+const val NAV_MAX_ACCURACY_METERS = 50f
 
 /**
  * 一次骑行：导航、轨迹记录和语音都放在这里，跟着进程而不是界面走。
@@ -46,6 +60,10 @@ class RideSession(
     /** 最近一次定位，规划路线时当起点 */
     val location: StateFlow<LatLon?> = _location
 
+    private val _fix = MutableStateFlow<Fix?>(null)
+    /** 最近一次定位，带速度和方向；骑行视图的地图拿它画蓝点 */
+    val fix: StateFlow<Fix?> = _fix
+
     private val _navigation = MutableStateFlow<NavigationState?>(null)
     /** 不为 null 就是在导航中 */
     val navigation: StateFlow<NavigationState?> = _navigation
@@ -59,13 +77,26 @@ class RideSession(
     private var roadAlerts: RoadAlerts? = null
     private val prompter = VoicePrompter()
     private var rerouteJob: Job? = null
+    /** 还没经过的途经点在当前路线上的位置（米） */
+    private var viaAlong: List<Double> = emptyList()
     private var lastRerouteAt = 0L
 
     fun onFix(fix: Fix) {
+        // GPS 和网络定位一起听：有了准的点，几秒内来的明显更不准的就不要，免得蓝点来回跳
+        val last = _fix.value
+        if (last != null && fix.accuracy != null && last.accuracy != null &&
+            fix.accuracy > last.accuracy * 2 && fix.time - last.time < KEEP_PRECISE_MS
+        ) {
+            return
+        }
         _location.value = fix.location
+        _fix.value = fix
         // 网络定位误差上百米，导航时会被当成骑偏了
         val precise = fix.accuracy == null || fix.accuracy <= NAV_MAX_ACCURACY_METERS
-        if (navigator != null && precise) navigate(fix.location)
+        if (navigator != null) {
+            if (fix.accuracy != _navigation.value?.gpsAccuracy) _navigation.update { it?.copy(gpsAccuracy = fix.accuracy) }
+            if (precise) navigate(fix.location)
+        }
         recorder?.let {
             it.add(fix)
             _recording.value = it.state()
@@ -91,17 +122,29 @@ class RideSession(
         return ride
     }
 
-    fun startNavigation(route: Route, destination: LatLon, prefs: RoutePrefs) {
-        navigator = Navigator(route)
-        roadAlerts = RoadAlerts(RouteTimeline(route))
-        prompter.reset()
+    fun startNavigation(route: Route, destination: LatLon, via: List<LatLon>, prefs: RoutePrefs) {
+        follow(route, via)
         rerouteJob?.cancel()
-        _navigation.value = NavigationState(route, destination, prefs)
+        _navigation.value = NavigationState(route, destination, via, prefs)
         speaker.say(prompter.start(route.distanceMeters.toDouble()))
         // 导航顺便记录轨迹，结束时一起保存
         startRecording()
         RideService.start(app)
     }
+
+    /**
+     * 原路返回：沿着这次骑过的轨迹倒着回到出发的地方。
+     * 轨迹上每隔一段取一个点当途经点，BRouter 就会走回同样的路
+     */
+    suspend fun startReturnTrip(prefs: RoutePrefs) {
+        val track = _recording.value?.track?.map { it.location }.orEmpty()
+        val stops = ReturnTrip.stops(track) ?: throw IllegalStateException("还没骑多远，没有路可以原路返回")
+        val route = router.route(stops, prefs)
+        startNavigation(route, stops.last(), stops.drop(1).dropLast(1), prefs)
+    }
+
+    /** 能不能原路返回：在记录，而且离出发的地方有段距离了 */
+    fun canReturn(recording: RecordingState?): Boolean = ReturnTrip.stops(recording?.track?.map { it.location }.orEmpty()) != null
 
     /** 停掉导航；RideService 看到没事可做了会自己退出 */
     fun stopNavigation() {
@@ -111,10 +154,21 @@ class RideSession(
         _navigation.value = null
     }
 
+    /** 换一条路线来跟；记下每个途经点在这条路线上的位置，骑过了就划掉 */
+    private fun follow(route: Route, via: List<LatLon>) {
+        val nav = Navigator(route)
+        navigator = nav
+        viaAlong = via.map { nav.alongOf(it) }
+        roadAlerts = RoadAlerts(RouteTimeline(route))
+        prompter.reset()
+    }
+
     private fun navigate(point: LatLon) {
         val nav = navigator ?: return
         val progress = nav.update(point)
-        _navigation.update { it?.copy(progress = progress) }
+        val passed = if (progress.offRoute) 0 else viaAlong.takeWhile { progress.alongMeters >= it - VIA_PASSED_METERS }.size
+        if (passed > 0) viaAlong = viaAlong.drop(passed)
+        _navigation.update { it?.copy(progress = progress, via = it.via.drop(passed)) }
         prompter.next(progress)?.let(speaker::say)
         if (!progress.offRoute && !progress.arrived) roadAlerts?.next(progress.alongMeters)?.let(speaker::say)
         if (progress.offRoute) reroute(point)
@@ -129,12 +183,11 @@ class RideSession(
         _navigation.update { it?.copy(rerouting = true) }
         rerouteJob = scope.launch {
             try {
-                val route = router.route(from, state.destination, state.prefs)
+                val via = _navigation.value?.via ?: return@launch
+                val route = router.route(listOf(from) + via + state.destination, state.prefs)
                 if (navigator == null) return@launch
-                navigator = Navigator(route)
-                roadAlerts = RoadAlerts(RouteTimeline(route))
-                prompter.reset()
-                _navigation.update { it?.copy(route = route, rerouting = false) }
+                follow(route, via)
+                _navigation.update { it?.copy(route = route, via = via, rerouting = false) }
                 _location.value?.let(::navigate)
             } catch (e: CancellationException) {
                 throw e
@@ -147,8 +200,10 @@ class RideSession(
 
     private companion object {
         const val REROUTE_INTERVAL_MS = 15_000L
-        /** 导航时精度比这差的定位不要 */
-        const val NAV_MAX_ACCURACY_METERS = 50f
         const val MIN_RIDE_METERS = 100.0
+        /** 准的定位在这么久以内，不准的不要 */
+        const val KEEP_PRECISE_MS = 10_000L
+        /** 骑到离途经点这么近就算经过了 */
+        const val VIA_PASSED_METERS = 50.0
     }
 }

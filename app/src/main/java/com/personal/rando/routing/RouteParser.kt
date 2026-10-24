@@ -14,6 +14,10 @@ object RouteParser {
             val c = coords.getJSONArray(it)
             LatLon(lat = c.getDouble(1), lon = c.getDouble(0))
         }
+        // 坐标第三个数是海拔；有一个缺就整条不要，免得对不上
+        val elevations = (0 until coords.length()).map { coords.getJSONArray(it).optDouble(2) }
+            .takeIf { list -> list.none { it.isNaN() } }
+            .orEmpty()
         return Route(
             points = points,
             distanceMeters = props.intOf("track-length"),
@@ -21,6 +25,7 @@ object RouteParser {
             ascendMeters = props.intOf("filtered ascend"),
             segments = props.optJSONArray("messages")?.let { segments(it, points) }.orEmpty(),
             maneuvers = props.optJSONArray("voicehints")?.let { maneuvers(it, points.size) }.orEmpty(),
+            elevations = elevations,
         )
     }
 

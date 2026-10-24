@@ -2,6 +2,7 @@ package com.personal.rando.nav
 
 import com.personal.rando.routing.LatLon
 import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** 几十公里以内的距离计算：把经纬度当成平面，新加坡这种尺度误差可以忽略 */
@@ -23,6 +24,15 @@ object Geo {
         val dx = px - t * bx
         val dy = py - t * by
         return t to sqrt(dx * dx + dy * dy)
+    }
+
+    /** 从 [p] 朝 [bearingDegrees]（正北 0°，顺时针）走 [meters] 米 */
+    fun offset(p: LatLon, bearingDegrees: Double, meters: Double): LatLon {
+        val rad = Math.toRadians(bearingDegrees)
+        return LatLon(
+            lat = p.lat + meters * cos(rad) / METERS_PER_DEGREE,
+            lon = p.lon + meters * sin(rad) / (METERS_PER_DEGREE * cos(Math.toRadians(p.lat))),
+        )
     }
 
     private fun toMeters(p: LatLon, origin: LatLon): Pair<Double, Double> {

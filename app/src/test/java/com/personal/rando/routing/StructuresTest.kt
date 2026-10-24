@@ -69,4 +69,16 @@ class StructuresTest {
         val r = route(Triple(200, "highway=footway", ""), Triple(60, "highway=footway bridge=yes", ""), Triple(200, "highway=footway", ""))
         assertEquals("上下方式没标明", r.structures().single().access)
     }
+
+    @Test
+    fun `连道上的地下通道是从桥底下平着穿过`() {
+        val r = route(
+            Triple(200, "highway=footway route_bicycle_lcn=yes", ""),
+            Triple(23, "highway=footway tunnel=yes route_bicycle_lcn=yes", ""),
+            Triple(200, "highway=footway route_bicycle_lcn=yes", ""),
+        )
+        assertEquals("连道从马路桥底下穿过，一般是平的", r.structures().single().access)
+        val plain = route(Triple(100, "highway=footway", ""), Triple(30, "highway=footway tunnel=yes", ""), Triple(100, "highway=footway", ""))
+        assertEquals("上下方式没标明", plain.structures().single().access)
+    }
 }

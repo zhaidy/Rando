@@ -47,6 +47,8 @@ import com.personal.rando.routing.Route
 import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pieces
 import com.personal.rando.routing.structures
+import com.personal.rando.routing.steepestClimb
+import kotlin.math.roundToInt
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassShapes
@@ -62,6 +64,8 @@ fun NavigationOverlay(
     onRideView: () -> Unit,
     onDashboard: () -> Unit,
     onStop: () -> Unit,
+    /** 到了以后原路返回；null 就不显示 */
+    onReturn: (() -> Unit)? = null,
 ) {
     val progress = navigation.progress
     Column(Modifier.fillMaxSize()) {
@@ -91,8 +95,14 @@ fun NavigationOverlay(
                     GlassButton(onClick = onRideView, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
                         Text("骑行视图", color = Ink, fontSize = 15.sp)
                     }
-                    GlassButton(onClick = onDashboard, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text("码表", color = Ink, fontSize = 15.sp)
+                    if (onReturn != null && progress?.arrived == true) {
+                        GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else {
+                        GlassButton(onClick = onDashboard, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("码表", color = Ink, fontSize = 15.sp)
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton(onClick = onStop, color = RandoRed) {
@@ -145,7 +155,7 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
         ) { k ->
             Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
-                    k == "wait" -> NavText("等待 GPS 定位…")
+                    k == "wait" -> NavText(navigation.waitingText)
                     k == "arrived" -> NavText("已到达目的地")
                     k == "off" -> NavText("已偏离路线，正在重新规划…")
                     progress != null -> {
@@ -194,7 +204,7 @@ data class SegmentInfo(
 )
 
 /** 卡片上能点的提示，点了在地图上一处处看 */
-enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH }
+enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH, CLIMB }
 
 /** 离点击位置 [toleranceMeters] 以内最近的那段路；都太远就是 null */
 fun Route.segmentAt(tap: LatLon, toleranceMeters: Double): SegmentInfo? {
@@ -222,9 +232,22 @@ fun Route.targets(target: NoteTarget): List<SegmentInfo> = when (target) {
         SegmentInfo("过马路", RoadKind.CROSSING.color, 0, it.location, listOf(it.location), it.type.label)
     }
     NoteTarget.STRUCTURES -> structures().map {
-        SegmentInfo(it.kind.label, "#FFFFFF", it.lengthMeters, it.path[it.path.size / 2], it.path, it.access)
+        // 看实景看入口：桥上、通道里面多半没有街景
+        SegmentInfo(it.kind.label, "#FFFFFF", it.lengthMeters, it.path.first(), it.path, it.access)
     }
+    NoteTarget.CLIMB -> listOfNotNull(
+        steepestClimb()?.let { c ->
+            val path = points.subList(c.fromIndex, c.toIndex + 1)
+            SegmentInfo(
+                "上坡", CLIMB_COLOR, c.lengthMeters.toInt(), path[path.size / 2], path,
+                "平均坡度 ${Format.percent(c.grade)}，爬 ${c.gainMeters.roundToInt()} 米",
+            )
+        }
+    )
 }
+
+/** 上坡用琥珀色，和 RandoAmber 一样 */
+private const val CLIMB_COLOR = "#C98A1B"
 
 private fun Route.piecesWithin(kind: RoadKind, skipEnds: Boolean): List<SegmentInfo> {
     val all = pieces()
