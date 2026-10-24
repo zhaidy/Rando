@@ -24,6 +24,8 @@ import com.personal.rando.routing.RouteTimeline
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.Weather
 import com.personal.rando.weather.WeatherClient
+import com.personal.rando.weather.Climate
+import com.personal.rando.weather.ClimateClient
 import com.personal.rando.weather.along
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
@@ -76,6 +78,8 @@ data class PlannerState(
     val route: RouteState = RouteState.Idle,
     /** 沿途天气；还没查到或者查不到是 null */
     val weather: RouteWeather? = null,
+    /** 起点现在的气温、紫外线、空气质量 */
+    val climate: Climate? = null,
     /** 沿途补给点 */
     val amenities: List<AmenityOnRoute> = emptyList(),
 )
@@ -102,6 +106,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     private var searchJob: Job? = null
     private var routeJob: Job? = null
     private val weatherClient = WeatherClient()
+    private val climateClient = ClimateClient()
     private val amenityClient = AmenityClient()
     /** 天气十分钟内不重复查 */
     private var cachedWeather: Pair<Long, Weather>? = null
@@ -297,7 +302,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             _state.update { it.copy(route = RouteState.WaitingForLocation) }
             return
         }
-        _state.update { it.copy(route = RouteState.Loading, weather = null, amenities = emptyList()) }
+        _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList()) }
         routeJob = viewModelScope.launch {
             val next = try {
                 if (s.loop != null) {
@@ -362,6 +367,10 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             val weather = cachedWeather?.takeIf { now - it.first < WEATHER_TTL_MS }?.second
                 ?: quietly { weatherClient.fetch() }?.also { cachedWeather = now to it }
             weather?.let { w -> _state.update { it.copy(weather = w.along(route.points)) } }
+        }
+        launch {
+            route.points.firstOrNull()?.let { start -> quietly { climateClient.at(start) } }
+                ?.let { c -> _state.update { it.copy(climate = c) } }
         }
         launch {
             quietly { amenityClient.along(route.points) }?.let { list ->

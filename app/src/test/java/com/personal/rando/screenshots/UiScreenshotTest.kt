@@ -111,6 +111,7 @@ class UiScreenshotTest {
         amenities: List<AmenityOnRoute> = emptyList(),
         group: GroupState? = null,
         finished: Ride? = null,
+        climate: com.personal.rando.weather.Climate? = null,
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
@@ -123,7 +124,7 @@ class UiScreenshotTest {
             finished?.let { FinishedCard(it, {}, {}) }
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
-                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities),
+                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities, climate = climate),
                 saved = saved,
                 actions = PlannerActions(),
             )
@@ -155,7 +156,8 @@ class UiScreenshotTest {
             Amenity(AmenityType.TOILET, p[p.size / 3], null), Amenity(AmenityType.SHOP, p[p.size * 2 / 3], "7-Eleven"),
         ).onRoute(RouteTimeline(route))
         val weather = RouteWeather(listOf(AreaForecast("Bukit Merah", p[0], "Thundery Showers")), emptyList())
-        Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList()), weather = weather, amenities = amenities)
+        val climate = com.personal.rando.weather.Climate(tempC = 32.0, humidity = 68.0, uv = 9, psi = 148, psiRegion = "west")
+        Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList()), weather = weather, amenities = amenities, climate = climate)
     }
 
     @Test fun plannerVia() = shot("2b_planner_via") {
