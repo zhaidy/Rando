@@ -38,7 +38,8 @@ object MapLayers {
     private const val START = "rando-start"
     private const val END = "rando-end"
 
-    fun install(style: Style) {
+    /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
+    fun install(style: Style, dark: Boolean = false) {
         listOf(TRACK, ROUTE, CROSSINGS, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
@@ -50,7 +51,7 @@ object MapLayers {
         // 先画一圈白边，路线在浅色底图上更显眼
         style.addLayer(
             LineLayer("$ROUTE-casing", ROUTE).withProperties(
-                lineColor(Color.WHITE), lineWidth(9f),
+                lineColor(if (dark) Color.BLACK else Color.WHITE), lineWidth(9f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )

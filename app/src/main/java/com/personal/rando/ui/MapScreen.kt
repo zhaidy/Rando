@@ -87,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -192,6 +193,16 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
     val view = LocalView.current
     var dashboard by rememberSaveable { mutableStateOf(false) }
+    // 骑行视图：上次导航用了它，这次开始导航就直接进
+    val viewPrefs = remember { context.getSharedPreferences("planner", Context.MODE_PRIVATE) }
+    var rideView by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(navigating) {
+        if (navigating && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
+    }
+    val openRideView = { show: Boolean ->
+        rideView = show
+        viewPrefs.edit { putBoolean(KEY_RIDE_VIEW, show) }
+    }
     // 骑行结束码表也就收起来了
     val showDashboard = dashboard && recording != null
     val screenOn = navigating || showDashboard
@@ -251,7 +262,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         }
 
         navigation?.let {
-            NavigationOverlay(it, onDashboard = { dashboard = true }, onStop = finishRide)
+            if (rideView) {
+                BackHandler { openRideView(false) }
+                RideView(it, recording, onMap = { openRideView(false) }, onStop = finishRide)
+            } else {
+                NavigationOverlay(
+                    it,
+                    onRideView = { openRideView(true) },
+                    onDashboard = { dashboard = true },
+                    onStop = finishRide,
+                )
+            }
             return@Box
         }
 
@@ -728,7 +749,12 @@ private fun flyToMyLocation(map: MapLibreMap) {
 }
 
 @Composable
-private fun NavigationOverlay(navigation: NavigationState, onDashboard: () -> Unit, onStop: () -> Unit) {
+private fun NavigationOverlay(
+    navigation: NavigationState,
+    onRideView: () -> Unit,
+    onDashboard: () -> Unit,
+    onStop: () -> Unit,
+) {
     val progress = navigation.progress
     Column(Modifier.fillMaxSize()) {
         NavBanner(
@@ -747,17 +773,20 @@ private fun NavigationOverlay(navigation: NavigationState, onDashboard: () -> Un
             shape = RoundedCornerShape(20.dp),
             shadowElevation = 6.dp,
         ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.padding(16.dp)) {
                 if (progress != null) {
-                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         Stat(Format.distance(progress.remainingMeters.toInt()), "剩余")
                         Stat(Format.duration(progress.remainingSeconds), "还要")
                     }
-                } else {
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.size(8.dp))
                 }
-                TextButton(onClick = onDashboard) { Text("码表") }
-                Button(onClick = onStop) { Text("结束") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onRideView) { Text("骑行视图") }
+                    TextButton(onClick = onDashboard) { Text("码表") }
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = onStop) { Text("结束") }
+                }
             }
         }
     }
@@ -850,3 +879,5 @@ private fun appBuild(): Long {
         PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
     }
 }
+
+private const val KEY_RIDE_VIEW = "ride_view"
