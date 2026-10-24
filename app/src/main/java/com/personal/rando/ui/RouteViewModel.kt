@@ -32,6 +32,9 @@ import com.personal.rando.routing.LoopShape
 import com.personal.rando.routing.LoopScore
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
+import com.personal.rando.routing.Pace
+import com.personal.rando.routing.MySpeed
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -104,6 +107,10 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     init {
         viewModelScope.launch { session.location.filterNotNull().collect(::onMyLocation) }
+        // 打开时、每骑完一次重新算一下我的平均速度
+        viewModelScope.launch {
+            session.recording.map { it != null }.distinctUntilChanged().filter { !it }.collect { refreshMySpeed() }
+        }
         // 被系统关掉后恢复的：路线没存，重新算
         planRoute()
         // 起点、终点、途经点一变就存下来
@@ -117,9 +124,20 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             putString(KEY_PROFILE, prefs.profile.name)
             putBoolean(KEY_AVOID_ROADS, prefs.avoidRoads)
             putBoolean(KEY_AVOID_BRIDGES, prefs.avoidBridges)
+            putString(KEY_PACE, prefs.pace.name)
         }
         _state.update { it.copy(prefs = prefs) }
         planRoute()
+    }
+
+    fun setPace(pace: Pace) = setPrefs(_state.value.prefs.copy(pace = pace))
+
+    private suspend fun refreshMySpeed() {
+        val speed = MySpeed.of(session.rides.list().map { it.distanceMeters to it.movingSeconds })
+        if (speed == _state.value.prefs.mySpeed) return
+        _state.update { it.copy(prefs = it.prefs.copy(mySpeed = speed)) }
+        // 路线已经在了，按新的速度重新算一下预计时间
+        if (_state.value.route != RouteState.Idle) planRoute()
     }
 
     private fun loadPrefs(): RoutePrefs {
@@ -130,6 +148,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             profile = BikeProfile.entries.firstOrNull { it.name == name } ?: BikeProfile.PCN,
             avoidRoads = stored.getBoolean(KEY_AVOID_ROADS, false),
             avoidBridges = stored.getBoolean(KEY_AVOID_BRIDGES, false),
+            pace = Pace.entries.firstOrNull { it.name == stored.getString(KEY_PACE, null) } ?: Pace.MINE,
         )
     }
 
@@ -353,5 +372,6 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         const val KEY_PROFILE = "profile"
         const val KEY_AVOID_ROADS = "avoid_roads"
         const val KEY_AVOID_BRIDGES = "avoid_bridges"
+        const val KEY_PACE = "pace"
     }
 }

@@ -548,6 +548,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                                 }
                                                 if (items.isNotEmpty()) focus = Focus(items, 0)
                                             },
+                                            onPace = vm::setPace,
                                         )
                                     },
                                 )
