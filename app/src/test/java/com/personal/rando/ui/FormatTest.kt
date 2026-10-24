@@ -36,4 +36,11 @@ class FormatTest {
     fun `速度换成公里每小时`() {
         assertEquals("18.0 公里/时", Format.speed(5.0))
     }
+
+    @Test
+    fun `占比不到 1% 写小于 1%`() {
+        assertEquals("<1%", Format.share(0.003))
+        assertEquals("0%", Format.share(0.0))
+        assertEquals("4%", Format.share(0.04))
+    }
 }

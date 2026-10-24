@@ -1,5 +1,22 @@
 package com.personal.rando.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.rememberUpdatedState
+import com.personal.rando.ui.glass.GlassShapes
+import com.personal.rando.ui.glass.LocalHazeState
+import com.personal.rando.ui.glass.Motion
+import dev.chrisbanes.haze.hazeSource
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -149,7 +166,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
-    val mapView = rememberMapView()
+    val mapView = rememberMapView(textureMode = true)
 
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
@@ -256,271 +273,175 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-
-        if (showDashboard) {
-            BackHandler { dashboard = false }
-            BikeComputer(recording!!, navigation, onMap = { dashboard = false }, onStop = finishRide)
-            return@Box
+    // 点地图上的路线，或者点卡片上的提示，指给你看那几处
+    var focus by remember { mutableStateOf<Focus?>(null) }
+    LaunchedEffect(route) { focus = null }
+    val currentRoute by rememberUpdatedState(route)
+    LaunchedEffect(map) {
+        val m = map ?: return@LaunchedEffect
+        m.addOnMapClickListener { latLng ->
+            val r = currentRoute ?: return@addOnMapClickListener false
+            // 手指点的范围大约 28 个像素，换成米
+            val tolerance = m.projection.getMetersPerPixelAtLatitude(latLng.latitude) * 28
+            val hit = r.segmentAt(LatLon(latLng.latitude, latLng.longitude), tolerance) ?: return@addOnMapClickListener false
+            focus = Focus(listOf(hit), 0)
+            true
         }
-
-        navigation?.let {
-            if (rideView) {
-                BackHandler { openRideView(false) }
-                RideView(it, recording, onMap = { openRideView(false) }, onStop = finishRide)
+    }
+    val focused = focus?.let { it.items[it.index] }
+    LaunchedEffect(style, focused) {
+        val s = style ?: return@LaunchedEffect
+        MapLayers.showFocus(s, focused?.points)
+        val m = map ?: return@LaunchedEffect
+        if (focused == null) return@LaunchedEffect
+        with(density) {
+            if (focused.points.size >= 2) {
+                val bounds = LatLngBounds.Builder().includes(focused.points.map { LatLng(it.lat, it.lon) }).build()
+                m.animateCamera(
+                    CameraUpdateFactory.newLatLngBounds(bounds, 80.dp.roundToPx(), 240.dp.roundToPx(), 80.dp.roundToPx(), 260.dp.roundToPx()),
+                    700,
+                )
             } else {
-                NavigationOverlay(
-                    it,
-                    onRideView = { openRideView(true) },
-                    onDashboard = { dashboard = true },
-                    onStop = finishRide,
-                )
-            }
-            return@Box
-        }
-
-        Column(
-            Modifier
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            SearchBox(state, vm, onOpenRides, onCheckUpdate)
-            Spacer(Modifier.size(8.dp))
-            ProfileChips(state.prefs, vm::setPrefs)
-            if (state.pickingStart) {
-                Spacer(Modifier.size(8.dp))
-                Banner("长按地图选起点，或者在上面搜一个地方")
-            }
-        }
-
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.End,
-        ) {
-            SmallFloatingActionButton(
-                onClick = onOpenRides,
-                containerColor = MaterialTheme.colorScheme.surface,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = RandoGreen)
-            }
-            Spacer(Modifier.size(8.dp))
-            if (hasLocation) {
-                if (recording == null) {
-                    SmallFloatingActionButton(
-                        onClick = {
-                            askNotifications()
-                            vm.session.startRecording()
-                        },
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "开始记录", tint = RandoOrange)
-                    }
-                    Spacer(Modifier.size(8.dp))
-                }
-                SmallFloatingActionButton(
-                    onClick = { map?.let(::flyToMyLocation) },
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ) {
-                    Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen)
-                }
-                Spacer(Modifier.size(8.dp))
-            }
-            recording?.let {
-                RecordingCard(it, onDashboard = { dashboard = true }, onStop = finishRide)
-                Spacer(Modifier.size(8.dp))
-            }
-            PlannerCard(state, saved, vm, startNavigation)
-        }
-    }
-}
-
-@Composable
-private fun SearchBox(state: PlannerState, vm: RouteViewModel, onOpenRides: () -> Unit, onCheckUpdate: () -> Unit) {
-    val focus = LocalFocusManager.current
-    var menuOpen by remember { mutableStateOf(false) }
-    Surface(shape = RoundedCornerShape(16.dp), shadowElevation = 4.dp) {
-        Column {
-            TextField(
-                value = state.query,
-                onValueChange = vm::onQueryChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(if (state.pickingStart) "搜索起点" else "去哪儿骑？") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.query.isNotEmpty()) {
-                        IconButton(onClick = { vm.onQueryChange("") }) {
-                            Icon(Icons.Default.Close, contentDescription = "清空")
-                        }
-                    } else {
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "更多")
-                            }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
-                                DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
-                                DropdownMenuItem(text = { Text("当前版本 build ${appBuild()}") }, onClick = {}, enabled = false)
-                            }
-                        }
-                    }
-                },
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
-            )
-            if (state.results.isNotEmpty()) {
-                HorizontalDivider()
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    items(state.results) { place ->
-                        PlaceRow(place) {
-                            focus.clearFocus()
-                            vm.choosePlace(place)
-                        }
-                    }
-                }
+                m.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(focused.location.lat, focused.location.lon), 17.5), 700)
             }
         }
     }
-}
-
-@Composable
-private fun PlaceRow(place: Place, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        Text(place.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (place.detail.isNotEmpty()) {
-            Text(
-                place.detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-/**
- * 路线偏好。「不上马路」「不走天桥」是在公园连道的配置上加的开关，
- * 所以只跟着「公园连道」出现，可以和它同时选
- */
-@Composable
-private fun ProfileChips(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit) {
-    val pcn = prefs.profile == BikeProfile.PCN
-    val colors = FilterChipDefaults.filterChipColors(
-        containerColor = MaterialTheme.colorScheme.surface,
-        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-    )
-    @Composable
-    fun Toggle(label: String, on: Boolean, onToggle: () -> Unit) = FilterChip(
-        selected = on,
-        onClick = onToggle,
-        label = { Text(label) },
-        leadingIcon = if (on) {
-            { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-        } else {
-            null
-        },
-        colors = colors,
-    )
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        BikeProfile.entries.forEach { profile ->
-            FilterChip(
-                selected = profile == prefs.profile,
-                onClick = { if (profile != prefs.profile) onChange(prefs.copy(profile = profile)) },
-                label = { Text(profile.label) },
-                colors = colors,
-            )
-            if (profile == BikeProfile.PCN && pcn) {
-                Toggle("不上马路", prefs.avoidRoads) { onChange(prefs.copy(avoidRoads = !prefs.avoidRoads)) }
-                Toggle("不走天桥", prefs.avoidBridges) { onChange(prefs.copy(avoidBridges = !prefs.avoidBridges)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Banner(text: String) {
-    Surface(shape = RoundedCornerShape(12.dp), color = RandoOrange, contentColor = Color.White) {
-        Text(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun PlannerCard(
-    state: PlannerState,
-    saved: List<SavedPlace>,
-    vm: RouteViewModel,
-    onStartNavigation: () -> Unit,
-) {
     var saving by remember { mutableStateOf<Place?>(null) }
-    Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        shadowElevation = 6.dp,
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            val destination = state.destination
-            if (destination == null) {
-                Text("搜索目的地，或者长按地图选一个点", style = MaterialTheme.typography.bodyLarge)
-                if (saved.isNotEmpty()) SavedChips(saved, vm::chooseSaved)
-                StartRow(state, vm)
-                return@Column
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    destination.name,
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val savedHere = saved.firstOrNull { it.isAt(destination.location) }
-                IconButton(onClick = { if (savedHere != null) vm.savedPlaces.remove(savedHere) else saving = destination }) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = if (savedHere != null) "取消收藏" else "收藏",
-                        tint = if (savedHere != null) RandoAmber else MaterialTheme.colorScheme.outlineVariant,
+    val focusManager = LocalFocusManager.current
+
+    Box(Modifier.fillMaxSize()) {
+        // 地图是液态玻璃取景的来源，所以用 TextureView（SurfaceView 取不到画面）
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier
+                .fillMaxSize()
+                .then(LocalHazeState.current?.let { Modifier.hazeSource(it) } ?: Modifier),
+        )
+
+        AnimatedContent(
+            targetState = when {
+                showDashboard -> Layer.DASHBOARD
+                navigation != null && rideView -> Layer.RIDE_VIEW
+                navigation != null -> Layer.NAVIGATION
+                else -> Layer.PLANNER
+            },
+            transitionSpec = { fadeIn(tween(260)).togetherWith(fadeOut(tween(180))) },
+            label = "layer",
+        ) { layer ->
+            when (layer) {
+                Layer.DASHBOARD -> recording?.let { rec ->
+                    BackHandler { dashboard = false }
+                    BikeComputer(rec, navigation, onMap = { dashboard = false }, onStop = finishRide)
+                }
+                Layer.RIDE_VIEW -> navigation?.let { nav ->
+                    BackHandler { openRideView(false) }
+                    RideView(nav, recording, onMap = { openRideView(false) }, onStop = finishRide)
+                }
+                Layer.NAVIGATION -> navigation?.let { nav ->
+                    NavigationOverlay(
+                        nav,
+                        onRideView = { openRideView(true) },
+                        onDashboard = { dashboard = true },
+                        onStop = finishRide,
                     )
                 }
-                IconButton(onClick = vm::clearRoute) {
-                    Icon(Icons.Default.Close, contentDescription = "取消路线")
-                }
-            }
-            StartRow(state, vm)
-            Spacer(Modifier.size(8.dp))
-            when (val r = state.route) {
-                RouteState.Idle -> Unit
-                RouteState.WaitingForLocation -> Text("正在定位，定位到就开始算路…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                RouteState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text("正在找一条好骑的路…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                is RouteState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("算路失败：${r.message}", Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = vm::retry) { Text("重试") }
-                }
-                is RouteState.Ready -> {
-                    RouteSummary(r, state.prefs)
-                    Spacer(Modifier.size(12.dp))
-                    Button(onClick = onStartNavigation, modifier = Modifier.fillMaxWidth()) {
-                        Text("开始导航")
+                Layer.PLANNER -> Box(Modifier.fillMaxSize()) {
+                    Column(
+                        Modifier
+                            .statusBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        SearchBar(
+                            query = state.query,
+                            pickingStart = state.pickingStart,
+                            results = state.results,
+                            build = appBuild(),
+                            onQuery = vm::onQueryChange,
+                            onPick = {
+                                focusManager.clearFocus()
+                                vm.choosePlace(it)
+                            },
+                            onOpenRides = onOpenRides,
+                            onCheckUpdate = onCheckUpdate,
+                        )
+                        PrefsRow(state.prefs, vm::setPrefs)
+                        AnimatedVisibility(
+                            state.pickingStart,
+                            enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
+                            exit = fadeOut() + slideOutVertically { -it },
+                        ) { HintPill("长按地图选起点，或者在上面搜一个地方") }
+                    }
+
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        SideRail(
+                            showLocation = hasLocation,
+                            showRecord = recording == null,
+                            onRides = onOpenRides,
+                            onRecord = {
+                                askNotifications()
+                                vm.session.startRecording()
+                            },
+                            onLocate = { map?.let(::flyToMyLocation) },
+                            modifier = Modifier.align(Alignment.End),
+                        )
+                        AnimatedVisibility(
+                            recording != null,
+                            enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
+                            exit = fadeOut() + slideOutVertically { it },
+                        ) {
+                            recording?.let { RecordingPill(it, onDashboard = { dashboard = true }, onStop = finishRide) }
+                        }
+                        AnimatedContent(
+                            targetState = focus,
+                            transitionSpec = {
+                                (fadeIn(tween(220)) + slideInVertically(Motion.bouncy()) { it / 3 })
+                                    .togetherWith(fadeOut(tween(140)))
+                                    .using(SizeTransform(clip = false) { _, _ -> Motion.smooth() })
+                            },
+                            contentKey = { it == null },
+                            label = "sheet",
+                        ) { f ->
+                            if (f != null) {
+                                BackHandler { focus = null }
+                                SegmentCard(
+                                    info = f.items[f.index],
+                                    index = f.index,
+                                    count = f.items.size,
+                                    onNext = { focus = f.copy(index = (f.index + 1) % f.items.size) },
+                                    onStreetView = { openStreetView(context, f.items[f.index].location) },
+                                    onClose = { focus = null },
+                                )
+                            } else {
+                                PlannerSheet(
+                                    destination = state.destination,
+                                    start = state.start,
+                                    pickingStart = state.pickingStart,
+                                    route = state.route,
+                                    prefs = state.prefs,
+                                    saved = saved,
+                                    onChooseSaved = vm::chooseSaved,
+                                    onToggleSave = { place, savedHere ->
+                                        if (savedHere != null) vm.savedPlaces.remove(savedHere) else saving = place
+                                    },
+                                    onClear = vm::clearRoute,
+                                    onPickStart = vm::startPickingStart,
+                                    onUseMyLocation = vm::useMyLocationAsStart,
+                                    onRetry = vm::retry,
+                                    onStart = startNavigation,
+                                    onShowOnMap = { target ->
+                                        val items = (state.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
+                                        if (items.isNotEmpty()) focus = Focus(items, 0)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -538,28 +459,21 @@ private fun PlannerCard(
     }
 }
 
-@Composable
-private fun SavedChips(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
-    Row(
-        Modifier
-            .padding(top = 8.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        saved.forEach { place ->
-            AssistChip(
-                onClick = { onChoose(place) },
-                label = { Text(place.name) },
-                leadingIcon = {
-                    Icon(
-                        if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star,
-                        contentDescription = null,
-                        Modifier.size(18.dp),
-                        tint = RandoAmber,
-                    )
-                },
-            )
-        }
+/** 地图上叠的是哪一层 */
+private enum class Layer { PLANNER, NAVIGATION, RIDE_VIEW, DASHBOARD }
+
+/** 正在指给你看的几处，看到第几处 */
+private data class Focus(val items: List<SegmentInfo>, val index: Int)
+
+/** 用 Google 地图看街景；没装 Google 地图就开网页版 */
+private fun openStreetView(context: Context, at: LatLon) {
+    val app = Intent(Intent.ACTION_VIEW, Uri.parse("google.streetview:cbll=${at.lat},${at.lon}"))
+        .setPackage("com.google.android.apps.maps")
+    try {
+        context.startActivity(app)
+    } catch (_: ActivityNotFoundException) {
+        val web = Uri.parse("https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at.lat},${at.lon}")
+        context.startActivity(Intent(Intent.ACTION_VIEW, web))
     }
 }
 
@@ -570,6 +484,8 @@ private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismis
     var name by remember { mutableStateOf(if (place.detail.isEmpty() && place.name.startsWith("地图上")) "" else place.name) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
         title = { Text("收藏这个地方") },
         text = {
             Column {
@@ -587,148 +503,6 @@ private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismis
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
-}
-
-@Composable
-private fun StartRow(state: PlannerState, vm: RouteViewModel) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        val start = state.start
-        Text(
-            "起点：${start?.name ?: "我的位置"}",
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (start != null) {
-            TextButton(onClick = vm::useMyLocationAsStart) { Text("用我的位置") }
-        } else if (!state.pickingStart) {
-            TextButton(onClick = vm::startPickingStart) { Text("换起点") }
-        }
-    }
-}
-
-@Composable
-private fun RouteSummary(ready: RouteState.Ready, prefs: RoutePrefs) {
-    val route = ready.route
-    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Stat(Format.distance(route.distanceMeters), "距离")
-        Stat(Format.duration(route.durationSeconds), "预计")
-        Stat("${route.ascendMeters} 米", "爬升")
-    }
-    val breakdown = route.breakdown()
-    if (breakdown.isEmpty()) return
-    Spacer(Modifier.size(10.dp))
-    RoadBreakdown(breakdown, route.crossings(), route.structures(), prefs)
-}
-
-/** 这条路线各种路各占多少：一条彩色条加图例，再提醒要不要上马路 */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun RoadBreakdown(
-    breakdown: Map<RoadKind, Int>,
-    crossings: List<Crossing>,
-    structures: List<Structure>,
-    prefs: RoutePrefs,
-) {
-    val total = breakdown.values.sum().coerceAtLeast(1)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(10.dp)
-            .clip(RoundedCornerShape(5.dp))
-    ) {
-        breakdown.forEach { (kind, meters) ->
-            Box(
-                Modifier
-                    .weight(meters.toFloat())
-                    .fillMaxHeight()
-                    .background(Color(android.graphics.Color.parseColor(kind.color)))
-            )
-        }
-    }
-    FlowRow(
-        Modifier.padding(top = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        breakdown.forEach { (kind, meters) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(10.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Color(android.graphics.Color.parseColor(kind.color)))
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "${kind.label} ${Format.percent(meters.toDouble() / total)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-    val road = breakdown[RoadKind.ROAD] ?: 0
-    val push = breakdown[RoadKind.PUSH] ?: 0
-    Spacer(Modifier.size(6.dp))
-    if (road > 0) {
-        val hint = when {
-            prefs.profile != BikeProfile.PCN -> "；选「公园连道」再打开「不上马路」可以尽量避开"
-            prefs.avoidRoads -> "，附近没有别的路可走"
-            else -> "；打开「不上马路」可以尽量避开"
-        }
-        Text(
-            "有 ${Format.distance(road)} 要在马路上骑$hint",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RandoRed,
-        )
-    } else {
-        Text("全程不用上马路", style = MaterialTheme.typography.bodyMedium, color = RandoGreen)
-    }
-    if (crossings.isNotEmpty()) {
-        val byType = crossings.groupingBy { it.type }.eachCount()
-        Text(
-            "过马路 ${crossings.size} 次：" +
-                CrossingType.entries.filter { (byType[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${byType[it]}" },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    StructureSummary(structures, prefs)
-    if (push > 0) {
-        Text(
-            "有 ${Format.distance(push)} 禁止骑车（台阶、步行道等），要推车",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/** 「天桥 2 座：有电梯 1 · 只有台阶，要扛车 1」，地下通道另起一行 */
-@Composable
-private fun StructureSummary(structures: List<Structure>, prefs: RoutePrefs) {
-    StructureKind.entries.forEach { kind ->
-        val list = structures.filter { it.kind == kind }
-        if (list.isEmpty()) return@forEach
-        val byAccess = list.groupingBy { it.access }.eachCount()
-        val detail = if (byAccess.size == 1) byAccess.keys.first() else byAccess.entries.joinToString(" · ") { "${it.key} ${it.value}" }
-        // 开了「不走天桥」还有天桥，说明附近没别的路过去
-        val unavoidable = kind == StructureKind.OVERPASS && prefs.avoidBridges && prefs.profile == BikeProfile.PCN
-        Text(
-            "经过${kind.label} ${list.size} ${kind.unit}：$detail" + if (unavoidable) "（绕不开）" else "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun Stat(value: String, label: String) {
-    Column {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }
 
 private fun hasLocationPermission(context: Context): Boolean =
@@ -771,122 +545,6 @@ private fun flyToMyLocation(map: MapLibreMap) {
     if (!component.isLocationComponentActivated) return
     val location = component.lastKnownLocation ?: return
     map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15.0))
-}
-
-@Composable
-private fun NavigationOverlay(
-    navigation: NavigationState,
-    onRideView: () -> Unit,
-    onDashboard: () -> Unit,
-    onStop: () -> Unit,
-) {
-    val progress = navigation.progress
-    Column(Modifier.fillMaxSize()) {
-        NavBanner(
-            navigation,
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(12.dp),
-        )
-        Spacer(Modifier.weight(1f))
-        Surface(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(12.dp),
-            shape = RoundedCornerShape(20.dp),
-            shadowElevation = 6.dp,
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                if (progress != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Stat(Format.distance(progress.remainingMeters.toInt()), "剩余")
-                        Stat(Format.duration(progress.remainingSeconds), "还要")
-                    }
-                    Spacer(Modifier.size(8.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onRideView) { Text("骑行视图") }
-                    TextButton(onClick = onDashboard) { Text("码表") }
-                    Spacer(Modifier.weight(1f))
-                    Button(onClick = onStop) { Text("结束") }
-                }
-            }
-        }
-    }
-}
-
-/** 导航时顶部的绿条：箭头、离路口多远、怎么走 */
-@Composable
-fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier) {
-    val progress = navigation.progress
-    Surface(
-        modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = RandoGreen,
-        contentColor = Color.White,
-        shadowElevation = 6.dp,
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            when {
-                progress == null -> NavText("等待 GPS 定位…")
-                progress.arrived -> NavText("已到达目的地")
-                navigation.rerouting || progress.offRoute -> NavText("已偏离路线，正在重新规划…")
-                else -> {
-                    val next = progress.next
-                    Text(next?.turn?.arrow ?: "⚑", fontSize = 44.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            Format.distance(progress.distanceToNext.toInt()),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(next?.text ?: "到达终点", style = MaterialTheme.typography.titleMedium)
-                        val following = progress.following
-                        if (following != null && progress.distanceNextToFollowing <= 100) {
-                            Text("然后${following.text}", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NavText(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-}
-
-@Composable
-private fun RecordingCard(recording: RecordingState, onDashboard: () -> Unit, onStop: () -> Unit) {
-    Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = RandoOrange,
-        contentColor = Color.White,
-        shadowElevation = 6.dp,
-    ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                RecordingStat(Format.clock(recording.movingSeconds), "骑行时间")
-                RecordingStat(Format.distance(recording.distanceMeters.toInt()), "距离")
-                RecordingStat(Format.speed(recording.currentSpeed), "速度")
-            }
-            TextButton(onClick = onDashboard) { Text("码表", color = Color.White) }
-            TextButton(onClick = onStop) { Text("结束", color = Color.White, fontWeight = FontWeight.Bold) }
-        }
-    }
-}
-
-@Composable
-private fun RecordingStat(value: String, label: String) {
-    Column {
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(label, style = MaterialTheme.typography.bodySmall)
-    }
 }
 
 /** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */

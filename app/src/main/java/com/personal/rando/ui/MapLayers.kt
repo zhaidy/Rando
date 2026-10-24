@@ -17,7 +17,9 @@ import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
+import org.maplibre.android.style.layers.PropertyFactory.lineBlur
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
@@ -37,17 +39,26 @@ object MapLayers {
     private const val TRACK = "rando-track"
     private const val ROUTE = "rando-route"
     private const val CROSSINGS = "rando-crossings"
+    private const val FOCUS_LINE = "rando-focus-line"
+    private const val FOCUS_POINT = "rando-focus-point"
     private const val STRUCTURES = "rando-structures"
     private const val START = "rando-start"
     private const val END = "rando-end"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, ROUTE, STRUCTURES, CROSSINGS, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, FOCUS_POINT, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
                 lineColor(Color.parseColor("#E0672B")), lineWidth(4f),
+                lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        )
+        // 指给你看的那段：路线下面垫一层黄色光晕
+        style.addLayer(
+            LineLayer(FOCUS_LINE, FOCUS_LINE).withProperties(
+                lineColor(Color.parseColor("#FFC93C")), lineWidth(18f), lineOpacity(0.85f), lineBlur(2f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
@@ -77,6 +88,13 @@ object MapLayers {
             CircleLayer(CROSSINGS, CROSSINGS).withProperties(
                 circleRadius(4.5f), circleColor(Expression.toColor(Expression.get("color"))),
                 circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f),
+            )
+        )
+        // 指给你看的路口：一个黄圈
+        style.addLayer(
+            CircleLayer(FOCUS_POINT, FOCUS_POINT).withProperties(
+                circleRadius(14f), circleColor(Color.TRANSPARENT),
+                circleStrokeColor(Color.parseColor("#FFC93C")), circleStrokeWidth(4f),
             )
         )
         style.addLayer(pin(START, "#2E7D4F"))
@@ -115,6 +133,12 @@ object MapLayers {
                     .apply { addStringProperty("color", piece.kind.color) }
             }
         )
+    }
+
+    /** 高亮一段路（或一个路口）；传 null 清掉 */
+    fun showFocus(style: Style, points: List<LatLon>?) {
+        style.getSourceAs<GeoJsonSource>(FOCUS_LINE)?.setGeoJson(line(points?.takeIf { it.size >= 2 }))
+        style.getSourceAs<GeoJsonSource>(FOCUS_POINT)?.setGeoJson(point(points?.singleOrNull()))
     }
 
     fun showTrack(style: Style, track: List<LatLon>?) {

@@ -96,3 +96,20 @@ fun Route.breakdown(): Map<RoadKind, Int> {
     val meters = segments.indices.groupBy { kinds[it] }.mapValues { (_, idx) -> idx.sumOf { segments[it].distanceMeters } }
     return RoadKind.entries.filter { (meters[it] ?: 0) > 0 }.associateWith { meters.getValue(it) }
 }
+
+/** 起点、终点这么近的推车段（商场里、停车场、楼下）不算，那是上车前、下车后的事 */
+const val END_PUSH_METERS = 200
+
+/** 途中要推车的米数，不算起点、终点附近的 */
+fun Route.pushBetweenEnds(): Int {
+    val kinds = segmentKinds()
+    val total = segments.sumOf { it.distanceMeters }
+    var start = 0
+    var meters = 0
+    for ((i, s) in segments.withIndex()) {
+        val end = start + s.distanceMeters
+        if (kinds[i] == RoadKind.PUSH && start >= END_PUSH_METERS && end <= total - END_PUSH_METERS) meters += s.distanceMeters
+        start = end
+    }
+    return meters
+}

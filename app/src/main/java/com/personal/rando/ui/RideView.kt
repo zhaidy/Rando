@@ -1,5 +1,22 @@
 package com.personal.rando.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.text.style.TextAlign
+import com.personal.rando.ui.glass.GlassButton
+import com.personal.rando.ui.glass.GlassPanel
+import com.personal.rando.ui.glass.GlassShapes
+import com.personal.rando.ui.glass.GlassTone
+import com.personal.rando.ui.glass.LocalHazeState
+import com.personal.rando.ui.glass.Motion
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import android.annotation.SuppressLint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -67,47 +84,76 @@ fun RideView(
     recording: RecordingState?,
     onMap: () -> Unit,
     onStop: () -> Unit,
+    map: @Composable (Modifier) -> Unit = { RideMap(navigation, it) },
 ) {
     val progress = navigation.progress
     val timeline = remember(navigation.route) { RouteTimeline(navigation.route) }
     val along = progress?.alongMeters ?: 0.0
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-    ) {
-        Clock(Modifier.align(Alignment.End).padding(horizontal = 24.dp, vertical = 4.dp))
-        RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 24.dp))
-        if (progress != null && !progress.arrived) {
-            RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
-        }
-        RideMap(navigation, Modifier.fillMaxWidth().weight(1f))
-        RouteStrip(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6),
-                color = Color.White,
-                fontSize = 72.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text("公里/时", color = DIM, fontSize = 16.sp)
-        }
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "分", Modifier.weight(1f))
-            BigStat(
-                progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
-                "公里",
-                Modifier.weight(1f),
-            )
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedButton(onClick = onMap, modifier = Modifier.weight(1f)) { Text("地图", color = DIM) }
-            OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f)) { Text("结束", color = DIM) }
+    val haze = rememberHazeState()
+    CompositionLocalProvider(LocalHazeState provides haze) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            // 地图铺满，上下两块深色玻璃浮在上面
+            map(Modifier.fillMaxSize().hazeSource(haze))
+            GlassPanel(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(10.dp),
+                shape = GlassShapes.Card,
+                tone = GlassTone.Dark,
+            ) {
+                Column(Modifier.padding(vertical = 14.dp)) {
+                    Box(Modifier.fillMaxWidth()) {
+                        RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+                        Clock(Modifier.align(Alignment.TopEnd).padding(horizontal = 20.dp))
+                    }
+                    if (progress != null && !progress.arrived) {
+                        RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
+                    }
+                }
+            }
+            GlassPanel(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(10.dp),
+                tone = GlassTone.Dark,
+            ) {
+                Column(Modifier.padding(vertical = 14.dp)) {
+                    RouteStrip(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "分", Modifier.weight(1f))
+                        Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            AnimatedContent(
+                                targetState = String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6),
+                                transitionSpec = {
+                                    (slideInVertically(Motion.smooth()) { it / 3 } + fadeIn(tween(150)))
+                                        .togetherWith(slideOutVertically(Motion.smooth()) { -it / 3 } + fadeOut(tween(100)))
+                                },
+                                label = "speed",
+                            ) { v -> Text(v, color = Color.White, fontSize = 68.sp, fontWeight = FontWeight.Medium) }
+                            Text("公里/时", color = DIM, fontSize = 14.sp)
+                        }
+                        BigStat(
+                            progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
+                            "公里",
+                            Modifier.weight(1f),
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
+                            Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        }
+                        GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
+                            Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -246,15 +292,15 @@ private fun RideMessage(text: String) {
 @Composable
 private fun BigStat(value: String, unit: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Medium)
-        Text("剩余 $unit", color = DIM, fontSize = 15.sp)
+        Text(value, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Medium)
+        Text("剩余 $unit", color = DIM, fontSize = 13.sp)
     }
 }
 
 /** 黑底地图，镜头倾斜跟着人、朝骑行方向转；路线照样按路的种类上色 */
 @SuppressLint("MissingPermission")
 @Composable
-private fun RideMap(navigation: NavigationState, modifier: Modifier) {
+fun RideMap(navigation: NavigationState, modifier: Modifier) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
     val mapView = rememberMapView(textureMode = true)
