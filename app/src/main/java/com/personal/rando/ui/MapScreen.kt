@@ -150,6 +150,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val recording by vm.session.recording.collectAsStateWithLifecycle()
     val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
     val fix by vm.session.fix.collectAsStateWithLifecycle()
+    val rideWeather by vm.session.weather.collectAsStateWithLifecycle()
+    val rideAmenities by vm.session.amenities.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -258,6 +260,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     // 导航中画的是正在走的那条，骑偏重新规划后会换
     val route = navigation?.route ?: (state.route as? RouteState.Ready)?.route
     val via = navigation?.via ?: state.via.map { it.location }
+    // 沿途补给点：导航时用导航那条路线查到的
+    val amenities = if (navigating) rideAmenities else state.amenities.takeIf { state.route is RouteState.Ready }.orEmpty()
+    LaunchedEffect(style, amenities) {
+        style?.let { MapLayers.showAmenities(it, amenities.map { a -> a.amenity }) }
+    }
     LaunchedEffect(style, route, state.start, state.destination, via) {
         val s = style ?: return@LaunchedEffect
         MapLayers.show(s, route, state.start?.location, state.destination?.location, via)
@@ -344,6 +351,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                     BackHandler { openRideView(false) }
                     RideView(
                         navigation, recording,
+                        weather = rideWeather,
+                        amenities = rideAmenities,
                         onMap = { openRideView(false) },
                         onStop = finishRide,
                         onReturn = returnTrip.takeIf { navigating || canReturnFree },
@@ -461,7 +470,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                             onRetry = vm::retry,
                                             onStart = startNavigation,
                                             onShowOnMap = { target ->
-                                                val items = (vm.state.value.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
+                                                val s = vm.state.value
+                                                val items = if (target == NoteTarget.AMENITIES) {
+                                                    s.amenities.targets()
+                                                } else {
+                                                    (s.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
+                                                }
                                                 if (items.isNotEmpty()) focus = Focus(items, 0)
                                             },
                                         )

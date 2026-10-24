@@ -57,6 +57,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.ride.Fix
+import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.nextOfEach
+import com.personal.rando.weather.RouteWeather
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ride.RecordingState
 import com.personal.rando.routing.CrossingType
@@ -92,6 +95,10 @@ fun RideView(
     onReturn: (() -> Unit)? = null,
     /** 打开码表；null 就不显示 */
     onDashboard: (() -> Unit)? = null,
+    /** 前方天气；不下雨就不显示 */
+    weather: RouteWeather? = null,
+    /** 导航路线两旁的补给点 */
+    amenities: List<AmenityOnRoute> = emptyList(),
     map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation?.progress
@@ -122,6 +129,7 @@ fun RideView(
                     if (timeline != null && progress != null && !progress.arrived) {
                         RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
                     }
+                    Extras(weather, amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                 }
             }
             GlassPanel(
@@ -335,6 +343,40 @@ private fun BigStat(value: String, label: String, modifier: Modifier) {
         Text(label, color = DIM, fontSize = 13.sp)
     }
 }
+
+/** 前方最近的补给（五公里内，最多三种）和要下的雨 */
+@Composable
+private fun Extras(weather: RouteWeather?, amenities: List<AmenityOnRoute>, along: Double, modifier: Modifier) {
+    val next = amenities.nextOfEach(along).entries
+        .filter { it.value <= AMENITY_SHOWN_METERS }
+        .sortedBy { it.value }
+        .take(3)
+    val rain = weather?.takeIf { !it.dry }?.summary
+    if (next.isEmpty() && rain == null) return
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (next.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot(next.first().key.color)
+                Text(
+                    "前方 " + next.joinToString(" · ") { "${it.key.label} ${Format.distance(it.value.toInt())}" },
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        rain?.let {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot("#5B9BEA")
+                Text(it, color = Color(0xFF9CC6FF), fontSize = 16.sp, maxLines = 2)
+            }
+        }
+    }
+}
+
+/** 补给点在这么远以内才在骑行视图上说 */
+private const val AMENITY_SHOWN_METERS = 5000.0
 
 /** 不导航时顶上那块：在记录，骑了多久 */
 @Composable

@@ -26,6 +26,8 @@ data class CrossingAhead(val type: CrossingType, val atMeters: Double, val dista
  */
 class RouteTimeline(route: Route) {
 
+    private val points = route.points
+
     private val cumulative = DoubleArray(route.points.size).also { acc ->
         for (i in 1 until route.points.size) acc[i] = acc[i - 1] + Geo.distance(route.points[i - 1], route.points[i])
     }
@@ -72,5 +74,15 @@ class RouteTimeline(route: Route) {
 
     private companion object {
         const val PASSING_METERS = 5.0
+    }
+
+    /** 一个点对到路线上：(在全程的第几米, 离路线多远)；路线不到两个点时是 null */
+    fun locate(p: LatLon): Pair<Double, Double>? {
+        var best: Pair<Double, Double>? = null
+        for (i in 0 until points.size - 1) {
+            val (t, d) = Geo.project(p, points[i], points[i + 1])
+            if (best == null || d < best.second) best = cumulative[i] + t * (cumulative[i + 1] - cumulative[i]) to d
+        }
+        return best
     }
 }

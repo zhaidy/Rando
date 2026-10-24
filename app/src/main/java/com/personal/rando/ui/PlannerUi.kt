@@ -96,6 +96,10 @@ import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pushBetweenEnds
 import com.personal.rando.routing.structures
 import com.personal.rando.routing.elevationProfile
+import com.personal.rando.nav.DaylightAlerts
+import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.AmenityType
+import com.personal.rando.weather.RouteWeather
 import com.personal.rando.routing.steepestClimb
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
@@ -433,7 +437,7 @@ fun PlannerSheet(
                             }
                         }
                         is RouteState.Ready -> Column {
-                            RouteSummary(r.route, state.prefs, actions.onShowOnMap)
+                            RouteSummary(r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities)
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
                                 Text("开始导航", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -599,7 +603,13 @@ private fun Waiting(text: String) {
 // ───────────────────────── 路线概要 ─────────────────────────
 
 @Composable
-fun RouteSummary(route: Route, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> Unit) {
+fun RouteSummary(
+    route: Route,
+    prefs: RoutePrefs,
+    onShowOnMap: (NoteTarget) -> Unit,
+    weather: RouteWeather? = null,
+    amenities: List<AmenityOnRoute> = emptyList(),
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
         BigStat(Format.distance(route.distanceMeters), "距离")
         BigStat(Format.duration(route.durationSeconds), "预计")
@@ -613,6 +623,8 @@ fun RouteSummary(route: Route, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> U
     Legend(breakdown)
     Spacer(Modifier.height(10.dp))
     Notes(route, breakdown, prefs, onShowOnMap)
+    Spacer(Modifier.height(5.dp))
+    Outlook(route, weather, amenities, onShowOnMap)
 }
 
 @Composable
@@ -773,6 +785,23 @@ private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs
         if (push > 0) Note(kindColor(RoadKind.PUSH.color), "途中有 ${Format.distance(push)} 禁止骑车，要推车") { onShowOnMap(NoteTarget.PUSH) }
         route.steepestClimb()?.let { c ->
             Note(RandoAmber, "最陡的坡在第 ${Format.km(c.startMeters)} 公里，平均 ${Format.percent(c.grade)}") { onShowOnMap(NoteTarget.CLIMB) }
+        }
+    }
+}
+
+/** 天气、天黑、补给：路线本身以外，骑之前想知道的 */
+@Composable
+private fun Outlook(route: Route, weather: RouteWeather?, amenities: List<AmenityOnRoute>, onShowOnMap: (NoteTarget) -> Unit) {
+    Column(Modifier.animateContentSize(Motion.smooth()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        weather?.let { Note(if (it.dry) RandoGreen else RandoBlue, it.summary, strong = !it.dry) }
+        val dark = remember(route) { DaylightAlerts.plan(System.currentTimeMillis(), route.durationSeconds) }
+        dark?.let { Note(RandoAmber, it) }
+        if (amenities.isNotEmpty()) {
+            val counts = amenities.groupingBy { it.amenity.type }.eachCount()
+            Note(
+                kindColor(AmenityType.WATER.color),
+                "沿途补给：" + AmenityType.entries.filter { (counts[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${counts[it]}" },
+            ) { onShowOnMap(NoteTarget.AMENITIES) }
         }
     }
 }

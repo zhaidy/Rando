@@ -41,6 +41,13 @@ import com.personal.rando.ui.RouteState
 import com.personal.rando.ui.PlannerState
 import com.personal.rando.ui.PlannerActions
 import com.personal.rando.ui.LoopRequest
+import com.personal.rando.places.Amenity
+import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.AmenityType
+import com.personal.rando.places.onRoute
+import com.personal.rando.routing.RouteTimeline
+import com.personal.rando.weather.AreaForecast
+import com.personal.rando.weather.RouteWeather
 import com.personal.rando.ui.SearchBar
 import com.personal.rando.ui.SegmentCard
 import com.personal.rando.ui.SideRail
@@ -88,6 +95,8 @@ class UiScreenshotTest {
         picking: Boolean = false,
         via: List<Place> = emptyList(),
         loop: LoopRequest? = null,
+        weather: RouteWeather? = null,
+        amenities: List<AmenityOnRoute> = emptyList(),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
@@ -98,7 +107,7 @@ class UiScreenshotTest {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, Modifier.align(Alignment.End))
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
-                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop),
+                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities),
                 saved = saved,
                 actions = PlannerActions(),
             )
@@ -108,6 +117,16 @@ class UiScreenshotTest {
     @Test fun plannerEmpty() = shot("1_planner_empty") { Planner() }
 
     @Test fun plannerRoute() = shot("2_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+
+    @Test fun plannerOutlook() = shot("2d_planner_outlook") {
+        val p = route.points
+        val amenities = listOf(
+            Amenity(AmenityType.WATER, p[p.size / 5], null), Amenity(AmenityType.WATER, p[p.size / 2], null),
+            Amenity(AmenityType.TOILET, p[p.size / 3], null), Amenity(AmenityType.SHOP, p[p.size * 2 / 3], "7-Eleven"),
+        ).onRoute(RouteTimeline(route))
+        val weather = RouteWeather(listOf(AreaForecast("Bukit Merah", p[0], "Thundery Showers")), emptyList())
+        Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList()), weather = weather, amenities = amenities)
+    }
 
     @Test fun plannerVia() = shot("2b_planner_via") {
         Planner(
