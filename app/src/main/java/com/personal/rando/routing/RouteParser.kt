@@ -20,6 +20,7 @@ object RouteParser {
             durationSeconds = props.intOf("total-time"),
             ascendMeters = props.intOf("filtered ascend"),
             segments = props.optJSONArray("messages")?.let(::segments).orEmpty(),
+            maneuvers = props.optJSONArray("voicehints")?.let { maneuvers(it, points.size) }.orEmpty(),
         )
     }
 
@@ -42,6 +43,16 @@ object RouteParser {
             )
         }
     }
+
+    /** voicehints 每行：[坐标序号, 动作代码, 环岛出口, 到下一个提示的距离, 转角] */
+    private fun maneuvers(hints: JSONArray, pointCount: Int): List<Maneuver> =
+        (0 until hints.length()).mapNotNull {
+            val row = hints.getJSONArray(it)
+            val index = row.optInt(0, -1)
+            val turn = Turn.fromCode(row.optInt(1)) ?: return@mapNotNull null
+            if (index !in 0 until pointCount) return@mapNotNull null
+            Maneuver(pointIndex = index, turn = turn, exit = row.optInt(2), angle = row.optInt(4))
+        }
 
     /** "highway=residential surface=asphalt" → {highway=residential, surface=asphalt} */
     fun parseTags(text: String): Map<String, String> =

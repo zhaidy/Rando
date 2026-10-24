@@ -14,7 +14,7 @@ class BRouterClientTest {
         )
         assertEquals(
             "https://brouter.de/brouter?lonlats=103.819800%2C1.352100%7C103.854500%2C1.283400" +
-                "&profile=fastbike&alternativeidx=0&format=geojson",
+                "&profile=fastbike&alternativeidx=0&format=geojson&timode=2",
             url,
         )
     }

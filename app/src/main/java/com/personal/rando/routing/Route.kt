@@ -11,4 +11,6 @@ data class Route(
     val durationSeconds: Int,
     val ascendMeters: Int,
     val segments: List<RouteSegment>,
+    /** 路口转向提示，按路线顺序 */
+    val maneuvers: List<Maneuver> = emptyList(),
 )
