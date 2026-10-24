@@ -12,7 +12,12 @@ import android.os.Looper
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +74,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -93,7 +99,8 @@ import com.personal.rando.ride.RecordingState
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
-import com.personal.rando.routing.SafetyScore
+import com.personal.rando.routing.RoadKind
+import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -210,7 +217,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val route = navigation?.route ?: (state.route as? RouteState.Ready)?.route
     LaunchedEffect(style, route, state.start, state.destination) {
         val s = style ?: return@LaunchedEffect
-        MapLayers.show(s, route?.points, state.start?.location, state.destination?.location)
+        MapLayers.show(s, route, state.start?.location, state.destination?.location)
         val m = map ?: return@LaunchedEffect
         // 导航中重新算路时镜头还跟着人，不要跳去看全程
         if (navigating) return@LaunchedEffect
@@ -459,7 +466,7 @@ private fun PlannerCard(
                     TextButton(onClick = vm::retry) { Text("重试") }
                 }
                 is RouteState.Ready -> {
-                    RouteSummary(r)
+                    RouteSummary(r, state.profile)
                     Spacer(Modifier.size(12.dp))
                     Button(onClick = onStartNavigation, modifier = Modifier.fillMaxWidth()) {
                         Text("开始导航")
@@ -552,32 +559,77 @@ private fun StartRow(state: PlannerState, vm: RouteViewModel) {
 }
 
 @Composable
-private fun RouteSummary(ready: RouteState.Ready) {
+private fun RouteSummary(ready: RouteState.Ready, profile: BikeProfile) {
     val route = ready.route
     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Stat(Format.distance(route.distanceMeters), "距离")
         Stat(Format.duration(route.durationSeconds), "预计")
         Stat("${route.ascendMeters} 米", "爬升")
     }
-    val safety = ready.safety ?: return
+    val breakdown = route.breakdown()
+    if (breakdown.isEmpty()) return
     Spacer(Modifier.size(10.dp))
-    val color = when {
-        safety.score >= SafetyScore.QUIET -> RandoGreen
-        safety.score >= 60 -> RandoAmber
-        else -> RandoRed
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(shape = RoundedCornerShape(8.dp), color = color, contentColor = Color.White) {
-            Text(
-                "安全 ${safety.score}",
-                Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                style = MaterialTheme.typography.labelLarge,
+    RoadBreakdown(breakdown, profile)
+}
+
+/** 这条路线各种路各占多少：一条彩色条加图例，再提醒要不要上马路 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, profile: BikeProfile) {
+    val total = breakdown.values.sum().coerceAtLeast(1)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(RoundedCornerShape(5.dp))
+    ) {
+        breakdown.forEach { (kind, meters) ->
+            Box(
+                Modifier
+                    .weight(meters.toFloat())
+                    .fillMaxHeight()
+                    .background(Color(android.graphics.Color.parseColor(kind.color)))
             )
         }
-        Spacer(Modifier.width(10.dp))
+    }
+    FlowRow(
+        Modifier.padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        breakdown.forEach { (kind, meters) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(android.graphics.Color.parseColor(kind.color)))
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "${kind.label} ${Format.percent(meters.toDouble() / total)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+    val road = breakdown[RoadKind.ROAD] ?: 0
+    val push = breakdown[RoadKind.PUSH] ?: 0
+    Spacer(Modifier.size(6.dp))
+    if (road > 0) {
+        val hint = if (profile == BikeProfile.NO_ROADS) "，绕不开" else "；选「不上马路」可以尽量避开"
         Text(
-            "${safety.label} · ${Format.percent(safety.quietShare)} 走自行车道或安静小路",
+            "有 ${Format.distance(road)} 要在马路上骑，需要戴头盔$hint",
             style = MaterialTheme.typography.bodyMedium,
+            color = RandoRed,
+        )
+    } else {
+        Text("全程不用上马路", style = MaterialTheme.typography.bodyMedium, color = RandoGreen)
+    }
+    if (push > 0) {
+        Text(
+            "有 ${Format.distance(push)} 禁止骑车（台阶、步行道等），要推车",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

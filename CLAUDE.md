@@ -9,6 +9,9 @@
 
 - 地图：OpenFreeMap（`tiles.openfreemap.org`），MapLibre 渲染
 - 算路：BRouter 公共服务器（`brouter.de/brouter`），车型对应的配置见 `BikeProfile`
+  - 「公园连道」「不上马路」用的是自己的配置 `RandoProfiles`，算路前 POST 到 `/brouter/profile` 换一个 `custom_xxx` 名字；服务器会清掉旧的（再用时返回 500），`BRouterClient` 会重新上传
+  - 新加坡的 PCN 在 OSM 里是本地自行车路线，BRouter 的 WayTags 里是 `route_bicycle_lcn=yes`；路的分类见 `RoadKind`
+  - 改配置后先用 curl 上传试一下：语法错了服务器会在返回的 `error` 里指出行号；条件要加括号，否则会被悄悄忽略（每段 CostPerKm 都是 1000）
 - 地点搜索：Photon（`photon.komoot.io`），限定在新加坡范围
 
 ## Pull request 流程

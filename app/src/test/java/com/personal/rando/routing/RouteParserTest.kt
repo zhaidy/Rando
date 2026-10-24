@@ -56,6 +56,12 @@ class RouteParserTest {
     }
 
     @Test
+    fun `每段的终点对到坐标序号上`() {
+        val segments = RouteParser.parse(sample).segments
+        assertEquals(listOf(1, 2), segments.map { it.endIndex })
+    }
+
+    @Test
     fun `读出路口动作，不认识的代码和越界的序号跳过`() {
         val maneuvers = RouteParser.parse(sample).maneuvers
         assertEquals(
