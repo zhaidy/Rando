@@ -42,6 +42,9 @@ import com.personal.rando.ui.RouteState
 import com.personal.rando.ui.PlannerState
 import com.personal.rando.ui.PlannerActions
 import com.personal.rando.ui.LoopRequest
+import com.personal.rando.ui.GroupPill
+import com.personal.rando.group.GroupState
+import com.personal.rando.group.Teammate
 import com.personal.rando.places.Amenity
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.AmenityType
@@ -98,6 +101,7 @@ class UiScreenshotTest {
         loop: LoopRequest? = null,
         weather: RouteWeather? = null,
         amenities: List<AmenityOnRoute> = emptyList(),
+        group: GroupState? = null,
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
@@ -105,7 +109,8 @@ class UiScreenshotTest {
             if (picking) HintPill("长按地图选起点，或者在上面搜一个地方")
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, Modifier.align(Alignment.End))
+            SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
+            group?.let { GroupPill(it, {}, {}) }
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
                 state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities),
@@ -159,6 +164,13 @@ class UiScreenshotTest {
         Box(Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
             SegmentCard(items[2], 2, items.size, {}, {}, {})
         }
+    }
+
+    @Test fun groupRide() = shot("6b_group") {
+        Planner(
+            recording = RecordingState(startedAt = 0, distanceMeters = 5320.0, movingSeconds = 1234, currentSpeed = 5.2),
+            group = GroupState("K7PX3M", connected = true, teammates = listOf(Teammate("a", "小红"), Teammate("b", "阿明"))),
+        )
     }
 
     @Test fun recording() = shot("6_recording") {
@@ -231,7 +243,7 @@ class UiScreenshotTest {
     @Test fun freeRide() {
         compose.setContent {
             RandoTheme {
-                RideView(null, RecordingState(0, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, onReturn = {}, onDashboard = {}, map = { m ->
+                RideView(null, RecordingState(0, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, onReturn = {}, onDashboard = {}, teammates = "队友：小红 120 米 · 阿明 1.4 公里", map = { m ->
                     Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
                 })
             }

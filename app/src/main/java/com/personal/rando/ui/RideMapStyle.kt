@@ -27,6 +27,7 @@ object RideMapStyle {
     val JSON: String = """
 {
   "version": 8,
+  "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
   "sources": {
     "openmaptiles": { "type": "vector", "url": "https://tiles.openfreemap.org/planet" }
   },

@@ -128,6 +128,8 @@ import com.personal.rando.routing.structures
 import com.personal.rando.routing.crossings
 import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
+import com.personal.rando.rando
+import com.personal.rando.group.TeamCode
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -150,6 +152,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val recording by vm.session.recording.collectAsStateWithLifecycle()
     val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
     val fix by vm.session.fix.collectAsStateWithLifecycle()
+    val group = LocalContext.current.rando.group
+    val groupState by group.state.collectAsStateWithLifecycle()
+    var groupDialog by remember { mutableStateOf(false) }
+    val teammates = groupState?.teammates.orEmpty()
     val rideWeather by vm.session.weather.collectAsStateWithLifecycle()
     val rideAmenities by vm.session.amenities.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -205,7 +211,20 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         askNotifications()
         vm.startNavigation()
     }
-    val finishRide = { finishRide(context, vm.session) }
+    val finishRide = {
+        group.leave()
+        finishRide(context, vm.session)
+    }
+    // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
+    val joinGroup = { code: String, name: String ->
+        groupDialog = false
+        askNotifications()
+        group.join(code, name)
+        vm.session.startRecording()
+    }
+    LaunchedEffect(style, teammates) {
+        style?.let { MapLayers.showTeam(it, teammates) }
+    }
     val returnTrip = {
         Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
         vm.returnTrip { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
@@ -357,7 +376,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onStop = finishRide,
                         onReturn = returnTrip.takeIf { navigating || canReturnFree },
                         onDashboard = { dashboard = true }.takeIf { !navigating },
-                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), it) }
+                        teammates = teammatesText(teammates, fix?.location),
+                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
                     Box(Modifier.fillMaxSize()) {
@@ -419,8 +439,18 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 vm.session.startRecording()
                             },
                             onLocate = { map?.let(::flyToMyLocation) },
+                            onGroup = { groupDialog = true }.takeIf { groupState == null },
                             modifier = Modifier.align(Alignment.End),
                         )
+                        AnimatedVisibility(
+                            groupState != null,
+                            enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
+                            exit = fadeOut() + slideOutVertically { it },
+                        ) {
+                            groupState?.let { g ->
+                                GroupPill(g, onShare = { shareTeamCode(context, g.code) }, onLeave = group::leave)
+                            }
+                        }
                         AnimatedVisibility(
                             recording != null,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
@@ -487,6 +517,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    if (groupDialog) {
+        GroupDialog(
+            configured = group.configured,
+            name = group.myName,
+            onCreate = { name -> joinGroup(TeamCode.generate(), name) },
+            onJoin = { code, name -> joinGroup(code, name) },
+            onDismiss = { groupDialog = false },
+        )
     }
     saving?.let { place ->
         SavePlaceDialog(
@@ -588,6 +627,13 @@ private fun flyToMyLocation(map: MapLibreMap) {
     if (!component.isLocationComponentActivated) return
     val location = component.lastKnownLocation ?: return
     map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15.0))
+}
+
+/** 用微信、Telegram 之类把队伍码发给队友 */
+private fun shareTeamCode(context: Context, code: String) {
+    val text = "一起骑车！打开 Rando，点右边的「一起骑」，输入队伍码 $code"
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    context.startActivity(Intent.createChooser(send, "分享队伍码"))
 }
 
 /** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */

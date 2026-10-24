@@ -4,6 +4,17 @@ import android.graphics.Color
 import com.personal.rando.routing.LatLon
 import com.personal.rando.places.Amenity
 import com.personal.rando.ride.HeatPiece
+import com.personal.rando.group.Teammate
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textFont
+import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
+import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textOffset
+import org.maplibre.android.style.layers.PropertyFactory.textSize
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.RoadPiece
 import com.personal.rando.routing.Route
@@ -48,10 +59,11 @@ object MapLayers {
     private const val END = "rando-end"
     private const val VIA = "rando-via"
     private const val AMENITIES = "rando-amenities"
+    private const val TEAM = "rando-team"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, FOCUS_POINT, VIA, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -112,6 +124,21 @@ object MapLayers {
         style.addLayer(pin(VIA, "#2F7DE1").withProperties(circleRadius(6.5f)))
         style.addLayer(pin(START, "#2E7D4F"))
         style.addLayer(pin(END, "#E0672B"))
+        // 队友：彩色圆点，上面写名字；信号断了的变灰
+        style.addLayer(
+            CircleLayer(TEAM, TEAM).withProperties(
+                circleRadius(8f), circleColor(Expression.toColor(Expression.get("color"))),
+                circleStrokeColor(Color.WHITE), circleStrokeWidth(3f),
+            )
+        )
+        style.addLayer(
+            SymbolLayer("$TEAM-name", TEAM).withProperties(
+                textField(Expression.get("name")), textFont(arrayOf("Noto Sans Regular")), textSize(13f),
+                textOffset(arrayOf(0f, -1.6f)), textAllowOverlap(true), textIgnorePlacement(true),
+                textColor(if (dark) Color.WHITE else Color.parseColor("#13241B")),
+                textHaloColor(if (dark) Color.BLACK else Color.WHITE), textHaloWidth(1.5f),
+            )
+        )
     }
 
     fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?, via: List<LatLon> = emptyList()) {
@@ -157,6 +184,20 @@ object MapLayers {
                 amenities.map { a ->
                     Feature.fromGeometry(Point.fromLngLat(a.location.lon, a.location.lat))
                         .apply { addStringProperty("color", a.type.color) }
+                }
+            )
+        )
+    }
+
+    fun showTeam(style: Style, mates: List<Teammate>, now: Long = System.currentTimeMillis()) {
+        style.getSourceAs<GeoJsonSource>(TEAM)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                mates.mapNotNull { m ->
+                    val at = m.location ?: return@mapNotNull null
+                    Feature.fromGeometry(Point.fromLngLat(at.lon, at.lat)).apply {
+                        addStringProperty("name", m.name)
+                        addStringProperty("color", if (m.stale(now)) "#9E9E9E" else mateColor(m.id))
+                    }
                 }
             )
         )

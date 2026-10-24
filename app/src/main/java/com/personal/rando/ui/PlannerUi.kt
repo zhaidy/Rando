@@ -52,6 +52,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
@@ -297,6 +298,8 @@ fun SideRail(
     onRides: () -> Unit,
     onRecord: () -> Unit,
     onLocate: () -> Unit,
+    /** 一起骑；null 就不显示 */
+    onGroup: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -309,6 +312,9 @@ fun SideRail(
         IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = RandoGreen) }
         if (showLocation && showRecord) {
             IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = "开始记录", tint = RandoOrange) }
+        }
+        onGroup?.let {
+            IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = "一起骑", tint = Color(0xFF6A3FA0)) }
         }
         if (showLocation) {
             IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen) }
