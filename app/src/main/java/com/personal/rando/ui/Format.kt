@@ -16,4 +16,15 @@ object Format {
     }
 
     fun percent(share: Double): String = "${Math.round(share * 100)}%"
+
+    /** 码表样式：12:34、1:02:03 */
+    fun clock(seconds: Long): String {
+        val h = seconds / 3600
+        val m = seconds % 3600 / 60
+        val s = seconds % 60
+        return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s) else String.format(Locale.US, "%d:%02d", m, s)
+    }
+
+    /** 米/秒 → 「18.5 公里/时」 */
+    fun speed(metersPerSecond: Double): String = String.format(Locale.US, "%.1f 公里/时", metersPerSecond * 3.6)
 }

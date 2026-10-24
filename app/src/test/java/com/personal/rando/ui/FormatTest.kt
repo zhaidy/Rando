@@ -24,4 +24,16 @@ class FormatTest {
         assertEquals("90%", Format.percent(0.9))
         assertEquals("67%", Format.percent(2.0 / 3))
     }
+
+    @Test
+    fun `码表时间`() {
+        assertEquals("0:05", Format.clock(5))
+        assertEquals("12:34", Format.clock(754))
+        assertEquals("1:02:03", Format.clock(3723))
+    }
+
+    @Test
+    fun `速度换成公里每小时`() {
+        assertEquals("18.0 公里/时", Format.speed(5.0))
+    }
 }
