@@ -2,6 +2,7 @@ package com.personal.rando
 
 import android.app.Application
 import android.content.Context
+import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.ride.RideSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +13,8 @@ class RandoApp : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val session: RideSession by lazy { RideSession(this, appScope) }
+
+    val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
 }
 
 val Context.rando: RandoApp get() = applicationContext as RandoApp
