@@ -5,9 +5,9 @@ import com.personal.rando.routing.LatLon
 import org.json.JSONObject
 import kotlin.random.Random
 
-/** 一起骑的服务器（server/ 部署到 Cloudflare 后的地址）；空的说明还没部署 */
+/** 一起骑的服务器：server/ 部署到 Cloudflare 后的地址（rando-group 加上账号的 workers.dev 子域名） */
 object GroupConfig {
-    const val SERVER_URL = ""
+    const val SERVER_URL = "https://rando-group.dongyuzhai.workers.dev"
 }
 
 /** 一个队友：最后一次报的位置 */
