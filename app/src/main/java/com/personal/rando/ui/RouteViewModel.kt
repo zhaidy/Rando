@@ -233,6 +233,48 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.name, "", place.location))
 
+    /** 语音说的：路线一算好就开始导航 */
+    private var startWhenReady = false
+
+    /** 语音「去某个地方」：收藏的地方优先，没有就搜，取第一个结果；算好路直接开始导航 */
+    fun goTo(name: String, onFailed: (String) -> Unit) {
+        savedPlaces.places.value.firstOrNull { it.name == name }?.let {
+            startWhenReady = true
+            chooseSaved(it)
+            return
+        }
+        viewModelScope.launch {
+            val place = try {
+                places.search(name, _state.value.start?.location ?: myLocation).firstOrNull()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (place == null) {
+                onFailed("没找到$name")
+                return@launch
+            }
+            startWhenReady = true
+            choosePlace(place)
+        }
+    }
+
+    /** 语音「骑一圈」「骑某条收藏的路线」：算好直接开始 */
+    fun startLoop(km: Int) {
+        startWhenReady = true
+        chooseLoop(km)
+    }
+
+    fun startSavedRoute(name: String): Boolean {
+        val r = savedRoutes.routes.value.firstOrNull { it.name == name }
+            ?: savedRoutes.routes.value.firstOrNull { name in it.name || it.name in name }
+            ?: return false
+        startWhenReady = true
+        chooseSavedRoute(r)
+        return true
+    }
+
     /** 收藏现在这条路线：起点、途经点、终点和路线配置 */
     fun saveRoute(name: String) {
         val s = _state.value
@@ -278,6 +320,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     }
 
     fun clearRoute() {
+        startWhenReady = false
         routeJob?.cancel()
         _state.update { it.copy(destination = null, via = emptyList(), loop = null, pickingVia = false, route = RouteState.Idle) }
     }
@@ -364,6 +407,10 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 RouteState.Failed(e.message ?: "算路失败")
             }
             _state.update { it.copy(route = next) }
+            if (startWhenReady) {
+                startWhenReady = false
+                if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say("算路失败，${next.message}")
+            }
             if (next is RouteState.Ready) loadExtras(next.route)
         }
     }

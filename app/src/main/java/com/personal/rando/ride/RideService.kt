@@ -14,6 +14,9 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -37,14 +40,22 @@ class RideService : Service() {
     private var watchJob: Job? = null
     private var lastText: String? = null
     private var crashJob: Job? = null
+    private var media: MediaSession? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val session = rando.session
+        // 通知栏上点的按钮：服务已经在前台了，做完就行，不再重新开前台（后台开麦克风类型的前台服务会被拒）
         when (intent?.action) {
-            ACTION_IM_OK -> session.imOk()
-            ACTION_SOS_NOW -> session.sendSos()
+            ACTION_IM_OK -> {
+                session.imOk()
+                return START_NOT_STICKY
+            }
+            ACTION_SOS_NOW -> {
+                session.sendSos()
+                return START_NOT_STICKY
+            }
         }
         try {
             ServiceCompat.startForeground(
@@ -57,6 +68,7 @@ class RideService : Service() {
             return START_NOT_STICKY
         }
         if (listener == null) startLocation(session)
+        if (media == null) startMediaButton()
         if (crashJob == null) {
             // 可能摔车了：通知栏弹一条，锁着屏也能点「我没事」
             crashJob = scope.launch {
@@ -84,10 +96,10 @@ class RideService : Service() {
         return START_NOT_STICKY
     }
 
-    /** 开着对讲时再加上麦克风，锁屏后也能听 */
+    /** 有麦克风权限时再加上麦克风：锁屏后对讲还能听、按耳机键能说语音指令 */
     private fun serviceTypes(): Int {
         if (Build.VERSION.SDK_INT < 29) return 0
-        val mic = Build.VERSION.SDK_INT >= 30 && rando.walkie.state.value.on && rando.walkie.hasMicPermission()
+        val mic = Build.VERSION.SDK_INT >= 30 && rando.walkie.hasMicPermission()
         return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
     }
 
@@ -118,7 +130,34 @@ class RideService : Service() {
         }
     }
 
+    /**
+     * 耳机上的播放 / 暂停键：骑行中按一下说语音指令。
+     * 系统把按键给最近在放声音的 App；在听音乐时按键照样给音乐 App
+     */
+    private fun startMediaButton() {
+        val s = MediaSession(this, "rando-voice")
+        s.setCallback(object : MediaSession.Callback() {
+            override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                @Suppress("DEPRECATION")
+                val key = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
+                if (key.keyCode !in VOICE_KEYS) return false
+                if (key.action == KeyEvent.ACTION_UP) rando.voice.listen()
+                return true
+            }
+        })
+        s.setPlaybackState(
+            PlaybackState.Builder()
+                .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE)
+                .setState(PlaybackState.STATE_PAUSED, 0, 1f)
+                .build()
+        )
+        s.isActive = true
+        media = s
+    }
+
     override fun onDestroy() {
+        media?.release()
+        media = null
         listener?.let { getSystemService(LocationManager::class.java)?.removeUpdates(it) }
         listener = null
         getSystemService(NotificationManager::class.java).cancel(CRASH_NOTIFICATION_ID)
@@ -189,6 +228,9 @@ class RideService : Service() {
         private const val CRASH_NOTIFICATION_ID = 30_001
         private const val ACTION_IM_OK = "com.personal.rando.IM_OK"
         private const val ACTION_SOS_NOW = "com.personal.rando.SOS_NOW"
+        private val VOICE_KEYS = setOf(
+            KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
+        )
         private const val NOTIFICATION_ID = 30_000
         /** 上一个 GPS 点在这么久以内，开始时先拿来用 */
         private const val FRESH_FIX_MS = 60_000L

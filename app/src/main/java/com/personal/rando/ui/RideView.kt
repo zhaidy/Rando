@@ -62,6 +62,9 @@ import com.personal.rando.ride.Fix
 import com.personal.rando.group.Teammate
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.nextOfEach
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import com.personal.rando.places.HazardType
@@ -111,6 +114,9 @@ fun RideView(
     walkie: String? = null,
     /** 在现在的位置标一处路况 */
     onReport: (HazardType) -> Unit = {},
+    onVoice: () -> Unit = {},
+    /** 正在听语音指令：听到的字（还没听到是「请说…」）；没在听是 null */
+    listening: String? = null,
     map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation?.progress
@@ -144,6 +150,12 @@ fun RideView(
                     Extras(weather, climate?.warning, amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                     teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                     walkie?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
+                    listening?.let {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Dot("#E35B4F")
+                            Text("正在听：$it", color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
             GlassPanel(
@@ -192,6 +204,13 @@ fun RideView(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
+                        GlassButton(
+                            onClick = onVoice,
+                            tone = if (listening != null) GlassTone.Tinted(RandoRed) else GlassTone.Dark,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        ) {
+                            Icon(MicIcon, contentDescription = "语音指令", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }

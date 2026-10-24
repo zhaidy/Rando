@@ -131,6 +131,8 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.voice.VoiceState
+import com.personal.rando.voice.VoiceCommand
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.produceState
 import com.personal.rando.ride.RouteRecord
@@ -168,6 +170,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val savedRoutes by vm.savedRoutes.routes.collectAsStateWithLifecycle()
     var savingRoute by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val voice = LocalContext.current.rando.voice
+    val voiceState by voice.state.collectAsStateWithLifecycle()
     val sosList by group.sos.collectAsStateWithLifecycle()
     val crash by vm.session.crash.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
@@ -248,6 +252,52 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             }
             else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+    // 语音指令：听懂了就在这里做
+    val session = vm.session
+    DisposableEffect(voice) {
+        voice.handler = { cmd ->
+            when (cmd) {
+                is VoiceCommand.GoTo -> {
+                    session.say("好的，去${cmd.place}")
+                    vm.goTo(cmd.place) { session.say(it) }
+                }
+                is VoiceCommand.Loop -> {
+                    session.say("好的，骑一圈 ${cmd.km} 公里")
+                    vm.startLoop(cmd.km)
+                }
+                is VoiceCommand.Route -> if (vm.startSavedRoute(cmd.name)) session.say("好的，骑${cmd.name}") else session.say("没有叫${cmd.name}的收藏路线")
+                VoiceCommand.StopNavigation -> if (session.navigation.value != null) {
+                    session.stopNavigation()
+                    session.say("导航已结束，还在记录")
+                } else {
+                    session.say("现在没在导航")
+                }
+                VoiceCommand.Remaining -> session.say(session.remainingText())
+                is VoiceCommand.Report -> session.say(if (session.reportHazard(cmd.type)) "已标记${cmd.type.label}" else "还没定位到，标不了")
+                is VoiceCommand.Walkie -> when {
+                    group.state.value == null -> session.say("先加入一起骑才能对讲")
+                    cmd.on -> {
+                        walkie.turnOn()
+                        RideService.start(context)
+                        session.say("对讲已打开")
+                    }
+                    else -> {
+                        walkie.turnOff()
+                        session.say("对讲已关闭")
+                    }
+                }
+                VoiceCommand.Weather -> session.say(session.weatherText())
+                is VoiceCommand.Unknown -> session.say(if (cmd.text.isBlank()) "没听清，再说一次" else "没听懂：${cmd.text}")
+            }
+        }
+        onDispose { voice.handler = null }
+    }
+    val voicePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) voice.listen() else Toast.makeText(context, "没有麦克风权限，用不了语音指令", Toast.LENGTH_SHORT).show()
+    }
+    val listen = {
+        if (voice.hasMicPermission()) voice.listen() else voicePermission.launch(Manifest.permission.RECORD_AUDIO)
     }
     val leaveGroup = {
         walkie.turnOff()
@@ -425,6 +475,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onStop = finishRide,
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieText(walkieState).takeIf { groupState != null },
+                        onVoice = listen,
+                        listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },
                         onReport = { type ->
                             val ok = vm.session.reportHazard(type)
                             Toast.makeText(context, if (ok) "已标记：${type.label}" else "还没定位到，标不了", Toast.LENGTH_SHORT).show()
@@ -466,6 +518,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             onCheckUpdate = onCheckUpdate,
                         )
                         PrefsRow(state.prefs, vm::setPrefs)
+                        (voiceState as? VoiceState.Listening)?.let { HintPill("正在听：${it.partial.ifEmpty { "请说…" }}", onCancel = voice::cancel) }
                         AnimatedVisibility(
                             state.pickingStart || state.pickingVia,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
@@ -497,6 +550,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             onLocate = { map?.let(::flyToMyLocation) },
                             onGroup = { groupDialog = true }.takeIf { groupState == null },
                             modifier = Modifier.align(Alignment.End),
+                            onVoice = listen,
+                            listening = voiceState is VoiceState.Listening,
                         )
                         AnimatedVisibility(
                             groupState != null,

@@ -244,6 +244,23 @@ class RideSession(
         group?.shareHazardRemoved(id)
     }
 
+    /** 念一句话（语音指令的回答） */
+    fun say(text: String) = speaker.say(text)
+
+    /** 「还有 3.2 公里，大约 11 分钟」；没在导航时说骑了多远 */
+    fun remainingText(): String {
+        val p = _navigation.value?.progress
+        if (p != null) return "还有 ${Format.distance(p.remainingMeters.toInt())}，大约 ${(p.remainingSeconds + 59) / 60} 分钟"
+        val r = _recording.value ?: return "现在没在导航"
+        return "已经骑了 ${Format.distance(r.distanceMeters.toInt())}，没在导航"
+    }
+
+    /** 天气、气温、空气：语音问「天气怎么样」时说 */
+    fun weatherText(): String {
+        val parts = listOfNotNull(_weather.value?.summary, _climate.value?.summary?.let { "现在 $it" })
+        return parts.joinToString("，").ifEmpty { "开始骑以后才知道沿途天气" }
+    }
+
     /** 检测到可能摔车：倒计时，到时间还没说没事就告诉队友 */
     private fun onCrash() {
         if (_crash.value != null || group?.state?.value == null) return
