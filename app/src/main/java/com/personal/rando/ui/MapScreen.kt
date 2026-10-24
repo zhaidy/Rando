@@ -32,10 +32,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -44,6 +48,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -75,6 +80,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.personal.rando.places.SavedPlace
 import com.personal.rando.ride.Fix
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.ride.RecordingState
@@ -103,6 +109,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val recording by vm.session.recording.collectAsStateWithLifecycle()
+    val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -274,7 +281,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
                 RecordingCard(it, onStop = finishRide)
                 Spacer(Modifier.size(8.dp))
             }
-            PlannerCard(state, vm, startNavigation)
+            PlannerCard(state, saved, vm, startNavigation)
         }
     }
 }
@@ -369,7 +376,13 @@ private fun Banner(text: String) {
 }
 
 @Composable
-private fun PlannerCard(state: PlannerState, vm: RouteViewModel, onStartNavigation: () -> Unit) {
+private fun PlannerCard(
+    state: PlannerState,
+    saved: List<SavedPlace>,
+    vm: RouteViewModel,
+    onStartNavigation: () -> Unit,
+) {
+    var saving by remember { mutableStateOf<Place?>(null) }
     Surface(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -379,6 +392,7 @@ private fun PlannerCard(state: PlannerState, vm: RouteViewModel, onStartNavigati
             val destination = state.destination
             if (destination == null) {
                 Text("搜索目的地，或者长按地图选一个点", style = MaterialTheme.typography.bodyLarge)
+                if (saved.isNotEmpty()) SavedChips(saved, vm::chooseSaved)
                 StartRow(state, vm)
                 return@Column
             }
@@ -390,6 +404,14 @@ private fun PlannerCard(state: PlannerState, vm: RouteViewModel, onStartNavigati
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val savedHere = saved.firstOrNull { it.isAt(destination.location) }
+                IconButton(onClick = { if (savedHere != null) vm.savedPlaces.remove(savedHere) else saving = destination }) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = if (savedHere != null) "取消收藏" else "收藏",
+                        tint = if (savedHere != null) RandoAmber else MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
                 IconButton(onClick = vm::clearRoute) {
                     Icon(Icons.Default.Close, contentDescription = "取消路线")
                 }
@@ -418,6 +440,67 @@ private fun PlannerCard(state: PlannerState, vm: RouteViewModel, onStartNavigati
             }
         }
     }
+    saving?.let { place ->
+        SavePlaceDialog(
+            place,
+            onSave = {
+                vm.savedPlaces.save(it)
+                saving = null
+            },
+            onDismiss = { saving = null },
+        )
+    }
+}
+
+@Composable
+private fun SavedChips(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
+    Row(
+        Modifier
+            .padding(top = 8.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        saved.forEach { place ->
+            AssistChip(
+                onClick = { onChoose(place) },
+                label = { Text(place.name) },
+                leadingIcon = {
+                    Icon(
+                        if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star,
+                        contentDescription = null,
+                        Modifier.size(18.dp),
+                        tint = RandoAmber,
+                    )
+                },
+            )
+        }
+    }
+}
+
+/** 收藏时起个名字；家、公司一点就行 */
+@Composable
+private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismiss: () -> Unit) {
+    // 长按地图选的点没有名字，不拿「地图上的点」当默认名
+    var name by remember { mutableStateOf(if (place.detail.isEmpty() && place.name.startsWith("地图上")) "" else place.name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("收藏这个地方") },
+        text = {
+            Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(SavedPlace.HOME, SavedPlace.WORK).forEach { preset ->
+                        FilterChip(selected = name == preset, onClick = { name = preset }, label = { Text(preset) })
+                    }
+                }
+                Spacer(Modifier.size(8.dp))
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("名字") }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(SavedPlace(name.trim(), place.location)) }) { Text("收藏") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 @Composable

@@ -3,6 +3,8 @@ package com.personal.rando.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.personal.rando.places.SavedPlace
+import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.rando
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BRouterClient
@@ -48,6 +50,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
     private val router = BRouterClient()
     private val places = PlaceSearch()
     val session: RideSession = app.rando.session
+    val savedPlaces: SavedPlaceStore = app.rando.savedPlaces
 
     private val _state = MutableStateFlow(PlannerState())
     val state: StateFlow<PlannerState> = _state
@@ -103,6 +106,8 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         }
         planRoute()
     }
+
+    fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.name, "", place.location))
 
     fun startPickingStart() = _state.update { it.copy(pickingStart = true) }
 
