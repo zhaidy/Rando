@@ -21,7 +21,8 @@ enum class CrossingType(val label: String, val color: String) {
     }
 }
 
-data class Crossing(val location: LatLon, val type: CrossingType)
+/** [pointIndex] 是路口在 [Route.points] 里的序号，用来算它在全程的第几米 */
+data class Crossing(val location: LatLon, val type: CrossingType, val pointIndex: Int)
 
 /** 挨这么近的路口点算同一次过马路（比如中间有隔离带的马路，两边各一个点） */
 const val SAME_CROSSING_METERS = 20.0
@@ -56,6 +57,6 @@ fun Route.crossings(): List<Crossing> {
     }
     return groups.mapNotNull { group ->
         val index = group.map { it.pointIndex }.firstOrNull { it in points.indices } ?: return@mapNotNull null
-        Crossing(points[index], group.minOf { it.type })
+        Crossing(points[index], group.minOf { it.type }, index)
     }
 }
