@@ -57,7 +57,7 @@ class GroupRide(
     /** 不为 null 就是在队伍里 */
     val state: StateFlow<GroupState?> = _state
 
-    private val _voices = MutableSharedFlow<GroupEvent.Voice>(extraBufferCapacity = 8)
+    private val _voices = MutableSharedFlow<GroupEvent.Voice>(extraBufferCapacity = 64)
     /** 收到的对讲语音 */
     val voices: SharedFlow<GroupEvent.Voice> = _voices
 
@@ -98,8 +98,8 @@ class GroupRide(
         }
     }
 
-    fun sendVoice(format: String, millis: Int, base64: String): Boolean =
-        socket?.send(GroupProtocol.voice(format, millis, base64)) == true
+    fun sendVoice(stream: Int, seq: Int, end: Boolean, base64: String): Boolean =
+        socket?.send(GroupProtocol.voice(stream, seq, end, base64)) == true
 
     /**
      * 掉队提醒：队友离我超过 [STRAGGLER_METERS]，每人每 [WARN_INTERVAL_MS] 最多说一次。

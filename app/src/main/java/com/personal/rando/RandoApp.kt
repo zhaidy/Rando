@@ -20,7 +20,7 @@ class RandoApp : Application() {
     val session: RideSession by lazy { RideSession(this, appScope, group = group) }
 
     /** 一起骑时的声控对讲 */
-    val walkie: Walkie by lazy { Walkie(this, appScope, group) { session.speaking } }
+    val walkie: Walkie by lazy { Walkie(this, appScope, group) }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
 }

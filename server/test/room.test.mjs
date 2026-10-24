@@ -69,10 +69,12 @@ test("队员互相看到位置、听到对讲，离队有通知", async () => {
   assert.equal(pos.id, "bbbbbbbb-2");
   assert.equal(pos.lat, 1.31);
 
-  a.send({ t: "voice", format: "aac", ms: 1200, data: "AAAA" });
+  a.send({ t: "voice", format: "aac-live", sid: 7, seq: 3, end: true, data: "AAAA" });
   const voice = await b.next("voice");
   assert.equal(voice.name, "阿明");
-  assert.equal(voice.ms, 1200);
+  assert.equal(voice.sid, 7);
+  assert.equal(voice.seq, 3);
+  assert.equal(voice.end, true);
 
   a.send("ping");
   await a.next("pong");

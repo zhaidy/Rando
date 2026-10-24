@@ -33,9 +33,6 @@ class Speaker(context: Context) {
         )
     }
 
-    /** 正在念，对讲这时候不听麦克风 */
-    val isSpeaking: Boolean get() = ready && tts.isSpeaking
-
     /** 排队念，路口提示和路况提醒挨着来时不会互相打断 */
     fun say(text: String) {
         if (ready) tts.speak(text, TextToSpeech.QUEUE_ADD, null, text) else pending = text

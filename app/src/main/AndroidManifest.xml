@@ -10,6 +10,11 @@
     <!-- 一起骑的声控对讲：锁屏后也要听麦克风 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 对讲走通话线路：切到蓝牙耳机的麦克风和耳机 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
     <!-- 应用内更新：下载新版 APK 后直接安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 12+：安装来源是 Rando 自己时，应用内更新不再弹系统确认 -->

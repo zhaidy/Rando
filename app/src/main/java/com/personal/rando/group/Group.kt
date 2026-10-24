@@ -35,8 +35,19 @@ sealed interface GroupEvent {
     data class Joined(val id: String, val name: String) : GroupEvent
     data class Left(val id: String) : GroupEvent
     data class Position(val mate: Teammate) : GroupEvent
-    /** 对讲语音：[data] 是 base64 的音频 */
-    data class Voice(val id: String, val name: String, val format: String, val millis: Int, val data: String) : GroupEvent
+    /**
+     * 对讲语音的一小段（0.1 秒多）：[data] 是 base64 的几帧 AAC；
+     * [stream] 是这一句话的编号，换一句就换；[end] 表示这句说完了
+     */
+    data class Voice(
+        val id: String,
+        val name: String,
+        val format: String,
+        val stream: Int,
+        val seq: Int,
+        val end: Boolean,
+        val data: String,
+    ) : GroupEvent
 }
 
 /** 和 server/src/index.js 约定的消息格式 */
@@ -50,8 +61,12 @@ object GroupProtocol {
         fix.bearing?.let { put("bearing", it.toDouble()) }
     }.toString()
 
-    fun voice(format: String, millis: Int, base64: String): String =
-        JSONObject().put("t", "voice").put("format", format).put("ms", millis).put("data", base64).toString()
+    fun voice(stream: Int, seq: Int, end: Boolean, base64: String): String =
+        JSONObject()
+            .put("t", "voice").put("format", AacCodec.FORMAT)
+            .put("sid", stream).put("seq", seq).put("end", end)
+            .put("data", base64)
+            .toString()
 
     /** 认不出来的消息返回 null */
     fun parse(text: String, now: Long): GroupEvent? = try {
@@ -64,7 +79,10 @@ object GroupProtocol {
             "join" -> GroupEvent.Joined(o.getString("id"), o.optString("name", "队友"))
             "leave" -> GroupEvent.Left(o.getString("id"))
             "pos" -> GroupEvent.Position(mate(o, now))
-            "voice" -> GroupEvent.Voice(o.getString("id"), o.optString("name", "队友"), o.optString("format"), o.optInt("ms"), o.getString("data"))
+            "voice" -> GroupEvent.Voice(
+                o.getString("id"), o.optString("name", "队友"), o.optString("format"),
+                o.optInt("sid"), o.optInt("seq"), o.optBoolean("end"), o.optString("data"),
+            )
             else -> null
         }
     } catch (_: Exception) {

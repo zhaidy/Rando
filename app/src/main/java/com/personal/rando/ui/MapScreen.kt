@@ -474,6 +474,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                     walkie = walkieState,
                                     onToggleTalk = toggleTalk,
                                     onLevel = walkie::setLevel,
+                                    onMode = walkie::setMode,
                                 )
                             }
                         }

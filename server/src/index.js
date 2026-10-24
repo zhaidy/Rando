@@ -4,10 +4,10 @@
 //
 // 连接：GET /room/<队伍码>?id=<队员 id>&name=<名字>，带 Upgrade: websocket
 // 客户端发：{"t":"pos","lat":..,"lon":..,"speed":..,"bearing":..}
-//          {"t":"voice","format":"aac","ms":..,"data":"<base64>"}
+//          {"t":"voice","format":"aac-live","sid":..,"seq":..,"end":false,"data":"<base64>"}（实时对讲，一小段一小段地发）
 // 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
-//          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,ms,data,ts}
+//          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
 // "ping" 直接回 "pong"，不用唤醒房间
 
 import { DurableObject } from "cloudflare:workers";
@@ -15,7 +15,7 @@ import { DurableObject } from "cloudflare:workers";
 const CODE = /^[A-Z0-9]{4,12}$/;
 const MAX_MEMBERS = 20;
 const MAX_NAME = 20;
-// 对讲语音一段十几 KB，base64 以后也远小于这个
+// 对讲一小段只有几百字节，这个上限只是防止乱发
 const MAX_MESSAGE = 512 * 1024;
 
 export default {
@@ -87,8 +87,12 @@ export class Room extends DurableObject {
       ws.serializeAttachment({ ...me, pos });
       this.broadcast({ t: "pos", id: me.id, name: me.name, ...pos }, me.id);
     } else if (msg.t === "voice" && typeof msg.data === "string") {
+      // 实时对讲：一句话切成 0.1 秒多一段连续发，sid 是这句话的编号，seq 是第几段，end 表示说完了
       this.broadcast(
-        { t: "voice", id: me.id, name: me.name, format: String(msg.format ?? "aac"), ms: Number(msg.ms) || 0, data: msg.data, ts },
+        {
+          t: "voice", id: me.id, name: me.name, format: String(msg.format ?? "aac"),
+          sid: Number(msg.sid) || 0, seq: Number(msg.seq) || 0, end: msg.end === true, data: msg.data, ts,
+        },
         me.id,
       );
     }

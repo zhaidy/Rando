@@ -33,8 +33,10 @@ class GroupTest {
 
         assertEquals(GroupEvent.Joined("c", "小李"), GroupProtocol.parse("""{"t":"join","id":"c","name":"小李"}""", 0))
         assertEquals(GroupEvent.Left("c"), GroupProtocol.parse("""{"t":"leave","id":"c"}""", 0))
-        val voice = GroupProtocol.parse("""{"t":"voice","id":"a","name":"小红","format":"aac","ms":1500,"data":"AAAA"}""", 0) as GroupEvent.Voice
-        assertEquals(1500, voice.millis)
+        val voice = GroupProtocol.parse(
+            """{"t":"voice","id":"a","name":"小红","format":"aac-live","sid":9,"seq":4,"end":true,"data":"AAAA"}""", 0,
+        ) as GroupEvent.Voice
+        assertEquals(GroupEvent.Voice("a", "小红", "aac-live", 9, 4, true, "AAAA"), voice)
         assertNull(GroupProtocol.parse("pong", 0))
         assertNull(GroupProtocol.parse("""{"t":"what"}""", 0))
     }

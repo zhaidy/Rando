@@ -77,4 +77,15 @@ class VoxTest {
         val length = ((h[3].toInt() and 3) shl 11) or ((h[4].toInt() and 0xFF) shl 3) or ((h[5].toInt() and 0xFF) shr 5)
         assertEquals(307, length)
     }
+
+    @Test
+    fun `连在一起的几个 ADTS 帧拆开，不完整的尾巴丢掉`() {
+        val a = AacCodec.adtsHeader(7 + 3, 16_000) + byteArrayOf(1, 2, 3)
+        val b = AacCodec.adtsHeader(7 + 2, 16_000) + byteArrayOf(4, 5)
+        val frames = AacCodec.splitAdts(a + b + AacCodec.adtsHeader(50, 16_000))
+        assertEquals(2, frames.size)
+        assertTrue(frames[0].contentEquals(a))
+        assertTrue(frames[1].contentEquals(b))
+        assertEquals(0, AacCodec.splitAdts(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)).size)
+    }
 }

@@ -37,6 +37,7 @@ import com.personal.rando.group.TeamCode
 import com.personal.rando.group.Teammate
 import com.personal.rando.group.VoxLevel
 import com.personal.rando.group.WalkieState
+import com.personal.rando.group.WalkieMode
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.glass.GlassButton
@@ -117,6 +118,7 @@ fun GroupPill(
     walkie: WalkieState = WalkieState(),
     onToggleTalk: () -> Unit = {},
     onLevel: (VoxLevel) -> Unit = {},
+    onMode: (WalkieMode) -> Unit = {},
 ) {
     Column(
         modifier
@@ -135,11 +137,18 @@ fun GroupPill(
                 overflow = TextOverflow.Ellipsis,
             )
             if (walkie.on) {
+                // 点一下换：实时 ↔ 整句
+                GlassButton(
+                    onClick = { onMode(WalkieMode.entries[(walkie.mode.ordinal + 1) % WalkieMode.entries.size]) },
+                    tone = GlassTone.Light,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text(walkie.mode.label, color = Ink, fontSize = 13.sp) }
+                Spacer(Modifier.width(6.dp))
                 GlassButton(
                     onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
                     tone = GlassTone.Light,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text("灵敏度：${walkie.level.label}", color = Ink, fontSize = 13.sp) }
+                ) { Text(walkie.level.label, color = Ink, fontSize = 13.sp) }
                 Spacer(Modifier.width(6.dp))
             }
             GlassButton(
@@ -155,10 +164,12 @@ fun GroupPill(
 
 /** 对讲现在怎样：一句话 */
 fun walkieText(w: WalkieState): String = when {
-    !w.on -> "声控对讲：说话自动发给队友，不用按键"
-    w.playing != null -> "${w.playing} 在说话…"
-    w.sending -> "正在录你说的话，说完停一下就发出去"
-    else -> "在听，直接说话就行"
+    !w.on -> "声控对讲：直接说话，不用按键"
+    w.talking.isNotEmpty() && w.sending -> "${w.talking.joinToString("、")} 和你都在说"
+    w.talking.isNotEmpty() -> "${w.talking.joinToString("、")} 在说话…"
+    w.sending && w.mode == WalkieMode.CLIP -> "在录，说完停一下就发出去"
+    w.sending -> "队友正在听你说"
+    else -> "在听 · ${w.device ?: "手机"}"
 }
 
 @Composable
