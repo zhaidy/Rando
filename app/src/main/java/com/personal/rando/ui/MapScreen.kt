@@ -163,6 +163,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val routeOffer by group.offer.collectAsStateWithLifecycle()
     val hazards by LocalContext.current.rando.hazards.all.collectAsStateWithLifecycle()
     var hazardShown by remember { mutableStateOf<Hazard?>(null) }
+    val savedRoutes by vm.savedRoutes.routes.collectAsStateWithLifecycle()
+    var savingRoute by remember { mutableStateOf(false) }
     val sosList by group.sos.collectAsStateWithLifecycle()
     val crash by vm.session.crash.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
@@ -553,6 +555,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 PlannerSheet(
                                     state = state,
                                     saved = saved,
+                                    savedRoutes = savedRoutes,
                                     actions = remember(vm) {
                                         PlannerActions(
                                             onChooseSaved = vm::chooseSaved,
@@ -578,6 +581,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                                 if (items.isNotEmpty()) focus = Focus(items, 0)
                                             },
                                             onPace = vm::setPace,
+                                            onSaveRoute = { savingRoute = true },
+                                            onChooseRoute = vm::chooseSavedRoute,
+                                            onRemoveRoute = vm.savedRoutes::remove,
                                         )
                                     },
                                 )
@@ -587,6 +593,19 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    if (savingRoute) {
+        val suggested = state.destination?.name?.takeUnless { it.startsWith("地图上") }
+            ?: state.loop?.let { "骑一圈 ${it.targetMeters / 1000} 公里" }.orEmpty()
+        SaveRouteDialog(
+            suggested,
+            onSave = { name ->
+                vm.saveRoute(name)
+                savingRoute = false
+                Toast.makeText(context, "已收藏「$name」", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { savingRoute = false },
+        )
     }
     hazardShown?.let { h ->
         HazardDialog(

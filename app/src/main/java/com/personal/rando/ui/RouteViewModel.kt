@@ -33,6 +33,8 @@ import com.personal.rando.routing.LoopShape
 import com.personal.rando.routing.LoopScore
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
+import com.personal.rando.places.SavedRouteStore
+import com.personal.rando.places.SavedRoute
 import com.personal.rando.group.SharedRoute
 import com.personal.rando.routing.Pace
 import com.personal.rando.routing.MySpeed
@@ -93,6 +95,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     private val places = PlaceSearch()
     val session: RideSession = app.rando.session
     val savedPlaces: SavedPlaceStore = app.rando.savedPlaces
+    val savedRoutes: SavedRouteStore = app.rando.savedRoutes
 
     /** 记住上次选的路线偏好 */
     private val stored = app.getSharedPreferences("planner", Context.MODE_PRIVATE)
@@ -229,6 +232,37 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     }
 
     fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.name, "", place.location))
+
+    /** 收藏现在这条路线：起点、途经点、终点和路线配置 */
+    fun saveRoute(name: String) {
+        val s = _state.value
+        val ready = s.route as? RouteState.Ready ?: return
+        savedRoutes.save(
+            SavedRoute(
+                name = name, stops = ready.stops, profile = s.prefs.profile, avoidRoads = s.prefs.avoidRoads,
+                avoidBridges = s.prefs.avoidBridges, meters = ready.route.distanceMeters, savedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    /** 再骑一次收藏的路线：人在起点附近就从我的位置出发，不然从收藏的起点出发 */
+    fun chooseSavedRoute(r: SavedRoute) {
+        searchJob?.cancel()
+        routeJob?.cancel()
+        val first = r.stops.first()
+        val nearStart = myLocation?.let { Geo.distance(it, first) <= NEAR_START_METERS } == true
+        val via = r.stops.drop(1).dropLast(1).mapIndexed { i, p -> Place("途经点 ${i + 1}", "", p) }
+        _state.update {
+            it.copy(
+                query = "", results = emptyList(), loop = null, pickingStart = false, pickingVia = false,
+                start = if (nearStart) null else Place("${r.name}的起点", "", first),
+                destination = Place(if (r.loop) "${r.name}（回到起点）" else r.name, "", r.stops.last()),
+                via = via,
+                prefs = r.prefs(it.prefs),
+            )
+        }
+        planRoute()
+    }
 
     fun startPickingStart() = _state.update { it.copy(pickingStart = true, pickingVia = false) }
 
@@ -411,5 +445,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         const val KEY_AVOID_ROADS = "avoid_roads"
         const val KEY_AVOID_BRIDGES = "avoid_bridges"
         const val KEY_PACE = "pace"
+        /** 离收藏路线的起点这么近，就从我的位置出发 */
+        const val NEAR_START_METERS = 300.0
     }
 }
