@@ -23,6 +23,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -94,8 +96,6 @@ fun RideView(
     onStop: () -> Unit,
     /** 原路返回；null 就不显示。导航时到了才显示 */
     onReturn: (() -> Unit)? = null,
-    /** 打开码表；null 就不显示 */
-    onDashboard: (() -> Unit)? = null,
     /** 前方天气；不下雨就不显示 */
     weather: RouteWeather? = null,
     /** 导航路线两旁的补给点 */
@@ -180,6 +180,7 @@ fun RideView(
                             )
                         }
                     }
+                    recording?.let { MoreStats(it, navigating = navigation != null, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
                     // 原路返回单独一行，和下面三个按钮挤在一起字会折行
                     if (onReturn != null && (navigation == null || progress?.arrived == true)) {
                         GlassButton(
@@ -197,16 +198,55 @@ fun RideView(
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
-                        if (onDashboard != null) {
-                            GlassButton(onClick = onDashboard, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
-                                Text("码表", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                            }
-                        }
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
                             Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 码表的其余几项，一行小字：导航时是已骑、均速、最快、爬升（剩余在上面），
+ * 自由骑行时是均速、最快、爬升、全程用时（已骑、骑行时间在上面）
+ */
+@Composable
+private fun MoreStats(recording: RecordingState, navigating: Boolean, modifier: Modifier) {
+    // 全程用时每秒走一下，不等定位
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(1_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    val average = if (recording.movingSeconds > 0) recording.distanceMeters / recording.movingSeconds else 0.0
+    val kmh = { mps: Double -> String.format(Locale.US, "%.1f", mps * 3.6) }
+    val stats = buildList {
+        if (navigating) add(String.format(Locale.US, "%.1f", recording.distanceMeters / 1000) to "已骑 公里")
+        add(kmh(average) to "均速")
+        add(kmh(recording.maxSpeed) to "最快")
+        add("${recording.ascendMeters.toInt()}" to "爬升 米")
+        if (!navigating) add(Format.clock(((now - recording.startedAt) / 1000).coerceAtLeast(0)) to "全程用时")
+    }
+    Row(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .padding(vertical = 8.dp),
+    ) {
+        stats.forEach { (value, label) ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    value,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 13.sp, maxFontSize = 20.sp),
+                )
+                Text(label, color = DIM, fontSize = 12.sp, maxLines = 1)
             }
         }
     }
