@@ -115,7 +115,7 @@ class UiScreenshotTest {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
             PrefsRow(prefs, {})
-            if (picking) HintPill("长按地图选起点，或者在上面搜一个地方")
+            if (picking) HintPill("长按地图选起点，或者在上面搜一个地方", onCancel = {})
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
@@ -145,6 +145,8 @@ class UiScreenshotTest {
         compose.mainClock.advanceTimeBy(2_000)
         compose.onNodeWithText("距离").assertExists()
     }
+
+    @Test fun plannerPicking() = shot("2e_planner_picking") { Planner(picking = true) }
 
     @Test fun plannerOutlook() = shot("2d_planner_outlook") {
         val p = route.points

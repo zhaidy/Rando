@@ -293,11 +293,25 @@ private fun GlassToggle(label: String, on: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 橙色提示条，比如「长按地图选起点」 */
+/** 橙色提示条，比如「长按地图选起点」；有 [onCancel] 时右边带个「取消」 */
 @Composable
-fun HintPill(text: String, modifier: Modifier = Modifier) {
+fun HintPill(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null) {
     GlassPanel(modifier, shape = GlassShapes.Pill, tone = GlassTone.Tinted(RandoOrange)) {
-        Text(text, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = Color.White, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f, fill = false).padding(start = 16.dp, end = if (onCancel == null) 16.dp else 4.dp, top = 10.dp, bottom = 10.dp), color = Color.White, fontSize = 14.sp)
+            if (onCancel != null) {
+                Row(
+                    Modifier
+                        .clip(GlassShapes.Pill)
+                        .clickable(onClick = onCancel)
+                        .padding(start = 8.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("取消", Modifier.padding(start = 2.dp), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
 

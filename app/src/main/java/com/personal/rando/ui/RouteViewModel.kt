@@ -208,6 +208,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun startPickingStart() = _state.update { it.copy(pickingStart = true, pickingVia = false) }
 
+    /** 不选起点 / 途经点了，路线照旧 */
+    fun cancelPicking() {
+        searchJob?.cancel()
+        _state.update { it.copy(pickingStart = false, pickingVia = false, query = "", results = emptyList()) }
+    }
+
     fun useMyLocationAsStart() {
         _state.update { it.copy(start = null, pickingStart = false) }
         planRoute()
