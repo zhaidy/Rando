@@ -439,8 +439,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             state.pickingStart || state.pickingVia,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
                             exit = fadeOut() + slideOutVertically { -it },
-                        ) { HintPill("长按地图选${if (state.pickingVia) "途经点" else "起点"}，或者在上面搜一个地方") }
+                        ) {
+                            HintPill("长按地图选${if (state.pickingVia) "途经点" else "起点"}，或者在上面搜一个地方", onCancel = {
+                                focusManager.clearFocus()
+                                vm.cancelPicking()
+                            })
+                        }
                     }
+                    if (state.pickingStart || state.pickingVia) BackHandler { vm.cancelPicking() }
 
                     Column(
                         Modifier

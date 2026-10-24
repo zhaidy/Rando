@@ -77,6 +77,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -203,8 +207,9 @@ fun SearchBar(
                             .padding(horizontal = 20.dp, vertical = 10.dp)
                     ) {
                         Text(place.name, color = Ink, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (place.detail.isNotEmpty()) {
-                            Text(place.detail, color = InkSoft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val detail = listOfNotNull(place.distanceMeters?.let { Format.distance(it) }, place.detail.ifEmpty { null }).joinToString(" · ")
+                        if (detail.isNotEmpty()) {
+                            Text(detail, color = InkSoft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -288,11 +293,25 @@ private fun GlassToggle(label: String, on: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 橙色提示条，比如「长按地图选起点」 */
+/** 橙色提示条，比如「长按地图选起点」；有 [onCancel] 时右边带个「取消」 */
 @Composable
-fun HintPill(text: String, modifier: Modifier = Modifier) {
+fun HintPill(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null) {
     GlassPanel(modifier, shape = GlassShapes.Pill, tone = GlassTone.Tinted(RandoOrange)) {
-        Text(text, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = Color.White, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f, fill = false).padding(start = 16.dp, end = if (onCancel == null) 16.dp else 4.dp, top = 10.dp, bottom = 10.dp), color = Color.White, fontSize = 14.sp)
+            if (onCancel != null) {
+                Row(
+                    Modifier
+                        .clip(GlassShapes.Pill)
+                        .clickable(onClick = onCancel)
+                        .padding(start = 8.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("取消", Modifier.padding(start = 2.dp), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
 
@@ -371,31 +390,53 @@ fun PlannerSheet(
         state.destination != null -> SheetHeader.Destination(state.destination)
         else -> SheetHeader.Empty
     }
-    // 像谷歌地图那样：顶上的拖动条往下拖收成一小条，往上拖展开详情
+    // 像谷歌地图那样：卡片上哪儿都能拖，往下拖收起、往上拖展开。
+    // 下面的内容能上下滑：往上先把卡片拉满再滑内容，往下先滑回顶再收卡片
     var size by rememberSaveable { mutableStateOf(SheetSize.HALF) }
     val screen = LocalConfiguration.current.screenHeightDp
     val maxHeight = (screen * if (size == SheetSize.FULL) 0.75f else 0.6f).dp
     val density = LocalDensity.current
     var drag by remember { mutableFloatStateOf(0f) }
+    val settle = {
+        val step = with(density) { 40.dp.toPx() }
+        size = when {
+            drag > step -> size.smaller()
+            drag < -step -> size.bigger()
+            else -> size
+        }
+        drag = 0f
+    }
     val dragState = rememberDraggableState { drag += it }
+    val sheetScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y >= 0 || size == SheetSize.FULL) return Offset.Zero
+                drag += available.y
+                return Offset(0f, available.y)
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y <= 0) return Offset.Zero
+                drag += available.y
+                return Offset(0f, available.y)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (drag == 0f) return Velocity.Zero
+                settle()
+                return available
+            }
+        }
+    }
     GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(Motion.smooth())) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
-          // 拖动条和标题这一块能拖；下面的内容能上下滑，不抢手势
-          Column(
-            Modifier.draggable(
-                dragState,
-                Orientation.Vertical,
-                onDragStarted = { drag = 0f },
-                onDragStopped = {
-                    val step = with(density) { 40.dp.toPx() }
-                    size = when {
-                        drag > step -> size.smaller()
-                        drag < -step -> size.bigger()
-                        else -> size
-                    }
-                },
-            )
-          ) {
+        Column(
+            Modifier
+                .nestedScroll(sheetScroll)
+                .draggable(dragState, Orientation.Vertical, onDragStarted = { drag = 0f }, onDragStopped = { settle() })
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 18.dp)
+        ) {
+          Column {
             DragHandle { size = if (size == SheetSize.PEEK) SheetSize.HALF else SheetSize.PEEK }
             AnimatedContent(
                 targetState = header,

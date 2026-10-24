@@ -37,4 +37,18 @@ class PlaceSearchTest {
         """.trimIndent()
         assertEquals(listOf("East Coast Park"), PlaceSearch.parse(json).map { it.name })
     }
+
+    @Test
+    fun `知道我在哪时同名的店按远近排，带上距离`() {
+        val json = """
+            {"features":[
+              {"properties":{"name":"FairPrice","street":"Sims Avenue"},"geometry":{"coordinates":[103.89,1.315]}},
+              {"properties":{"name":"FairPrice Xtra","street":"Jurong Gateway"},"geometry":{"coordinates":[103.74,1.333]}},
+              {"properties":{"name":"FairPrice","street":"Clementi Avenue 3"},"geometry":{"coordinates":[103.766,1.316]}}
+            ]}
+        """.trimIndent()
+        val places = PlaceSearch.parse(json, near = LatLon(lat = 1.315, lon = 103.765))
+        assertEquals(listOf("Clementi Avenue 3", "Sims Avenue", "Jurong Gateway"), places.map { it.detail })
+        assertEquals(true, places[0].distanceMeters!! < 300)
+    }
 }

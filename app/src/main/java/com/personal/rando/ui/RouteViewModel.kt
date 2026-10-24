@@ -143,7 +143,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         searchJob = viewModelScope.launch {
             delay(350) // 停手再搜，别每敲一个字就请求一次
             val results = try {
-                places.search(query.trim())
+                places.search(query.trim(), _state.value.start?.location ?: myLocation)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -207,6 +207,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.name, "", place.location))
 
     fun startPickingStart() = _state.update { it.copy(pickingStart = true, pickingVia = false) }
+
+    /** 不选起点 / 途经点了，路线照旧 */
+    fun cancelPicking() {
+        searchJob?.cancel()
+        _state.update { it.copy(pickingStart = false, pickingVia = false, query = "", results = emptyList()) }
+    }
 
     fun useMyLocationAsStart() {
         _state.update { it.copy(start = null, pickingStart = false) }
