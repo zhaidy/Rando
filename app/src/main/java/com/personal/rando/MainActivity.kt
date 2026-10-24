@@ -24,8 +24,8 @@ class MainActivity : ComponentActivity() {
             RandoTheme {
                 val vm: RouteViewModel = viewModel()
                 MapScreen(vm)
-                val state by vm.state.collectAsStateWithLifecycle()
-                UpdatePrompt(navigating = state.navigation != null)
+                val navigation by vm.session.navigation.collectAsStateWithLifecycle()
+                UpdatePrompt(navigating = navigation != null)
             }
         }
     }

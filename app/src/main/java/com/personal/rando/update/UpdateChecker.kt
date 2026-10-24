@@ -7,6 +7,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.pm.PackageInfoCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -114,7 +115,7 @@ class UpdateChecker(private val context: Context) {
     private fun updatesDir() = File(context.cacheDir, "updates")
 
     private fun currentBuild(): Long =
-        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
 
     internal companion object {
         const val REPO = "zhaidy/Rando"
