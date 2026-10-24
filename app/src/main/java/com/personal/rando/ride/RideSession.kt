@@ -313,6 +313,7 @@ class RideSession(
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
         hydration.reset(r.state().startedAt)
+        RideWidget.refresh(app)
         hazardAlerts.reset()
         _recording.value = r.state()
         daylight.reset()
@@ -327,12 +328,14 @@ class RideSession(
         _recording.value = null
         // 都结束骑行了，人肯定没事
         imOk()
+        RideWidget.refresh(app)
         stopWatchingWeather()
         val ride = r.toRide(System.currentTimeMillis())
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
         (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
             rides.save(ride)
+            RideWidget.refresh(app)
             // 骑过的路：比一比上次
             RouteRecord.of(ride, rides.list())?.let { speaker.say(it.text) }
         }
