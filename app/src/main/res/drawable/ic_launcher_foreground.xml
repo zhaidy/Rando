@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一段发卡弯山路，终点一面小旗 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#2E7D4F"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M36,74 L66,74 C72,74 72,62 66,62 L42,62 C36,62 36,50 42,50 L64,50" />
+    <path
+        android:fillColor="#2A211B"
+        android:pathData="M64,34 L67,34 L67,52 L64,52 Z" />
+    <path
+        android:fillColor="#E0672B"
+        android:pathData="M67,34 L78,38 L67,42 Z" />
+</vector>
