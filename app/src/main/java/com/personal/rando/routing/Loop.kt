@@ -1,6 +1,7 @@
 package com.personal.rando.routing
 
 import com.personal.rando.nav.Geo
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -43,6 +44,14 @@ object LoopPlanner {
     private const val DIRECTIONS = 12
     /** 和 12 互质，轮一遍才会回到老方向 */
     private const val STRIDE = 5
+}
+
+/** 几个圈里挑哪个：越小越好。多骑一米马路，当成长度多差 [ROAD_WEIGHT] 米 */
+object LoopScore {
+    const val ROAD_WEIGHT = 8.0
+
+    fun of(route: Route, targetMeters: Double): Double =
+        abs(route.distanceMeters - targetMeters) + (route.breakdown()[RoadKind.ROAD] ?: 0) * ROAD_WEIGHT
 }
 
 /** 一个圈：从 [start] 朝 [bearing] 方向，半径 [radiusMeters] */

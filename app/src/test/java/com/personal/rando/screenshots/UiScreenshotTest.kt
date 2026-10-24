@@ -30,6 +30,7 @@ import com.personal.rando.ride.TrackPoint
 import com.personal.rando.ui.RandoTheme
 import com.personal.rando.ui.RideDetail
 import com.personal.rando.ui.RideList
+import com.personal.rando.ui.RiddenMap
 import com.personal.rando.ui.RideView
 import com.personal.rando.ui.HintPill
 import com.personal.rando.ui.NavigationOverlay
@@ -181,9 +182,20 @@ class UiScreenshotTest {
         Ride(1_729_738_800_000, 1_729_742_400_000, 18_240.0, 3_312, 42.0, 9.1, route.points.map { TrackPoint(it, null, 0) }),
         Ride(1_729_652_400_000, 1_729_654_200_000, 7_830.0, 1_510, 12.0, 7.4, emptyList()),
         Ride(1_729_566_000_000, 1_729_570_000_000, 24_100.0, 4_620, 66.0, 10.3, emptyList()),
-    )
+    ) + (1..12).map { week ->
+        // 前几周每周一次，柱状图有高有低
+        val start = 1_729_566_000_000 - week * 7L * 86_400_000
+        Ride(start, start + 3_600_000, 8_000.0 + (week * 5_300 % 21_000), 3_000, 20.0, 8.0, emptyList())
+    }
 
-    @Test fun rideList() = shot("8_ride_list") { RideList(rides, {}, {}) }
+    /** 截图里的「现在」：2024-10-24 晚上 */
+    private val now = 1_729_771_200_000
+
+    @Test fun rideList() = shot("8_ride_list") { RideList(rides, {}, {}, {}, now) }
+
+    @Test fun riddenMap() = shot("12_ridden_map") {
+        RiddenMap(rides, {}) { m -> Image(mapImage("map_light.png"), null, m, contentScale = ContentScale.Crop) }
+    }
 
     @Test fun rideDetail() {
         compose.setContent {

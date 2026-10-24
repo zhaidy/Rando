@@ -167,6 +167,30 @@ object MapLayers {
         style.getSourceAs<GeoJsonSource>(FOCUS_POINT)?.setGeoJson(point(points?.singleOrNull()))
     }
 
+    /**
+     * 骑过的路：所有记录的轨迹叠在一起画，半透明，同一条路骑得越多越浓。
+     * 用在单独的地图上，不和导航的图层混在一起
+     */
+    fun showRidden(style: Style, tracks: List<List<LatLon>>) {
+        val id = "rando-ridden"
+        val source = style.getSourceAs<GeoJsonSource>(id) ?: GeoJsonSource(id).also { src ->
+            style.addSource(src)
+            style.addLayer(
+                LineLayer(id, id).withProperties(
+                    lineColor(Color.parseColor("#E0672B")), lineWidth(4f), lineOpacity(0.35f),
+                    lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+                )
+            )
+        }
+        source.setGeoJson(
+            FeatureCollection.fromFeatures(
+                tracks.filter { it.size >= 2 }.map { t ->
+                    Feature.fromGeometry(LineString.fromLngLats(t.map { Point.fromLngLat(it.lon, it.lat) }))
+                }
+            )
+        )
+    }
+
     fun showTrack(style: Style, track: List<LatLon>?) {
         style.getSourceAs<GeoJsonSource>(TRACK)?.setGeoJson(line(track))
     }
