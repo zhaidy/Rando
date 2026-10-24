@@ -131,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.ride.Calories
 import com.personal.rando.voice.VoiceState
 import com.personal.rando.voice.VoiceCommand
 import kotlinx.coroutines.launch
@@ -173,6 +174,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val offlineMaps = LocalContext.current.rando.offlineMaps
     val offlineState by offlineMaps.state.collectAsStateWithLifecycle()
     var offlineDialog by remember { mutableStateOf(false) }
+    val settingsStore = LocalContext.current.rando.settings
+    val settings by settingsStore.settings.collectAsStateWithLifecycle()
+    var settingsDialog by remember { mutableStateOf(false) }
     val voice = LocalContext.current.rando.voice
     val voiceState by voice.state.collectAsStateWithLifecycle()
     val sosList by group.sos.collectAsStateWithLifecycle()
@@ -480,6 +484,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         walkie = walkieText(walkieState).takeIf { groupState != null },
                         onVoice = listen,
                         listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },
+                        weightKg = settings.weightKg,
                         onReport = { type ->
                             val ok = vm.session.reportHazard(type)
                             Toast.makeText(context, if (ok) "已标记：${type.label}" else "还没定位到，标不了", Toast.LENGTH_SHORT).show()
@@ -519,6 +524,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             },
                             onOpenRides = onOpenRides,
                             onCheckUpdate = onCheckUpdate,
+                            onSettings = { settingsDialog = true },
                             onOfflineMaps = {
                                 offlineMaps.refresh()
                                 offlineDialog = true
@@ -589,6 +595,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 FinishedCard(
                                     ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record,
                                     onShare = { scope.launch { ShareCard.share(context, ride, record) } },
+                                    kcal = Calories.of(ride, settings.weightKg),
                                 )
                             }
                         }
@@ -661,6 +668,16 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    if (settingsDialog) {
+        SettingsDialog(
+            settings,
+            onSave = {
+                settingsStore.update(it)
+                settingsDialog = false
+            },
+            onDismiss = { settingsDialog = false },
+        )
     }
     if (offlineDialog) {
         OfflineMapsDialog(

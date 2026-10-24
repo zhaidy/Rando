@@ -7,6 +7,7 @@ import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
 import com.personal.rando.ride.RideSession
+import com.personal.rando.ride.SettingsStore
 import com.personal.rando.group.GroupRide
 import com.personal.rando.group.Walkie
 import com.personal.rando.voice.VoiceControl
@@ -37,6 +38,9 @@ class RandoApp : Application() {
     val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
+
+    /** 体重、自动开始记录 */
+    val settings: SettingsStore by lazy { SettingsStore(this) }
 
     val savedRoutes: SavedRouteStore by lazy { SavedRouteStore(this) }
 

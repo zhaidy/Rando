@@ -97,6 +97,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.LinearProgressIndicator
+import com.personal.rando.ride.Settings
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -165,6 +168,7 @@ fun SearchBar(
     onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier,
     onOfflineMaps: () -> Unit = {},
+    onSettings: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -201,6 +205,7 @@ fun SearchBar(
                     ) {
                         DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
                         DropdownMenuItem(text = { Text("离线地图") }, onClick = { menuOpen = false; onOfflineMaps() })
+                        DropdownMenuItem(text = { Text("设置") }, onClick = { menuOpen = false; onSettings() })
                         DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
                         DropdownMenuItem(text = { Text("当前版本 build $build") }, onClick = {}, enabled = false)
                     }
@@ -1206,6 +1211,7 @@ fun FinishedCard(
     /** 骑过的路：和以前比的那句 */
     record: String? = null,
     onShare: () -> Unit = {},
+    kcal: Int? = null,
 ) {
     val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
     Row(
@@ -1217,7 +1223,11 @@ fun FinishedCard(
     ) {
         Column(Modifier.weight(1f)) {
             Text("已保存${ride.title}", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text("${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}", color = InkSoft, fontSize = 13.sp)
+            Text(
+                "${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}" +
+                    (kcal?.let { " · $it 千卡" } ?: ""),
+                color = InkSoft, fontSize = 13.sp,
+            )
             record?.let { Text(it, color = RandoGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
         }
         if (canReturn) {
@@ -1308,3 +1318,32 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 }
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
+
+/** 设置：体重（算卡路里） */
+@Composable
+fun SettingsDialog(settings: Settings, onSave: (Settings) -> Unit, onDismiss: () -> Unit) {
+    var weight by remember { mutableStateOf(settings.weightKg.toInt().toString()) }
+    val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = weight,
+                    onValueChange = { weight = it.filter(Char::isDigit).take(3) },
+                    label = { Text("体重（公斤）") },
+                    supportingText = { Text("用来算骑车消耗了多少千卡") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble())) }) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}

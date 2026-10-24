@@ -1,0 +1,69 @@
+package com.personal.rando.ride
+
+import android.content.Context
+import androidx.core.content.edit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.roundToInt
+
+/**
+ * 骑车消耗的热量（千卡）：按在骑的平均速度查运动强度（MET，运动医学常用的骑行强度表），
+ * 乘以体重和在骑的时间；爬坡另外加上把人和车抬上去的功（人体效率按 24% 算）
+ */
+object Calories {
+    /** 车重（公斤），算爬坡时加上 */
+    private const val BIKE_KG = 12.0
+    private const val EFFICIENCY = 0.24
+
+    /** 平均速度（公里/时）→ MET */
+    fun met(kmh: Double): Double = when {
+        kmh <= 0 -> 0.0
+        kmh < 16 -> 4.0
+        kmh < 19 -> 6.8
+        kmh < 22 -> 8.0
+        kmh < 25.5 -> 10.0
+        kmh < 30.5 -> 12.0
+        else -> 15.8
+    }
+
+    fun of(meters: Double, movingSeconds: Long, ascendMeters: Double, weightKg: Double): Int {
+        if (movingSeconds <= 0) return 0
+        val hours = movingSeconds / 3600.0
+        val riding = met(meters / movingSeconds * 3.6) * weightKg * hours
+        val climbing = (weightKg + BIKE_KG) * 9.81 * ascendMeters / EFFICIENCY / 4184
+        return (riding + climbing).roundToInt()
+    }
+
+    fun of(ride: Ride, weightKg: Double) = of(ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, weightKg)
+}
+
+/** 设置：体重（算卡路里）、骑车时自动开始记录 */
+data class Settings(val weightKg: Double = DEFAULT_WEIGHT, val autoStart: Boolean = false) {
+    companion object {
+        const val DEFAULT_WEIGHT = 65.0
+    }
+}
+
+class SettingsStore(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val _settings = MutableStateFlow(
+        Settings(
+            weightKg = prefs.getFloat(KEY_WEIGHT, Settings.DEFAULT_WEIGHT.toFloat()).toDouble(),
+            autoStart = prefs.getBoolean(KEY_AUTO_START, false),
+        )
+    )
+    val settings: StateFlow<Settings> = _settings
+
+    fun update(s: Settings) {
+        _settings.value = s
+        prefs.edit {
+            putFloat(KEY_WEIGHT, s.weightKg.toFloat())
+            putBoolean(KEY_AUTO_START, s.autoStart)
+        }
+    }
+
+    private companion object {
+        const val KEY_WEIGHT = "weight"
+        const val KEY_AUTO_START = "auto_start"
+    }
+}

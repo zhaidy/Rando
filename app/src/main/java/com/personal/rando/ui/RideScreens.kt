@@ -65,6 +65,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.personal.rando.ride.Settings
+import com.personal.rando.ride.Calories
 import com.personal.rando.ride.RouteRecord
 import com.personal.rando.ui.glass.GlassIconButton
 import com.personal.rando.ui.glass.GlassPanel
@@ -277,6 +280,7 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
     val store = LocalContext.current.rando.session.rides
     val scope = rememberCoroutineScope()
     val ride by produceState<Ride?>(null, id) { value = store.get(id) }
+    val weight = LocalContext.current.rando.settings.settings.collectAsStateWithLifecycle().value.weightKg
     val record by produceState<String?>(null, ride) { value = ride?.let { r -> RouteRecord.of(r, store.list())?.text } }
     var confirmDelete by remember { mutableStateOf(false) }
     val r = ride
@@ -285,6 +289,7 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
         RideDetail(
             r, onBack = onBack, onDelete = { confirmDelete = true }, record = record,
             onShare = { scope.launch { ShareCard.share(context, r, record) } },
+            weightKg = weight,
         ) { modifier -> TrackMap(r, modifier) }
     }
     if (confirmDelete) {
@@ -320,6 +325,7 @@ fun RideDetail(
     /** 骑过的路：和其他几次比的那句 */
     record: String? = null,
     onShare: () -> Unit = {},
+    weightKg: Double = Settings.DEFAULT_WEIGHT,
     map: @Composable (Modifier) -> Unit,
 ) {
     val haze = rememberHazeState()
@@ -338,7 +344,10 @@ fun RideDetail(
                 GlassPanel(Modifier.weight(1f), shape = GlassShapes.Pill) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
                         Text(ride.title, color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                        Text(DATE.format(Date(ride.startedAt)), color = InkSoft, fontSize = 12.sp)
+                        Text(
+                            DATE.format(Date(ride.startedAt)) + " · 全程 " + Format.clock((ride.endedAt - ride.startedAt) / 1000),
+                            color = InkSoft, fontSize = 12.sp,
+                        )
                     }
                 }
                 Spacer(Modifier.width(10.dp))
@@ -363,7 +372,7 @@ fun RideDetail(
                     Row {
                         DetailStat(Format.speed(ride.averageSpeed), "均速", Modifier.weight(1f))
                         DetailStat(Format.speed(ride.maxSpeed), "最快", Modifier.weight(1f))
-                        DetailStat(Format.clock((ride.endedAt - ride.startedAt) / 1000), "全程用时", Modifier.weight(1f))
+                        DetailStat("${Calories.of(ride, weightKg)} 千卡", "消耗", Modifier.weight(1f))
                     }
                 }
             }
