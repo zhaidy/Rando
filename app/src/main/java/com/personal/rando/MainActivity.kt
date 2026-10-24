@@ -1,6 +1,12 @@
 package com.personal.rando
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import com.personal.rando.ride.RideWidget
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,11 +41,17 @@ import com.personal.rando.update.UpdateNotifications
 
 class MainActivity : ComponentActivity() {
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // 更新后已经回到应用了，“已更新，点这里打开”的通知就没用了
         UpdateNotifications.cancelUpdated(this)
+        handle(intent)
         setContent {
             RandoTheme {
                 val vm: RouteViewModel = viewModel()
@@ -82,6 +94,16 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+/** 桌面小组件上点了「开始记录」：有定位权限就直接开始 */
+private fun ComponentActivity.handle(intent: Intent?) {
+    if (intent?.action != RideWidget.ACTION_START) return
+    intent.action = null
+    val located = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        .any { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+    if (located) rando.session.startRecording()
+    else Toast.makeText(this, "先允许 Rando 使用位置，才能记录", Toast.LENGTH_LONG).show()
 }
 
 /** 「骑过的路」那一页；0 是地图，-1 是记录列表，正数是某条记录 */

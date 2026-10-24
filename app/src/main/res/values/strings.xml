@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rando</string>
+    <string name="widget_description">本周骑了多少，一键开始记录</string>
 </resources>
