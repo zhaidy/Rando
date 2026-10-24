@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.ride.Fix
+import com.personal.rando.routing.LatLon
 import com.personal.rando.ride.RecordingState
 import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RouteTimeline
@@ -78,20 +79,23 @@ private const val CROSSING_SHOWN_METERS = 300.0
 
 /**
  * 骑行视图：黑底大字，只留骑车时要看的——下一个路口、当前速度、还剩多久多远。
+ * 不导航只记录时（[navigation] 是 null）换成骑了多久、多远。
  * 地图倾斜跟着人走，只画道路轮廓
  */
 @Composable
 fun RideView(
-    navigation: NavigationState,
+    navigation: NavigationState?,
     recording: RecordingState?,
     onMap: () -> Unit,
     onStop: () -> Unit,
-    /** 到了以后原路返回；null 就不显示 */
+    /** 原路返回；null 就不显示。导航时到了才显示 */
     onReturn: (() -> Unit)? = null,
+    /** 打开码表；null 就不显示 */
+    onDashboard: (() -> Unit)? = null,
     map: @Composable (Modifier) -> Unit,
 ) {
-    val progress = navigation.progress
-    val timeline = remember(navigation.route) { RouteTimeline(navigation.route) }
+    val progress = navigation?.progress
+    val timeline = remember(navigation?.route) { navigation?.route?.let(::RouteTimeline) }
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
     CompositionLocalProvider(LocalHazeState provides haze) {
@@ -108,10 +112,14 @@ fun RideView(
             ) {
                 Column(Modifier.padding(vertical = 14.dp)) {
                     Box(Modifier.fillMaxWidth()) {
-                        RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+                        if (navigation != null) {
+                            RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+                        } else {
+                            FreeRide(recording, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+                        }
                         Clock(Modifier.align(Alignment.TopEnd).padding(horizontal = 20.dp))
                     }
-                    if (progress != null && !progress.arrived) {
+                    if (timeline != null && progress != null && !progress.arrived) {
                         RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
                     }
                 }
@@ -125,9 +133,13 @@ fun RideView(
                 tone = GlassTone.Dark,
             ) {
                 Column(Modifier.padding(vertical = 14.dp)) {
-                    RouteStrip(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp))
+                    timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) }
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "分", Modifier.weight(1f))
+                        if (navigation != null) {
+                            BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "剩余 分", Modifier.weight(1f))
+                        } else {
+                            BigStat(Format.clock(recording?.movingSeconds ?: 0), "骑行时间", Modifier.weight(1f))
+                        }
                         Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.CenterHorizontally) {
                             AnimatedContent(
                                 targetState = String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6),
@@ -139,11 +151,29 @@ fun RideView(
                             ) { v -> Text(v, color = Color.White, fontSize = 68.sp, fontWeight = FontWeight.Medium) }
                             Text("公里/时", color = DIM, fontSize = 14.sp)
                         }
-                        BigStat(
-                            progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
-                            "公里",
-                            Modifier.weight(1f),
-                        )
+                        if (navigation != null) {
+                            BigStat(
+                                progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
+                                "剩余 公里",
+                                Modifier.weight(1f),
+                            )
+                        } else {
+                            BigStat(
+                                String.format(Locale.US, "%.1f", (recording?.distanceMeters ?: 0.0) / 1000),
+                                "已骑 公里",
+                                Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    // 原路返回单独一行，和下面三个按钮挤在一起字会折行
+                    if (onReturn != null && (navigation == null || progress?.arrived == true)) {
+                        GlassButton(
+                            onClick = onReturn,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
+                            tone = GlassTone.Tinted(RandoGreen),
+                        ) {
+                            Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        }
                     }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
@@ -152,9 +182,9 @@ fun RideView(
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
-                        if (onReturn != null && progress?.arrived == true) {
-                            GlassButton(onClick = onReturn, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoGreen)) {
-                                Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        if (onDashboard != null) {
+                            GlassButton(onClick = onDashboard, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
+                                Text("码表", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                             }
                         }
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
@@ -299,17 +329,30 @@ private fun RideMessage(text: String) {
 }
 
 @Composable
-private fun BigStat(value: String, unit: String, modifier: Modifier) {
+private fun BigStat(value: String, label: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Medium)
-        Text("剩余 $unit", color = DIM, fontSize = 13.sp)
+        Text(label, color = DIM, fontSize = 13.sp)
+    }
+}
+
+/** 不导航时顶上那块：在记录，骑了多久 */
+@Composable
+private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
+    Column(modifier) {
+        RideMessage("自由骑行")
+        Text(
+            recording?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · 爬升 ${it.ascendMeters.toInt()} 米" } ?: "记录中",
+            color = DIM,
+            fontSize = 18.sp,
+        )
     }
 }
 
 /** 黑底地图，镜头倾斜跟着人、朝骑行方向转；路线照样按路的种类上色 */
 @SuppressLint("MissingPermission")
 @Composable
-fun RideMap(navigation: NavigationState, fix: Fix?, modifier: Modifier) {
+fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, modifier: Modifier) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
     val mapView = rememberMapView(textureMode = true)
@@ -317,7 +360,7 @@ fun RideMap(navigation: NavigationState, fix: Fix?, modifier: Modifier) {
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             // 一开始就放大到骑行的比例，不然没收到定位前停在整个地球的视角
-            val here = fix?.location ?: navigation.route.points.firstOrNull()
+            val here = fix?.location ?: navigation?.route?.points?.firstOrNull() ?: track.lastOrNull()
             if (here != null) {
                 m.cameraPosition = CameraPosition.Builder().target(LatLng(here.lat, here.lon)).zoom(RIDE_ZOOM).tilt(RIDE_TILT).build()
             }
@@ -326,7 +369,6 @@ fun RideMap(navigation: NavigationState, fix: Fix?, modifier: Modifier) {
             m.uiSettings.isLogoEnabled = false
             m.setStyle(Style.Builder().fromJson(RideMapStyle.JSON)) { s ->
                 MapLayers.install(s, dark = true)
-                MapLayers.show(s, navigation.route, start = null, end = navigation.destination, via = navigation.via)
                 val puck = LocationComponentOptions.builder(context)
                     .foregroundTintColor(android.graphics.Color.parseColor("#2E7D4F"))
                     .bearingTintColor(android.graphics.Color.parseColor("#2E7D4F"))
@@ -349,9 +391,14 @@ fun RideMap(navigation: NavigationState, fix: Fix?, modifier: Modifier) {
         val m = map ?: return@LaunchedEffect
         fix?.let { m.locationComponent.forceLocationUpdate(it.toLocation()) }
     }
-    LaunchedEffect(map, navigation.route, navigation.via) {
+    LaunchedEffect(map, navigation?.route, navigation?.via) {
         val s = map?.style ?: return@LaunchedEffect
-        MapLayers.show(s, navigation.route, start = null, end = navigation.destination, via = navigation.via)
+        MapLayers.show(s, navigation?.route, start = null, end = navigation?.destination, via = navigation?.via.orEmpty())
+    }
+    // 骑过的轨迹；按点数变化重画
+    LaunchedEffect(map, track.size) {
+        val s = map?.style ?: return@LaunchedEffect
+        MapLayers.showTrack(s, track)
     }
     val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT)
     Box(modifier) {

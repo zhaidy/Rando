@@ -821,7 +821,7 @@ private fun Note(color: Color, text: String, strong: Boolean = false, onClick: (
 
 /** 记录中的小胶囊：红点呼吸，时间、距离、速度 */
 @Composable
-fun RecordingPill(recording: RecordingState, onDashboard: () -> Unit, onStop: () -> Unit, modifier: Modifier = Modifier) {
+fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () -> Unit, modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "rec")
     val pulse by t.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
     Row(
@@ -838,8 +838,8 @@ fun RecordingPill(recording: RecordingState, onDashboard: () -> Unit, onStop: ()
             PillStat(Format.distance(recording.distanceMeters.toInt()))
             PillStat(Format.speed(recording.currentSpeed))
         }
-        GlassButton(onClick = onDashboard, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text("码表", color = Ink, fontSize = 14.sp)
+        GlassButton(onClick = onRideView, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+            Text("骑行视图", color = Ink, fontSize = 14.sp)
         }
         Spacer(Modifier.width(6.dp))
         GlassButton(onClick = onStop, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
