@@ -62,6 +62,8 @@ import com.personal.rando.ride.Fix
 import com.personal.rando.group.Teammate
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.nextOfEach
+import com.personal.rando.ride.Settings
+import com.personal.rando.ride.Calories
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
@@ -114,6 +116,8 @@ fun RideView(
     walkie: String? = null,
     /** 在现在的位置标一处路况 */
     onReport: (HazardType) -> Unit = {},
+    /** 体重：算消耗了多少千卡 */
+    weightKg: Double = Settings.DEFAULT_WEIGHT,
     onVoice: () -> Unit = {},
     /** 正在听语音指令：听到的字（还没听到是「请说…」）；没在听是 null */
     listening: String? = null,
@@ -199,7 +203,7 @@ fun RideView(
                             )
                         }
                     }
-                    recording?.let { MoreStats(it, navigating = navigation != null, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
+                    recording?.let { MoreStats(it, navigating = navigation != null, weightKg, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -230,7 +234,7 @@ fun RideView(
  * 自由骑行时是均速、最快、爬升、全程用时（已骑、骑行时间在上面）
  */
 @Composable
-private fun MoreStats(recording: RecordingState, navigating: Boolean, modifier: Modifier) {
+private fun MoreStats(recording: RecordingState, navigating: Boolean, weightKg: Double, modifier: Modifier) {
     // 全程用时每秒走一下，不等定位
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
@@ -243,7 +247,7 @@ private fun MoreStats(recording: RecordingState, navigating: Boolean, modifier: 
     val stats = buildList {
         if (navigating) add(String.format(Locale.US, "%.1f", recording.distanceMeters / 1000) to "已骑 公里")
         add(kmh(average) to "均速")
-        add(kmh(recording.maxSpeed) to "最快")
+        add("${Calories.of(recording.distanceMeters, recording.movingSeconds, recording.ascendMeters, weightKg)}" to "千卡")
         add("${recording.ascendMeters.toInt()}" to "爬升 米")
         if (!navigating) add(Format.clock(((now - recording.startedAt) / 1000).coerceAtLeast(0)) to "全程用时")
     }
