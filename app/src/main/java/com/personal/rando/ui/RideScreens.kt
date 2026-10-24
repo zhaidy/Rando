@@ -1,5 +1,9 @@
 package com.personal.rando.ui
 
+import com.personal.rando.ride.HeatLevel
+import com.personal.rando.ride.RideHeat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.personal.rando.ride.Period
 import com.personal.rando.ui.glass.GlassButton
@@ -17,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -421,10 +426,20 @@ fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier)
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
                         Text("骑过的路", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())} · 颜色越深骑得越多",
+                            "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
                             color = InkSoft,
                             fontSize = 12.sp,
                         )
+                        // 图例：每档一个色块
+                        Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HeatLevel.entries.forEach { level ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(width = 14.dp, height = 4.dp).clip(GlassShapes.Pill).background(kindColor(level.color)))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(level.label, color = InkSoft, fontSize = 11.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -435,13 +450,18 @@ fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier)
 @Composable
 private fun RiddenTracks(rides: List<Ride>, modifier: Modifier) {
     val mapView = rememberMapView(textureMode = true)
+    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             m.uiSettings.isRotateGesturesEnabled = false
             m.setStyle(MapLayers.STYLE_URL) { s ->
                 val tracks = rides.map { r -> r.points.map { it.location } }
-                MapLayers.showRidden(s, tracks)
+                // 数格子要点时间，放到后台算
+                scope.launch {
+                    val pieces = withContext(Dispatchers.Default) { RideHeat.pieces(tracks) }
+                    MapLayers.showRidden(s, pieces)
+                }
                 val all = tracks.flatten()
                 if (all.size >= 2) {
                     val bounds = LatLngBounds.Builder().includes(all.map { LatLng(it.lat, it.lon) }).build()
