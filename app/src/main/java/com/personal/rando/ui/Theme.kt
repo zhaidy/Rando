@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 val RandoGreen = Color(0xFF2E7D4F)
+val RandoGreenDeep = Color(0xFF1B5E3A)
+val RandoBlue = Color(0xFF2F7DE1)
 val RandoOrange = Color(0xFFE0672B)
 val RandoAmber = Color(0xFFC98A1B)
 val RandoRed = Color(0xFFC0392B)

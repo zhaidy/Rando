@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // 界面截图测试：在电脑上把 Compose 界面渲染成图片（./gradlew recordRoborazziDebug）
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -56,6 +58,8 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // 截图测试要读 Android 资源
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -75,8 +79,25 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.maplibre)
+    // 液态玻璃：面板折射、模糊后面的地图
+    implementation(libs.haze)
+    implementation(libs.haze.glass)
 
     testImplementation(libs.junit)
     // Android 自带的 org.json 在单元测试里是空壳，换成真实现
     testImplementation(libs.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+}
+
+tasks.withType<Test>().configureEach {
+    // 截图测试要下一个 100 MB 的 Android 运行时，平时（包括 CI）不跑；要看界面时加 -Pscreenshots
+    if (!project.hasProperty("screenshots")) exclude("**/screenshots/**")
+    // 云端会话里 Maven Central 常被限流，可以用环境变量换成镜像
+    System.getenv("ROBOLECTRIC_REPO")?.let { systemProperty("robolectric.dependency.repo.url", it) }
 }

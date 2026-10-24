@@ -17,6 +17,9 @@ object Format {
 
     fun percent(share: Double): String = "${Math.round(share * 100)}%"
 
+    /** 图例里的占比：有但不到 1% 的写「<1%」，不写「0%」 */
+    fun share(share: Double): String = if (share > 0 && share < 0.005) "<1%" else percent(share)
+
     /** 码表样式：12:34、1:02:03 */
     fun clock(seconds: Long): String {
         val h = seconds / 3600

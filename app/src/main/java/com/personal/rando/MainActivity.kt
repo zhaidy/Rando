@@ -5,6 +5,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.CompositionLocalProvider
+import com.personal.rando.ui.glass.LocalHazeState
+import com.personal.rando.ui.glass.Motion
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -33,19 +44,32 @@ class MainActivity : ComponentActivity() {
                 val vm: RouteViewModel = viewModel()
                 // 0 是地图，-1 是记录列表，其他是某条记录的 id
                 var screen by rememberSaveable { mutableLongStateOf(0L) }
-                // 地图一直留着（来回切不用重新加载），记录页盖在上面
                 // 每点一次「检查更新」加一，UpdatePrompt 看到变化就去查
                 var updateChecks by remember { mutableIntStateOf(0) }
-                MapScreen(vm, onOpenRides = { screen = -1L }, onCheckUpdate = { updateChecks++ })
-                when (val s = screen) {
-                    0L -> Unit
-                    -1L -> {
-                        BackHandler { screen = 0L }
-                        RideListScreen(onBack = { screen = 0L }, onOpen = { screen = it })
-                    }
-                    else -> {
-                        BackHandler { screen = -1L }
-                        RideDetailScreen(s, onBack = { screen = -1L })
+                // 液态玻璃：地图登记成取景来源，上面所有玻璃面板都从这里取
+                val haze = rememberHazeState()
+                CompositionLocalProvider(LocalHazeState provides haze) {
+                    // 地图一直留着（来回切不用重新加载），记录页盖在上面，从下面浮上来
+                    MapScreen(vm, onOpenRides = { screen = -1L }, onCheckUpdate = { updateChecks++ })
+                    AnimatedContent(
+                        targetState = screen,
+                        transitionSpec = {
+                            (fadeIn(tween(220)) + slideInVertically(Motion.smooth()) { it / 5 })
+                                .togetherWith(fadeOut(tween(160)) + slideOutVertically(Motion.smooth()) { it / 8 })
+                        },
+                        label = "screen",
+                    ) { s ->
+                        when (s) {
+                            0L -> Unit
+                            -1L -> {
+                                BackHandler { screen = 0L }
+                                RideListScreen(onBack = { screen = 0L }, onOpen = { screen = it })
+                            }
+                            else -> {
+                                BackHandler { screen = -1L }
+                                RideDetailScreen(s, onBack = { screen = -1L })
+                            }
+                        }
                     }
                 }
                 val navigation by vm.session.navigation.collectAsStateWithLifecycle()

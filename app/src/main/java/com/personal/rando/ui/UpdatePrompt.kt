@@ -65,6 +65,8 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     if (navigating) return
     AlertDialog(
         onDismissRequest = { if (!updating) update = null },
+        shape = com.personal.rando.ui.glass.GlassShapes.Sheet,
+        containerColor = androidx.compose.ui.graphics.Color(0xF7F7FAF8),
         title = { Text("发现新版本 build ${info.build}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

@@ -81,4 +81,22 @@ class RoadKindTest {
         )
         assertEquals(mapOf(RoadKind.PCN to 800, RoadKind.ROAD to 200), r.breakdown())
     }
+
+    @Test
+    fun `起点终点附近的推车不算，途中的算`() {
+        val push = RouteParser.parseTags("highway=corridor")
+        val path = RouteParser.parseTags("highway=footway")
+        val r = Route(
+            points = (0..5).map { LatLon(1.3 + it * 0.001, 103.8) },
+            distanceMeters = 0, durationSeconds = 0, ascendMeters = 0,
+            segments = listOf(
+                RouteSegment(50, push, 1),
+                RouteSegment(500, path, 2),
+                RouteSegment(30, push, 3),
+                RouteSegment(500, path, 4),
+                RouteSegment(40, push, 5),
+            ),
+        )
+        assertEquals(30, r.pushBetweenEnds())
+    }
 }
