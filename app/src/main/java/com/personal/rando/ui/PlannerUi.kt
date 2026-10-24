@@ -86,6 +86,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.personal.rando.routing.Pace
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -365,6 +367,7 @@ class PlannerActions(
     val onRetry: () -> Unit = {},
     val onStart: () -> Unit = {},
     val onShowOnMap: (NoteTarget) -> Unit = {},
+    val onPace: (Pace) -> Unit = {},
 )
 
 /** 卡片顶上那行：还没选、去某个地方、骑一圈 */
@@ -511,6 +514,7 @@ fun PlannerSheet(
                                 loop = state.loop != null,
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
+                                onPace = actions.onPace,
                             )
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
@@ -744,12 +748,14 @@ fun RouteSummary(
     /** 展开详情：爬升图和各项提示；收着时只留最要紧的，地图不被挡住 */
     expanded: Boolean = false,
     onToggleDetails: () -> Unit = {},
+    onPace: (Pace) -> Unit = {},
 ) {
     Row {
         BigStat(Format.distance(route.distanceMeters), "距离", Modifier.weight(1.2f))
         BigStat(Format.duration(route.durationSeconds), "预计", Modifier.weight(1.2f))
         BigStat("${route.ascendMeters} 米", "爬升", Modifier.weight(1f))
     }
+    PaceLine(prefs, onPace)
     val breakdown = route.breakdown()
     if (breakdown.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
@@ -772,6 +778,49 @@ fun RouteSummary(
         }
         DetailsToggle(expanded, onToggleDetails)
     }
+}
+
+/** 「预计」按什么速度算，点开换档 */
+@Composable
+private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .padding(top = 4.dp)
+                .clip(GlassShapes.Pill)
+                .clickable { open = true }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("预计时间${paceText(prefs.pace, prefs.mySpeed)}", color = InkSoft, fontSize = 13.sp)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = "换速度", tint = InkSoft, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = GlassShapes.Card,
+            containerColor = Color(0xF7F7FAF8),
+        ) {
+            Pace.entries.forEach { pace ->
+                DropdownMenuItem(
+                    text = { Text(paceText(pace, prefs.mySpeed).removePrefix("按")) },
+                    leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen) },
+                    onClick = {
+                        open = false
+                        if (pace != prefs.pace) onPace(pace)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 「按我的速度 18.2 km/h」「按悠闲的速度」 */
+fun paceText(pace: Pace, mySpeed: Double?): String = when {
+    pace != Pace.MINE -> "按${pace.label}的速度（${pace.watts} 瓦）"
+    mySpeed == null -> "按我的速度（再骑几次才准）"
+    else -> "按我的速度 ${Format.speed(mySpeed)}"
 }
 
 /** 收起时的一两句：要不要上马路，会不会下雨 */

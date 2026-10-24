@@ -84,7 +84,7 @@ class UiScreenshotTest {
 
     private val route = RouteParser.parse(File("src/test/resources/preview/route.json").readText())
     private val mbs = Place("Marina Bay Sands", "", LatLon(1.2838, 103.8591))
-    private val prefs = RoutePrefs(BikeProfile.PCN, avoidRoads = true)
+    private val prefs = RoutePrefs(BikeProfile.PCN, avoidRoads = true, mySpeed = 5.1)
     private val saved = listOf(
         SavedPlace(SavedPlace.HOME, LatLon(1.35, 103.82)),
         SavedPlace(SavedPlace.WORK, LatLon(1.28, 103.85)),

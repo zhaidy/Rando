@@ -25,17 +25,21 @@ class BRouterClient(
 
     /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点 */
     suspend fun route(stops: List<LatLon>, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
-        val custom = prefs.customProfile ?: return@withContext fetch(url(stops, prefs.profile.brouterName))
-        // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
-        val cached = uploaded[custom]
-        if (cached != null) {
-            try {
-                return@withContext fetch(url(stops, cached))
-            } catch (_: IOException) {
-                uploaded.remove(custom)
+        val watts = prefs.pace.watts
+        val route = run {
+            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts))
+            // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
+            val cached = uploaded[custom]
+            if (cached != null) {
+                try {
+                    return@run fetch(url(stops, cached, watts))
+                } catch (_: IOException) {
+                    uploaded.remove(custom)
+                }
             }
+            fetch(url(stops, upload(custom), watts))
         }
-        fetch(url(stops, upload(custom)))
+        route.copy(durationSeconds = prefs.duration(route))
     }
 
     private fun fetch(url: String): Route =
@@ -67,7 +71,8 @@ class BRouterClient(
         return json.getString("profileid").also { uploaded[profile] = it }
     }
 
-    fun url(stops: List<LatLon>, profileName: String): String =
+    /** [watts]：骑手平均功率，只影响预计时间，不影响走哪条路；null 用配置里的默认（100 瓦） */
+    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null): String =
         baseUrl.toHttpUrl().newBuilder()
             .addQueryParameter("lonlats", stops.joinToString("|", transform = ::coord))
             .addQueryParameter("profile", profileName)
@@ -75,6 +80,7 @@ class BRouterClient(
             .addQueryParameter("format", "geojson")
             // 带上路口转向提示（voicehints），导航播报要用
             .addQueryParameter("timode", "2")
+            .apply { if (watts != null) addQueryParameter("profile:bikerPower", watts.toString()) }
             .build()
             .toString()
 
