@@ -1,5 +1,17 @@
 package com.personal.rando.ui
 
+import com.personal.rando.ride.HeatLevel
+import com.personal.rando.ride.RideHeat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.personal.rando.ride.Period
+import com.personal.rando.ui.glass.GlassButton
+import com.personal.rando.ride.PeriodTotal
+import com.personal.rando.ride.RideStats
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.animation.core.Animatable
+import kotlin.math.abs
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -9,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -74,15 +87,15 @@ private val DATE = SimpleDateFormat("M月d日 EEE HH:mm", Locale.CHINA)
 // ───────────────────────── 记录列表 ─────────────────────────
 
 @Composable
-fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit) {
+fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit) {
     val store = LocalContext.current.rando.session.rides
     val rides by produceState<List<Ride>?>(null) { value = store.list() }
-    RideList(rides, onBack, onOpen)
+    RideList(rides, onBack, onOpen, onRiddenMap)
 }
 
 /** 骑行记录：一整块玻璃盖在地图上，最上面是总数，下面一条条往上浮出来 */
 @Composable
-fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit) {
+fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit = {}, now: Long = System.currentTimeMillis()) {
     GlassPanel(
         Modifier
             .fillMaxSize()
@@ -109,7 +122,7 @@ fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit) {
                     contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    item { Totals(rides) }
+                    item { StatsCard(rides, now, onRiddenMap) }
                     itemsIndexed(rides, key = { _, r -> r.id }) { i, ride -> RideRow(ride, i) { onOpen(ride.id) } }
                 }
             }
@@ -117,13 +130,86 @@ fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit) {
     }
 }
 
+/**
+ * 统计：这周（这个月）骑了多少、和上周比，下面一排柱子是最近几周（几个月）每段的公里数。
+ * 底下一行是全部合计，和「骑过的路」入口
+ */
 @Composable
-private fun Totals(rides: List<Ride>) {
+private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit) {
+    var period by rememberSaveable { mutableStateOf(Period.WEEK) }
+    val totals = remember(rides, period, now) { RideStats.recent(rides, period, if (period == Period.WEEK) 8 else 6, now) }
+    val current = totals.last()
+    val previous = totals.getOrNull(totals.size - 2)
     GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoGreen)) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-            TotalStat("${rides.size}", "次骑行")
-            TotalStat(Format.distance(rides.sumOf { it.distanceMeters }.toInt()), "总距离")
-            TotalStat(Format.clock(rides.sumOf { it.movingSeconds }), "骑行时间")
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(period.unit, Modifier.weight(1f), color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                Period.entries.forEach { p ->
+                    val selected = p == period
+                    Text(
+                        p.label,
+                        Modifier
+                            .clip(GlassShapes.Pill)
+                            .background(if (selected) Color.White.copy(alpha = 0.9f) else Color.Transparent)
+                            .clickable { period = p }
+                            .padding(horizontal = 14.dp, vertical = 5.dp),
+                        color = if (selected) RandoGreenDeep else Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
+                TotalStat(Format.distance(current.meters.toInt()), "${current.rides} 次")
+                TotalStat(Format.clock(current.movingSeconds), "骑行时间")
+                previous?.let { TotalStat(compare(current.meters - it.meters), "比上${period.label}") }
+            }
+            PeriodBars(totals, Modifier.padding(top = 14.dp).fillMaxWidth().height(120.dp))
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "全部 ${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
+                    Modifier.weight(1f),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                )
+                GlassButton(onClick = onRiddenMap, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                    Text("骑过的路", color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+/** 「+12.3 公里」「-800 米」「持平」 */
+private fun compare(meters: Double): String = when {
+    abs(meters) < 50 -> "持平"
+    meters > 0 -> "+" + Format.distance(meters.toInt())
+    else -> "-" + Format.distance((-meters).toInt())
+}
+
+/** 每周（月）一根柱子，最后一根是这周，亮一点；柱子从下往上长出来 */
+@Composable
+private fun PeriodBars(totals: List<PeriodTotal>, modifier: Modifier) {
+    val grow = remember(totals) { Animatable(0f) }
+    LaunchedEffect(totals) { grow.animateTo(1f, Motion.smooth()) }
+    val max = totals.maxOf { it.meters }.coerceAtLeast(1.0)
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+        totals.forEachIndexed { i, t ->
+            val last = i == totals.lastIndex
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                if (t.meters > 0) {
+                    Text(String.format(Locale.US, "%.0f", t.meters / 1000), color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .fillMaxHeight((t.meters / max * grow.value).toFloat().coerceAtLeast(0.02f))
+                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                        .background(Color.White.copy(alpha = if (last) 0.95f else 0.45f))
+                )
+                Text(t.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
+            }
         }
     }
 }
@@ -131,7 +217,12 @@ private fun Totals(rides: List<Ride>) {
 @Composable
 private fun TotalStat(value: String, label: String) {
     Column {
-        Text(value, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        // 数字大、单位小，三个并排也不折行
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value.substringBefore(' '), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            val unit = value.substringAfter(' ', "")
+            if (unit.isNotEmpty()) Text(" $unit", color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(bottom = 3.dp))
+        }
         Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
     }
 }
@@ -297,6 +388,85 @@ private fun TrackMap(ride: Ride, modifier: Modifier) {
                                 bounds, 40.dp.roundToPx(), 120.dp.roundToPx(), 40.dp.roundToPx(), 260.dp.roundToPx(),
                             )
                         )
+                    }
+                }
+            }
+        }
+    }
+    AndroidView(factory = { mapView }, modifier = modifier)
+}
+
+// ───────────────────────── 骑过的路 ─────────────────────────
+
+/** 所有记录的轨迹叠在一张地图上，看看哪些路骑过、哪些常骑 */
+@Composable
+fun RiddenMapScreen(onBack: () -> Unit) {
+    val store = LocalContext.current.rando.session.rides
+    val rides by produceState<List<Ride>?>(null) { value = store.list() }
+    val list = rides ?: return
+    RiddenMap(list, onBack) { modifier -> RiddenTracks(list, modifier) }
+}
+
+@Composable
+fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier) -> Unit) {
+    val haze = rememberHazeState()
+    CompositionLocalProvider(LocalHazeState provides haze) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+            map(Modifier.fillMaxSize().hazeSource(haze))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                Spacer(Modifier.width(10.dp))
+                GlassPanel(Modifier.weight(1f), shape = GlassShapes.Pill) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+                        Text("骑过的路", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
+                            color = InkSoft,
+                            fontSize = 12.sp,
+                        )
+                        // 图例：每档一个色块
+                        Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HeatLevel.entries.forEach { level ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(width = 14.dp, height = 4.dp).clip(GlassShapes.Pill).background(kindColor(level.color)))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(level.label, color = InkSoft, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RiddenTracks(rides: List<Ride>, modifier: Modifier) {
+    val mapView = rememberMapView(textureMode = true)
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    LaunchedEffect(mapView) {
+        mapView.getMapAsync { m ->
+            m.uiSettings.isRotateGesturesEnabled = false
+            m.setStyle(MapLayers.STYLE_URL) { s ->
+                val tracks = rides.map { r -> r.points.map { it.location } }
+                // 数格子要点时间，放到后台算
+                scope.launch {
+                    val pieces = withContext(Dispatchers.Default) { RideHeat.pieces(tracks) }
+                    MapLayers.showRidden(s, pieces)
+                }
+                val all = tracks.flatten()
+                if (all.size >= 2) {
+                    val bounds = LatLngBounds.Builder().includes(all.map { LatLng(it.lat, it.lon) }).build()
+                    with(density) {
+                        m.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 40.dp.roundToPx(), 120.dp.roundToPx(), 40.dp.roundToPx(), 40.dp.roundToPx()))
                     }
                 }
             }

@@ -406,7 +406,7 @@ fun PlannerSheet(
                         }
                     }
                     is SheetHeader.Loop -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("骑一圈 · 约 ${h.km} 公里", Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        Text("骑一圈 · 约 ${h.km} 公里", Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         LinkText("换一条", actions.onAnotherLoop)
                         IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
                     }
@@ -437,7 +437,7 @@ fun PlannerSheet(
                             }
                         }
                         is RouteState.Ready -> Column {
-                            RouteSummary(r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities)
+                            RouteSummary(r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities, loop = state.loop != null)
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
                                 Text("开始导航", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -468,7 +468,7 @@ private fun LoopRow(onLoop: (Int) -> Unit) {
     }
 }
 
-private val LOOP_KMS = listOf(10, 20, 30, 50)
+private val LOOP_KMS = listOf(5, 10, 20, 30, 50)
 
 /** 途经点一个一行，可以删；下面一个「加途经点」 */
 @Composable
@@ -609,6 +609,8 @@ fun RouteSummary(
     onShowOnMap: (NoteTarget) -> Unit,
     weather: RouteWeather? = null,
     amenities: List<AmenityOnRoute> = emptyList(),
+    /** 是骑一圈：马路绕不开时提示换个方向，而不是说附近没路 */
+    loop: Boolean = false,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
         BigStat(Format.distance(route.distanceMeters), "距离")
@@ -622,7 +624,7 @@ fun RouteSummary(
     RoadBar(route, breakdown)
     Legend(breakdown)
     Spacer(Modifier.height(10.dp))
-    Notes(route, breakdown, prefs, onShowOnMap)
+    Notes(route, breakdown, prefs, onShowOnMap, loop)
     Spacer(Modifier.height(5.dp))
     Outlook(route, weather, amenities, onShowOnMap)
 }
@@ -747,14 +749,15 @@ private fun Legend(breakdown: Map<RoadKind, Int>) {
 
 /** 要不要上马路、过几次马路、天桥、推车：每条一行，点一下在地图上一处处看 */
 @Composable
-private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> Unit) {
+private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> Unit, loop: Boolean) {
     val road = breakdown[RoadKind.ROAD] ?: 0
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         if (road > 0) {
             val hint = when {
                 prefs.profile != BikeProfile.PCN -> "；选「公园连道」再打开「不上马路」可以尽量避开"
-                prefs.avoidRoads -> "，附近没有别的路可走"
-                else -> "；打开「不上马路」可以尽量避开"
+                !prefs.avoidRoads -> "；打开「不上马路」可以尽量避开"
+                loop -> "；点「换一条」换个方向试试"
+                else -> "，附近没有别的路可走"
             }
             Note(RandoRed, "有 ${Format.distance(road)} 要在马路上骑$hint", strong = true) { onShowOnMap(NoteTarget.ROAD) }
         } else {

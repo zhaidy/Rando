@@ -28,6 +28,7 @@ import com.personal.rando.ui.MapScreen
 import com.personal.rando.ui.RandoTheme
 import com.personal.rando.ui.RideDetailScreen
 import com.personal.rando.ui.RideListScreen
+import com.personal.rando.ui.RiddenMapScreen
 import com.personal.rando.ui.RouteViewModel
 import com.personal.rando.ui.UpdatePrompt
 import com.personal.rando.update.UpdateNotifications
@@ -63,7 +64,11 @@ class MainActivity : ComponentActivity() {
                             0L -> Unit
                             -1L -> {
                                 BackHandler { screen = 0L }
-                                RideListScreen(onBack = { screen = 0L }, onOpen = { screen = it })
+                                RideListScreen(onBack = { screen = 0L }, onOpen = { screen = it }, onRiddenMap = { screen = RIDDEN })
+                            }
+                            RIDDEN -> {
+                                BackHandler { screen = -1L }
+                                RiddenMapScreen(onBack = { screen = -1L })
                             }
                             else -> {
                                 BackHandler { screen = -1L }
@@ -78,3 +83,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/** 「骑过的路」那一页；0 是地图，-1 是记录列表，正数是某条记录 */
+private const val RIDDEN = -2L

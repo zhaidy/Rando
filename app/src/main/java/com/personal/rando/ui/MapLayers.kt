@@ -3,6 +3,7 @@ package com.personal.rando.ui
 import android.graphics.Color
 import com.personal.rando.routing.LatLon
 import com.personal.rando.places.Amenity
+import com.personal.rando.ride.HeatPiece
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.RoadPiece
 import com.personal.rando.routing.Route
@@ -165,6 +166,38 @@ object MapLayers {
     fun showFocus(style: Style, points: List<LatLon>?) {
         style.getSourceAs<GeoJsonSource>(FOCUS_LINE)?.setGeoJson(line(points?.takeIf { it.size >= 2 }))
         style.getSourceAs<GeoJsonSource>(FOCUS_POINT)?.setGeoJson(point(points?.singleOrNull()))
+    }
+
+    /**
+     * 骑过的路：按骑过几次分段上色（浅黄、橙、红），次数多的压在上面。
+     * 用在单独的地图上，不和导航的图层混在一起
+     */
+    fun showRidden(style: Style, pieces: List<HeatPiece>) {
+        val id = "rando-ridden"
+        val source = style.getSourceAs<GeoJsonSource>(id) ?: GeoJsonSource(id).also { src ->
+            style.addSource(src)
+            // 底图的马路是黄色的，垫一圈深色描边，浅黄的线才看得出来
+            style.addLayer(
+                LineLayer("$id-casing", id).withProperties(
+                    lineColor(Color.parseColor("#3E2723")), lineWidth(6.5f), lineOpacity(0.55f),
+                    lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+                )
+            )
+            style.addLayer(
+                LineLayer(id, id).withProperties(
+                    lineColor(Expression.toColor(Expression.get("color"))), lineWidth(4f),
+                    lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+                )
+            )
+        }
+        source.setGeoJson(
+            FeatureCollection.fromFeatures(
+                pieces.map { piece ->
+                    Feature.fromGeometry(LineString.fromLngLats(piece.points.map { Point.fromLngLat(it.lon, it.lat) }))
+                        .apply { addStringProperty("color", piece.level.color) }
+                }
+            )
+        )
     }
 
     fun showTrack(style: Style, track: List<LatLon>?) {

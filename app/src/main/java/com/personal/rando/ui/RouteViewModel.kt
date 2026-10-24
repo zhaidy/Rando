@@ -26,6 +26,10 @@ import com.personal.rando.weather.Weather
 import com.personal.rando.weather.WeatherClient
 import com.personal.rando.weather.along
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import com.personal.rando.routing.LoopShape
+import com.personal.rando.routing.LoopScore
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
 import kotlinx.coroutines.CancellationException
@@ -272,42 +276,42 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     }
 
     /**
-     * 画一圈：先按经验估个圈，算出来太长太短就按比例调一次；
-     * 某个方向算不出来（途经点在水库、工地里）就换个方向，最多试三个
+     * 画一圈：同时试几个方向的圈，每个先按经验估大小，长度差太多按比例再调一次；
+     * 最后挑马路最少、长度最接近的那条。途经点是按形状画的，有的方向附近只有马路，
+     * 开了「不上马路」也只能走马路去碰它，所以要多试几个方向比一比
      */
-    private suspend fun planLoop(from: LatLon, loop: LoopRequest, prefs: RoutePrefs): RouteState {
+    private suspend fun planLoop(from: LatLon, loop: LoopRequest, prefs: RoutePrefs): RouteState = coroutineScope {
         val target = loop.targetMeters.toDouble()
-        var error: Exception? = null
-        for (k in 0 until LOOP_TRIES) {
-            val shape = LoopPlanner.plan(from, target, loop.attempt + k)
-                ?: return RouteState.Failed("附近画不下这么大的圈，换个距离试试")
-            try {
-                var stops = listOf(from) + shape.waypoints + from
-                var route = router.route(stops, prefs)
-                val ratio = target / route.distanceMeters.coerceAtLeast(1)
-                val adjusted = if (abs(ratio - 1) > LOOP_TOLERANCE) shape.scaled(ratio) else null
-                if (adjusted != null) {
-                    val retryStops = listOf(from) + adjusted.waypoints + from
-                    val retry = try {
-                        router.route(retryStops, prefs)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (retry != null && abs(retry.distanceMeters - target) < abs(route.distanceMeters - target)) {
-                        route = retry
-                        stops = retryStops
-                    }
-                }
-                return RouteState.Ready(route, stops)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e
-            }
+        val shapes = (0 until LOOP_CANDIDATES)
+            .mapNotNull { LoopPlanner.plan(from, target, loop.attempt * LOOP_CANDIDATES + it) }
+            .distinct()
+        if (shapes.isEmpty()) return@coroutineScope RouteState.Failed("附近画不下这么大的圈，换个距离试试")
+        val tried = shapes.map { shape -> async { tryLoop(from, shape, target, prefs) } }.awaitAll()
+        val best = tried.mapNotNull { it.getOrNull() }.minByOrNull { (route, _) -> LoopScore.of(route, target) }
+            ?: return@coroutineScope RouteState.Failed(tried.firstNotNullOfOrNull { it.exceptionOrNull()?.message } ?: "算路失败")
+        RouteState.Ready(best.first, best.second)
+    }
+
+    /** 按一个圈算路线；返回 (路线, 依次经过的点) */
+    private suspend fun tryLoop(from: LatLon, shape: LoopShape, target: Double, prefs: RoutePrefs): Result<Pair<Route, List<LatLon>>> {
+        val stops = listOf(from) + shape.waypoints + from
+        val route = try {
+            router.route(stops, prefs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return Result.failure(e)
         }
-        return RouteState.Failed(error?.message ?: "算路失败")
+        val ratio = target / route.distanceMeters.coerceAtLeast(1)
+        val adjusted = (if (abs(ratio - 1) > LOOP_TOLERANCE) shape.scaled(ratio) else null)
+            ?: return Result.success(route to stops)
+        val retryStops = listOf(from) + adjusted.waypoints + from
+        val retry = quietly { router.route(retryStops, prefs) }
+        return if (retry != null && LoopScore.of(retry, target) < LoopScore.of(route, target)) {
+            Result.success(retry to retryStops)
+        } else {
+            Result.success(route to stops)
+        }
     }
 
     /** 路线算好后再查天气和补给点，查不到就不显示，不耽误看路线 */
@@ -335,7 +339,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     private companion object {
         const val WEATHER_TTL_MS = 10 * 60_000L
-        const val LOOP_TRIES = 3
+        /** 每次同时试几个方向 */
+        const val LOOP_CANDIDATES = 4
         /** 圈的长度差这么多以内就不调了 */
         const val LOOP_TOLERANCE = 0.15
         const val KEY_PLAN = "plan"
