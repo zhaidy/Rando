@@ -141,3 +141,29 @@ test("分享的路线转给队友，后来加入的也能收到，结束或离�
   await assert.rejects(d.next("route"));
   for (const x of [b, c, d]) x.ws.close();
 });
+
+test("可能摔车了告诉队友，后来加入的也能收到，我没事就撤掉", async () => {
+  const a = join("TEST03", "aaaaaaaa-9", "阿明");
+  await a.opened;
+  await a.next("roster");
+  const b = join("TEST03", "bbbbbbbb-10", "小红");
+  await b.opened;
+  await b.next("roster");
+  await a.next("join");
+
+  a.send({ t: "sos", lat: 1.3, lon: 103.8 });
+  const sos = await b.next("sos");
+  assert.equal(sos.id, "aaaaaaaa-9");
+  assert.equal(sos.name, "阿明");
+  assert.equal(sos.lat, 1.3);
+
+  const c = join("TEST03", "cccccccc-11", "小李");
+  await c.opened;
+  await c.next("roster");
+  assert.equal((await c.next("sos")).id, "aaaaaaaa-9");
+
+  a.send({ t: "sos_clear" });
+  assert.equal((await b.next("sos_clear")).id, "aaaaaaaa-9");
+  await c.next("sos_clear");
+  for (const x of [a, b, c]) x.ws.close();
+});

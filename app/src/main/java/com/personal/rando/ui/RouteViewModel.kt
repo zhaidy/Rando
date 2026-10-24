@@ -265,6 +265,20 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun retry() = planRoute()
 
+    /** 导航到某个点（比如摔车的队友那儿）；算路失败时告诉 [onFailed] */
+    fun navigateTo(target: LatLon, title: String, onFailed: (String) -> Unit) {
+        val prefs = _state.value.prefs
+        viewModelScope.launch {
+            try {
+                session.navigateTo(target, prefs, title)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onFailed(e.message ?: "算路失败")
+            }
+        }
+    }
+
     /** 跟着队友分享的路线骑；算路失败时告诉 [onFailed] */
     fun followShared(shared: SharedRoute, onFailed: (String) -> Unit) {
         val prefs = _state.value.prefs

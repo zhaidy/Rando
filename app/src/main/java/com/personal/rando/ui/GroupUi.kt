@@ -33,6 +33,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.group.GroupState
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
+import com.personal.rando.group.SosAlert
+import com.personal.rando.ride.CrashAlert
 import com.personal.rando.group.SharedRoute
 import com.personal.rando.group.TeamCode
 import com.personal.rando.group.Teammate
@@ -254,4 +258,50 @@ fun sharedRouteText(route: SharedRoute): String {
     ).joinToString("、")
     val where = if (route.title.startsWith("骑一圈") || route.title == "原路返回") route.title else "去 ${route.title}"
     return listOfNotNull(where, route.meters.takeIf { it > 0 }?.let { Format.distance(it) }, options).joinToString(" · ")
+}
+
+/** 检测到可能摔车：倒计时，我没事 / 马上通知队友 */
+@Composable
+fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(alert) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(250)
+        }
+    }
+    val left = ((alert.deadline - now + 999) / 1000).coerceAtLeast(0)
+    AlertDialog(
+        onDismissRequest = {},
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text(if (alert.sent) "已经通知队友" else "你没事吧？") },
+        text = {
+            Text(
+                if (alert.sent) "队友会看到你的位置。没事的话点「我没事」，队友那边会撤掉。"
+                else "检测到你可能摔车了，$left 秒后把位置发给队友。",
+                color = Ink,
+                fontSize = 16.sp,
+            )
+        },
+        confirmButton = { TextButton(onClick = onOk) { Text("我没事", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = if (alert.sent) null else ({ TextButton(onClick = onSendNow) { Text("马上通知队友", color = RandoRed) } }),
+    )
+}
+
+/** 队友可能摔车了：离我多远，导航过去 / 知道了 */
+@Composable
+fun SosDialog(alert: SosAlert, me: LatLon?, onGo: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {},
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("${alert.name}可能摔车了", color = RandoRed) },
+        text = {
+            val far = me?.let { "离你 ${Format.distance(Geo.distance(it, alert.location).toInt())}。" }.orEmpty()
+            Text("${far}TA 的手机检测到可能摔车，还没有回应。", color = Ink, fontSize = 16.sp)
+        },
+        confirmButton = { TextButton(onClick = onGo) { Text("导航过去", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("知道了", color = InkSoft) } },
+    )
 }

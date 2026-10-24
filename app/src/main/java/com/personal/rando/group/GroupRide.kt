@@ -61,6 +61,13 @@ class GroupRide(
     /** 队友分享过来、还没回答的路线 */
     val offer: StateFlow<SharedRoute?> = _offer
 
+    private val _sos = MutableStateFlow<List<SosAlert>>(emptyList())
+    /** 可能摔车了的队友；对方点了「我没事」或者离队就撤掉 */
+    val sos: StateFlow<List<SosAlert>> = _sos
+
+    /** 我发出的求助还在：断线重连后再发一次 */
+    private var mySos: LatLon? = null
+
     /** 我分享出去的路线；断线重连后再发一次 */
     private var myRoute: SharedRoute? = null
     /** 回答过的分享（队友 id 和时间），重连后再收到不再问 */
@@ -91,6 +98,8 @@ class GroupRide(
         lastSent = null
         warnedAt.clear()
         myRoute = null
+        mySos = null
+        _sos.value = emptyList()
         answered.clear()
         _offer.value = null
         _state.value = null
@@ -108,6 +117,24 @@ class GroupRide(
         if (myRoute == null) return
         myRoute = null
         socket?.send(GroupProtocol.ROUTE_CLEAR)
+    }
+
+    /** 我可能摔车了：告诉队友在哪儿 */
+    fun sendSos(at: LatLon) {
+        mySos = at
+        socket?.send(GroupProtocol.sos(at))
+    }
+
+    /** 我没事 */
+    fun clearSos() {
+        if (mySos == null) return
+        mySos = null
+        socket?.send(GroupProtocol.SOS_CLEAR)
+    }
+
+    /** 看到了，不用再提示这个队友的求助 */
+    fun dismissSos(id: String) {
+        _sos.update { list -> list.filterNot { it.id == id } }
     }
 
     /** 跟不跟着骑都回答过了，不再问 */
@@ -167,6 +194,7 @@ class GroupRide(
                     lastSent = null
                     _state.update { it?.copy(connected = true) }
                     myRoute?.let { webSocket.send(GroupProtocol.route(it)) }
+                    mySos?.let { webSocket.send(GroupProtocol.sos(it)) }
                 }
             }
 
@@ -207,7 +235,12 @@ class GroupRide(
             is GroupEvent.Left -> {
                 _state.update { s -> s?.copy(teammates = s.teammates.filterNot { it.id == event.id }) }
                 if (_offer.value?.id == event.id) _offer.value = null
+                _sos.update { list -> list.filterNot { it.id == event.id } }
             }
+            is GroupEvent.Sos -> if (event.alert.id != myId) {
+                _sos.update { list -> list.filterNot { it.id == event.alert.id } + event.alert }
+            }
+            is GroupEvent.SosCleared -> _sos.update { list -> list.filterNot { it.id == event.id } }
             is GroupEvent.Route -> if (event.route.id != myId && (event.route.id to event.route.ts) !in answered) _offer.value = event.route
             is GroupEvent.RouteCleared -> if (_offer.value?.id == event.id) _offer.value = null
             is GroupEvent.Position -> _state.update { s ->

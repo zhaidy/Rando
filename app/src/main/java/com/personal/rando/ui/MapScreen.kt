@@ -157,6 +157,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val group = LocalContext.current.rando.group
     val groupState by group.state.collectAsStateWithLifecycle()
     val routeOffer by group.offer.collectAsStateWithLifecycle()
+    val sosList by group.sos.collectAsStateWithLifecycle()
+    val crash by vm.session.crash.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
     val walkie = LocalContext.current.rando.walkie
     val walkieState by walkie.state.collectAsStateWithLifecycle()
@@ -561,6 +563,19 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    crash?.let { alert -> CrashDialog(alert, onOk = vm.session::imOk, onSendNow = vm.session::sendSos) }
+    sosList.firstOrNull()?.takeIf { crash == null }?.let { alert ->
+        SosDialog(
+            alert,
+            me = fix?.location,
+            onGo = {
+                group.dismissSos(alert.id)
+                askNotifications()
+                vm.navigateTo(alert.location, "${alert.name}的位置") { Toast.makeText(context, "导航失败：$it", Toast.LENGTH_LONG).show() }
+            },
+            onDismiss = { group.dismissSos(alert.id) },
+        )
     }
     routeOffer?.let { offer ->
         SharedRouteDialog(
