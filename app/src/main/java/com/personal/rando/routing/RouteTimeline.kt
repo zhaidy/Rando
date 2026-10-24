@@ -14,6 +14,9 @@ data class Ahead(
     val next: Stretch?,
 )
 
+/** [atMeters] 是桥头在全程的第几米 */
+data class StructureAhead(val structure: Structure, val atMeters: Double, val distance: Double)
+
 /** [atMeters] 是路口在全程的第几米，[distance] 是离现在多远 */
 data class CrossingAhead(val type: CrossingType, val atMeters: Double, val distance: Double)
 
@@ -47,6 +50,14 @@ class RouteTimeline(route: Route) {
 
     private val crossings: List<Pair<Double, CrossingType>> =
         route.crossings().map { cumulative[it.pointIndex] to it.type }
+
+    private val structures: List<Pair<Double, Structure>> =
+        route.structures().map { cumulative[it.startIndex] to it }
+
+    /** 前面最近的天桥或地下通道；走在上面时也还算，距离是 0 */
+    fun nextStructure(along: Double): StructureAhead? =
+        structures.firstOrNull { (start, s) -> start + s.lengthMeters >= along }
+            ?.let { (start, s) -> StructureAhead(s, start, (start - along).coerceAtLeast(0.0)) }
 
     fun ahead(along: Double): Ahead? {
         val index = stretches.indexOfFirst { along < it.endMeters }.takeIf { it >= 0 } ?: return null

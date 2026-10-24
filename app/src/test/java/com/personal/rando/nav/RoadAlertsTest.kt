@@ -51,4 +51,12 @@ class RoadAlertsTest {
         assertNull(alerts(pcn to "highway=crossing crossing=traffic_signals", pcn to "").next(step - 30))
         assertNull(alerts(pcn to "highway=crossing", pcn to "").next(step - 30))
     }
+
+    @Test
+    fun `快到天桥时说怎么上下`() {
+        val a = alerts(pcn to "highway=elevator", "highway=footway bridge=yes" to "highway=elevator", pcn to "")
+        assertNull(a.next(0.0))
+        assertEquals("前方过天桥，有电梯", a.next(step + 20))
+        assertNull(a.next(step + 40))
+    }
 }

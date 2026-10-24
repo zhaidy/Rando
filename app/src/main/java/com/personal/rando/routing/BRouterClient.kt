@@ -21,8 +21,8 @@ class BRouterClient(
     private val baseUrl: String = "https://brouter.de/brouter",
 ) {
 
-    suspend fun route(from: LatLon, to: LatLon, profile: BikeProfile): Route = withContext(Dispatchers.IO) {
-        val custom = profile.custom ?: return@withContext fetch(url(from, to, profile.brouterName))
+    suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
+        val custom = prefs.customProfile ?: return@withContext fetch(url(from, to, prefs.profile.brouterName))
         // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
         val cached = uploaded[custom]
         if (cached != null) {

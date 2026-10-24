@@ -4,13 +4,15 @@ package com.personal.rando.routing
  * Rando 自己的 BRouter 路线配置：新加坡公园连道（PCN）优先。
  * brouter.de 自带的配置不认识 PCN；PCN 在 OpenStreetMap 里是本地自行车路线（lcn），
  * 这里让它代价最低，自行车道、人行道次之，马路最高。
- * 「不上马路」模式把马路的代价再乘 15（有人行道的马路按人行道算，新加坡允许在人行道上骑车）。
+ * 「不上马路」模式把马路的代价再乘 15（有人行道的马路按人行道算，新加坡允许在人行道上骑车）；
+ * 「不走天桥」把人行天桥的代价乘 20（公园连道、自行车道上的桥不算天桥，跨河的平桥照走）。
  * 算路前先上传到服务器，换回一个 custom_xxx 的配置名。
  */
 object RandoProfiles {
 
-    fun pcn(avoidRoads: Boolean): String =
+    fun pcn(avoidRoads: Boolean, avoidBridges: Boolean): String =
         PCN.replace("assign avoidRoads = 0", "assign avoidRoads = ${if (avoidRoads) 1 else 0}")
+            .replace("assign avoidBridges = 0", "assign avoidBridges = ${if (avoidBridges) 1 else 0}")
 
     private val PCN = """
 # Rando：新加坡公园连道（PCN）优先
@@ -18,6 +20,8 @@ object RandoProfiles {
 assign validForBikes = true
 # 1 = 尽量不上马路（马路代价大很多），0 = 只是偏好公园连道
 assign avoidRoads = 0
+# 1 = 尽量不走人行天桥
+assign avoidBridges = 0
 # 路口转向提示（导航播报要用），和 BRouter 自带的配置一样
 assign turnInstructionMode = 1
 assign turnInstructionCatchingRange = 40
@@ -43,7 +47,11 @@ assign roadCost
   if ( avoidRoads ) then ( if ( hasFootpath ) then 3 else multiply roadFactor 15 )
   else roadFactor
 
-assign costfactor
+# 人行天桥：步行道上的桥，公园连道和允许骑车的桥不算；地下通道顺便引用，返回的 WayTags 里才有 tunnel
+assign isOverpass = and bridge=yes and highway=footway|path|pedestrian|steps|corridor not or isPcn bicycle=yes|designated
+assign isUnderpass = and tunnel=yes isPath
+
+assign baseCost
   if ( highway= ) then 10000
   else if ( highway=motorway|motorway_link|proposed|abandoned|construction ) then 10000
   else if ( privateAccess ) then 10000
@@ -56,6 +64,10 @@ assign costfactor
   else if ( isRoad ) then roadCost
   # 商场走廊、站台之类：能走，推车过去
   else 5
+
+assign costfactor
+  if ( and avoidBridges isOverpass ) then multiply baseCost 20
+  else baseCost
 
 # 下面这些是生成转向提示用的，照抄 BRouter 自带的 trekking 配置
 assign priorityclassifier

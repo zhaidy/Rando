@@ -7,7 +7,7 @@ import com.personal.rando.nav.RoadAlerts
 import com.personal.rando.nav.Speaker
 import com.personal.rando.nav.VoicePrompter
 import com.personal.rando.routing.BRouterClient
-import com.personal.rando.routing.BikeProfile
+import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.RouteTimeline
@@ -23,7 +23,7 @@ data class NavigationState(
     /** 当前在走的路线；骑偏重新规划后会换成新的 */
     val route: Route,
     val destination: LatLon,
-    val profile: BikeProfile,
+    val prefs: RoutePrefs,
     /** 还没定位到时是 null */
     val progress: NavProgress? = null,
     val rerouting: Boolean = false,
@@ -91,12 +91,12 @@ class RideSession(
         return ride
     }
 
-    fun startNavigation(route: Route, destination: LatLon, profile: BikeProfile) {
+    fun startNavigation(route: Route, destination: LatLon, prefs: RoutePrefs) {
         navigator = Navigator(route)
         roadAlerts = RoadAlerts(RouteTimeline(route))
         prompter.reset()
         rerouteJob?.cancel()
-        _navigation.value = NavigationState(route, destination, profile)
+        _navigation.value = NavigationState(route, destination, prefs)
         speaker.say(prompter.start(route.distanceMeters.toDouble()))
         // 导航顺便记录轨迹，结束时一起保存
         startRecording()
@@ -129,7 +129,7 @@ class RideSession(
         _navigation.update { it?.copy(rerouting = true) }
         rerouteJob = scope.launch {
             try {
-                val route = router.route(from, state.destination, state.profile)
+                val route = router.route(from, state.destination, state.prefs)
                 if (navigator == null) return@launch
                 navigator = Navigator(route)
                 roadAlerts = RoadAlerts(RouteTimeline(route))
