@@ -38,6 +38,9 @@ import com.personal.rando.ui.PlannerSheet
 import com.personal.rando.ui.PrefsRow
 import com.personal.rando.ui.RecordingPill
 import com.personal.rando.ui.RouteState
+import com.personal.rando.ui.PlannerState
+import com.personal.rando.ui.PlannerActions
+import com.personal.rando.ui.LoopRequest
 import com.personal.rando.ui.SearchBar
 import com.personal.rando.ui.SegmentCard
 import com.personal.rando.ui.SideRail
@@ -83,9 +86,11 @@ class UiScreenshotTest {
         routeState: RouteState = RouteState.Idle,
         recording: RecordingState? = null,
         picking: Boolean = false,
+        via: List<Place> = emptyList(),
+        loop: LoopRequest? = null,
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SearchBar(query, picking, results, 42, {}, {}, {}, {})
+            SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
             PrefsRow(prefs, {})
             if (picking) HintPill("长按地图选起点，或者在上面搜一个地方")
         }
@@ -93,16 +98,28 @@ class UiScreenshotTest {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, Modifier.align(Alignment.End))
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
-                destination = destination, start = null, pickingStart = picking, route = routeState, prefs = prefs,
-                saved = saved, onChooseSaved = {}, onToggleSave = { _, _ -> }, onClear = {}, onPickStart = {},
-                onUseMyLocation = {}, onRetry = {}, onStart = {}, onShowOnMap = {},
+                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop),
+                saved = saved,
+                actions = PlannerActions(),
             )
         }
     }
 
     @Test fun plannerEmpty() = shot("1_planner_empty") { Planner() }
 
-    @Test fun plannerRoute() = shot("2_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route)) }
+    @Test fun plannerRoute() = shot("2_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+
+    @Test fun plannerVia() = shot("2b_planner_via") {
+        Planner(
+            destination = mbs,
+            via = listOf(Place("Gardens by the Bay", "", LatLon(1.28, 103.86))),
+            routeState = RouteState.Ready(route, emptyList()),
+        )
+    }
+
+    @Test fun plannerLoop() = shot("2c_planner_loop") {
+        Planner(loop = LoopRequest(20_000), routeState = RouteState.Ready(route, emptyList()))
+    }
 
     @Test fun plannerLoading() = shot("3_planner_loading") { Planner(destination = mbs, routeState = RouteState.Loading) }
 
@@ -130,7 +147,7 @@ class UiScreenshotTest {
 
     @Test fun navigation() = shot("7_navigation") {
         val nav = NavigationState(
-            route, mbs.location, prefs,
+            route, mbs.location, prefs = prefs,
             progress = NavProgress(
                 alongMeters = 2000.0, remainingMeters = 4930.0, remainingSeconds = 1860,
                 next = Maneuver(10, Turn.RIGHT), distanceToNext = 880.0,
@@ -161,7 +178,7 @@ class UiScreenshotTest {
 
     @Test fun rideView() {
         val nav = NavigationState(
-            route, mbs.location, prefs,
+            route, mbs.location, prefs = prefs,
             progress = NavProgress(
                 alongMeters = 2400.0, remainingMeters = 4930.0, remainingSeconds = 1860,
                 next = Maneuver(10, Turn.RIGHT), distanceToNext = 880.0,
@@ -171,9 +188,9 @@ class UiScreenshotTest {
         )
         compose.setContent {
             RandoTheme {
-                RideView(nav, RecordingState(0, 2400.0, 600, currentSpeed = 5.4), {}, {}) { m ->
+                RideView(nav, RecordingState(0, 2400.0, 600, currentSpeed = 5.4), {}, {}, map = { m ->
                     Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
-                }
+                })
             }
         }
         compose.mainClock.advanceTimeBy(2_000)

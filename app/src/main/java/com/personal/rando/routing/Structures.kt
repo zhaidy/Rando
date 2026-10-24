@@ -16,12 +16,15 @@ data class Structure(
     val lengthMeters: Int,
     val hasElevator: Boolean,
     val hasSteps: Boolean,
+    /** 是公园连道、自行车道的一截：多半是沿着河道从马路桥底下平着穿过去 */
+    val onBikeway: Boolean = false,
 ) {
     /** 「有电梯」「只有台阶，要扛车」…… */
     val access: String
         get() = when {
             hasElevator -> "有电梯"
             hasSteps -> "只有台阶，要扛车"
+            kind == StructureKind.UNDERPASS && onBikeway -> "连道从马路桥底下穿过，一般是平的"
             else -> "上下方式没标明"
         }
 }
@@ -72,6 +75,10 @@ fun Route.structures(): List<Structure> {
                 lengthMeters = length,
                 hasElevator = elevator,
                 hasSteps = steps,
+                onBikeway = (i..j).any { k ->
+                    val tags = segments[k].wayTags
+                    tags["highway"] == "cycleway" || PCN_TAGS.any { tags[it] == "yes" }
+                },
             )
         }
         i = j + 1

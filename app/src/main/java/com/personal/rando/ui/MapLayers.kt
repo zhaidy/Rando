@@ -44,10 +44,11 @@ object MapLayers {
     private const val STRUCTURES = "rando-structures"
     private const val START = "rando-start"
     private const val END = "rando-end"
+    private const val VIA = "rando-via"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, FOCUS_POINT, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, FOCUS_POINT, VIA, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -97,11 +98,12 @@ object MapLayers {
                 circleStrokeColor(Color.parseColor("#FFC93C")), circleStrokeWidth(4f),
             )
         )
+        style.addLayer(pin(VIA, "#2F7DE1").withProperties(circleRadius(6.5f)))
         style.addLayer(pin(START, "#2E7D4F"))
         style.addLayer(pin(END, "#E0672B"))
     }
 
-    fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?) {
+    fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?, via: List<LatLon> = emptyList()) {
         style.getSourceAs<GeoJsonSource>(ROUTE)?.setGeoJson(route?.let(::coloredRoute) ?: EMPTY)
         style.getSourceAs<GeoJsonSource>(STRUCTURES)?.setGeoJson(
             FeatureCollection.fromFeatures(
@@ -120,6 +122,9 @@ object MapLayers {
         )
         style.getSourceAs<GeoJsonSource>(START)?.setGeoJson(point(start))
         style.getSourceAs<GeoJsonSource>(END)?.setGeoJson(point(end))
+        style.getSourceAs<GeoJsonSource>(VIA)?.setGeoJson(
+            FeatureCollection.fromFeatures(via.map { Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)) })
+        )
     }
 
     /** 按路的种类切成几段；分不出来时整条画成公园连道的绿色 */

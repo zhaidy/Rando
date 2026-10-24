@@ -42,13 +42,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
@@ -92,6 +95,12 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pushBetweenEnds
 import com.personal.rando.routing.structures
+import com.personal.rando.routing.elevationProfile
+import com.personal.rando.routing.steepestClimb
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.roundToInt
 import com.personal.rando.search.Place
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassIconButton
@@ -114,7 +123,7 @@ fun kindColor(hex: String) = Color(android.graphics.Color.parseColor(hex))
 @Composable
 fun SearchBar(
     query: String,
-    pickingStart: Boolean,
+    hint: String,
     results: List<Place>,
     build: Long,
     onQuery: (String) -> Unit,
@@ -134,7 +143,7 @@ fun SearchBar(
             Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
-                    Text(if (pickingStart) "搜索起点" else "去哪儿骑？", color = InkSoft, fontSize = 17.sp)
+                    Text(hint, color = InkSoft, fontSize = 17.sp)
                 }
                 BasicTextField(
                     value = query,
@@ -301,68 +310,110 @@ fun SideRail(
 
 // ───────────────────────── 底部：规划卡片 ─────────────────────────
 
+/** 规划卡片上的各种操作 */
+class PlannerActions(
+    val onChooseSaved: (SavedPlace) -> Unit = {},
+    val onToggleSave: (Place, SavedPlace?) -> Unit = { _, _ -> },
+    val onClear: () -> Unit = {},
+    val onPickStart: () -> Unit = {},
+    val onUseMyLocation: () -> Unit = {},
+    val onAddVia: () -> Unit = {},
+    val onRemoveVia: (Place) -> Unit = {},
+    val onLoop: (km: Int) -> Unit = {},
+    val onAnotherLoop: () -> Unit = {},
+    val onReturn: () -> Unit = {},
+    val onRetry: () -> Unit = {},
+    val onStart: () -> Unit = {},
+    val onShowOnMap: (NoteTarget) -> Unit = {},
+)
+
+/** 卡片顶上那行：还没选、去某个地方、骑一圈 */
+private sealed interface SheetHeader {
+    data object Empty : SheetHeader
+    data class Destination(val place: Place) : SheetHeader
+    data class Loop(val km: Int) : SheetHeader
+}
+
 /**
  * 底部的玻璃卡片。内容在「选目的地」「定位中」「算路中」「算好了」「失败」之间切换时
- * 交叉淡入并带着尺寸一起形变
+ * 交叉淡入并带着尺寸一起形变；内容太多时卡片里可以上下滑
  */
 @Composable
 fun PlannerSheet(
-    destination: Place?,
-    start: Place?,
-    pickingStart: Boolean,
-    route: RouteState,
-    prefs: RoutePrefs,
+    state: PlannerState,
     saved: List<SavedPlace>,
-    onChooseSaved: (SavedPlace) -> Unit,
-    onToggleSave: (Place, SavedPlace?) -> Unit,
-    onClear: () -> Unit,
-    onPickStart: () -> Unit,
-    onUseMyLocation: () -> Unit,
-    onRetry: () -> Unit,
-    onStart: () -> Unit,
-    onShowOnMap: (NoteTarget) -> Unit,
+    actions: PlannerActions,
     modifier: Modifier = Modifier,
+    /** 正在记录、离出发的地方有段距离了：可以原路返回 */
+    canReturn: Boolean = false,
 ) {
+    val header = when {
+        state.loop != null -> SheetHeader.Loop(state.loop.targetMeters / 1000)
+        state.destination != null -> SheetHeader.Destination(state.destination)
+        else -> SheetHeader.Empty
+    }
     GlassPanel(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 18.dp)
+        ) {
             AnimatedContent(
-                targetState = destination,
+                targetState = header,
                 transitionSpec = {
                     (fadeIn(tween(220)) + slideInVertically(Motion.smooth()) { it / 4 })
                         .togetherWith(fadeOut(tween(120)))
                         .using(SizeTransform(clip = false) { _, _ -> Motion.smooth() })
                 },
-                contentKey = { it?.location },
                 label = "destination",
-            ) { dest ->
-                if (dest == null) {
-                    Column {
+            ) { h ->
+                when (h) {
+                    SheetHeader.Empty -> Column {
                         Text("想去哪儿骑？", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                         Text("搜索目的地，或者长按地图选一个点", color = InkSoft, fontSize = 14.sp)
-                        if (saved.isNotEmpty()) SavedRow(saved, onChooseSaved)
+                        if (canReturn) {
+                            GlassButton(
+                                onClick = actions.onReturn,
+                                modifier = Modifier.padding(top = 12.dp),
+                                tone = GlassTone.Tinted(RandoGreen),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                            ) {
+                                Text("原路返回出发的地方", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
+                        LoopRow(actions.onLoop)
                     }
-                } else {
-                    val savedHere = saved.firstOrNull { it.isAt(dest.location) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            dest.name,
-                            Modifier.weight(1f),
-                            color = Ink,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        StarButton(savedHere != null) { onToggleSave(dest, savedHere) }
-                        IconTap(onClick = onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
+                    is SheetHeader.Destination -> {
+                        val dest = h.place
+                        val savedHere = saved.firstOrNull { it.isAt(dest.location) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                dest.name,
+                                Modifier.weight(1f),
+                                color = Ink,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            StarButton(savedHere != null) { actions.onToggleSave(dest, savedHere) }
+                            IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
+                        }
+                    }
+                    is SheetHeader.Loop -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("骑一圈 · 约 ${h.km} 公里", Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        LinkText("换一条", actions.onAnotherLoop)
+                        IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
                     }
                 }
             }
-            StartLine(start, pickingStart, onPickStart, onUseMyLocation)
-            if (destination != null) {
+            StartLine(state.start, state.pickingStart, actions.onPickStart, actions.onUseMyLocation)
+            if (state.destination != null) ViaLines(state.via, state.pickingVia, actions.onAddVia, actions.onRemoveVia)
+            if (header != SheetHeader.Empty) {
                 Spacer(Modifier.height(10.dp))
                 AnimatedContent(
-                    targetState = route,
+                    targetState = state.route,
                     transitionSpec = {
                         (fadeIn(tween(260)) + scaleIn(Motion.smooth(), initialScale = 0.96f))
                             .togetherWith(fadeOut(tween(120)))
@@ -374,17 +425,17 @@ fun PlannerSheet(
                     when (r) {
                         RouteState.Idle -> Spacer(Modifier.height(0.dp))
                         RouteState.WaitingForLocation -> Waiting("正在定位，定位到就开始算路")
-                        RouteState.Loading -> Waiting("正在找一条好骑的路")
+                        RouteState.Loading -> Waiting(if (state.loop != null) "正在画一圈好骑的路" else "正在找一条好骑的路")
                         is RouteState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("算路失败：${r.message}", Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            GlassButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+                            GlassButton(onClick = actions.onRetry, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                                 Text("重试", color = Ink)
                             }
                         }
                         is RouteState.Ready -> Column {
-                            RouteSummary(r.route, prefs, onShowOnMap)
+                            RouteSummary(r.route, state.prefs, actions.onShowOnMap)
                             Spacer(Modifier.height(16.dp))
-                            PrimaryButton(onClick = onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
+                            PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
                                 Text("开始导航", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
@@ -394,6 +445,52 @@ fun PlannerSheet(
         }
     }
 }
+
+/** 不知道去哪儿：选个距离骑一圈回来 */
+@Composable
+private fun LoopRow(onLoop: (Int) -> Unit) {
+    Row(
+        Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
+        Text("骑一圈", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        LOOP_KMS.forEach { km ->
+            GlassButton(onClick = { onLoop(km) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
+                Text("$km 公里", color = Ink, fontSize = 15.sp)
+            }
+        }
+    }
+}
+
+private val LOOP_KMS = listOf(10, 20, 30, 50)
+
+/** 途经点一个一行，可以删；下面一个「加途经点」 */
+@Composable
+private fun ViaLines(via: List<Place>, picking: Boolean, onAdd: () -> Unit, onRemove: (Place) -> Unit) {
+    Column(Modifier.animateContentSize(Motion.smooth())) {
+        via.forEach { place ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(RandoBlue))
+                Spacer(Modifier.width(8.dp))
+                Text("经过 ${place.name}", Modifier.weight(1f), color = InkSoft, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                IconTap(onClick = { onRemove(place) }) {
+                    Icon(Icons.Default.Close, contentDescription = "不经过这里", tint = InkSoft.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        if (!picking && via.size < MAX_VIA) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(16.dp))
+                LinkText("加途经点", onAdd)
+            }
+        }
+    }
+}
+
+/** 途经点太多卡片放不下，也不好骑 */
+private const val MAX_VIA = 5
 
 /** 收藏星星：点亮时弹一下 */
 @Composable
@@ -508,6 +605,7 @@ fun RouteSummary(route: Route, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> U
         BigStat(Format.duration(route.durationSeconds), "预计")
         BigStat("${route.ascendMeters} 米", "爬升")
     }
+    ElevationChart(route)
     val breakdown = route.breakdown()
     if (breakdown.isEmpty()) return
     Spacer(Modifier.height(14.dp))
@@ -524,6 +622,67 @@ private fun BigStat(value: String, label: String) {
         Text(label, color = InkSoft, fontSize = 13.sp)
     }
 }
+
+/**
+ * 海拔图：沿路线的高低起伏，最陡的那段坡涂成琥珀色；路线一出来从左往右画出来。
+ * 没有海拔数据就不画
+ */
+@Composable
+private fun ElevationChart(route: Route) {
+    val profile = remember(route) { route.elevationProfile() }
+    if (profile.size < 2) return
+    val climb = remember(route) { route.steepestClimb() }
+    val grow = remember(route) { Animatable(0f) }
+    LaunchedEffect(route) { grow.animateTo(1f, tween(900)) }
+    val low = profile.minOf { it.meters }
+    val high = profile.maxOf { it.meters }
+    // 新加坡很平，起伏不到 20 米时按 20 米画，免得一点小坡看起来像山
+    val span = (high - low).coerceAtLeast(MIN_CHART_SPAN)
+    val total = profile.last().alongMeters
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.Bottom) {
+        Canvas(
+            Modifier
+                .weight(1f)
+                .height(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Ink.copy(alpha = 0.05f))
+        ) {
+            fun x(i: Int) = (profile[i].alongMeters / total * size.width).toFloat()
+            fun y(i: Int) = (size.height - (profile[i].meters - low) / span * size.height * 0.85 - size.height * 0.08).toFloat()
+            val shown = (profile.size * grow.value).toInt().coerceIn(2, profile.size)
+            val area = Path().apply {
+                moveTo(0f, size.height)
+                for (i in 0 until shown) lineTo(x(i), y(i))
+                lineTo(x(shown - 1), size.height)
+                close()
+            }
+            drawPath(area, Brush.verticalGradient(listOf(RandoGreen.copy(alpha = 0.55f), RandoGreen.copy(alpha = 0.08f))))
+            if (climb != null && climb.fromIndex < shown) {
+                val to = minOf(climb.toIndex, shown - 1)
+                val hill = Path().apply {
+                    moveTo(x(climb.fromIndex), size.height)
+                    for (i in climb.fromIndex..to) lineTo(x(i), y(i))
+                    lineTo(x(to), size.height)
+                    close()
+                }
+                drawPath(hill, RandoAmber.copy(alpha = 0.75f))
+            }
+            val line = Path().apply {
+                moveTo(x(0), y(0))
+                for (i in 1 until shown) lineTo(x(i), y(i))
+            }
+            drawPath(line, RandoGreenDeep, style = Stroke(width = 1.5.dp.toPx()))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text("最高 ${high.roundToInt()} 米", color = InkSoft, fontSize = 12.sp)
+            Text("最低 ${low.roundToInt()} 米", color = InkSoft, fontSize = 12.sp)
+        }
+    }
+}
+
+private const val MIN_CHART_SPAN = 20.0
 
 /** 各种路的占比条：路线一出来就从左往右长出来 */
 @Composable
@@ -612,6 +771,9 @@ private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs
         // 起点、终点那头的推车（商场里、停车场）不算
         val push = route.pushBetweenEnds()
         if (push > 0) Note(kindColor(RoadKind.PUSH.color), "途中有 ${Format.distance(push)} 禁止骑车，要推车") { onShowOnMap(NoteTarget.PUSH) }
+        route.steepestClimb()?.let { c ->
+            Note(RandoAmber, "最陡的坡在第 ${Format.km(c.startMeters)} 公里，平均 ${Format.percent(c.grade)}") { onShowOnMap(NoteTarget.CLIMB) }
+        }
     }
 }
 

@@ -81,14 +81,15 @@ class RideService : Service() {
     @SuppressLint("MissingPermission")
     private fun startLocation(session: RideSession) {
         val manager = getSystemService(LocationManager::class.java) ?: return
-        val provider = if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            LocationManager.GPS_PROVIDER
-        } else {
-            LocationManager.NETWORK_PROVIDER
-        }
+        // GPS 刚开要等一会儿才有第一个点：先用一分钟内的上一个 GPS 点顶上，
+        // 网络定位也听着，至少地图上先有个大概位置（太不准的不拿来导航）
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { manager.isProviderEnabled(it) }
         val l = LocationListener { session.onFix(Fix.of(it)) }
         try {
-            manager.requestLocationUpdates(provider, 1_000L, 0f, l, Looper.getMainLooper())
+            manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?.takeIf { System.currentTimeMillis() - it.time < FRESH_FIX_MS }
+                ?.let { session.onFix(Fix.of(it)) }
+            providers.forEach { manager.requestLocationUpdates(it, 1_000L, 0f, l, Looper.getMainLooper()) }
             listener = l
         } catch (_: Exception) {
             stopSelf()
@@ -100,7 +101,7 @@ class RideService : Service() {
             return rec?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}" }
                 ?: "等待 GPS 定位…"
         }
-        val progress = nav.progress ?: return "等待 GPS 定位…"
+        val progress = nav.progress ?: return nav.waitingText
         return when {
             progress.arrived -> "已到达目的地"
             nav.rerouting || progress.offRoute -> "已偏离路线，正在重新规划"
@@ -136,6 +137,8 @@ class RideService : Service() {
     companion object {
         private const val CHANNEL = "ride"
         private const val NOTIFICATION_ID = 30_000
+        /** 上一个 GPS 点在这么久以内，开始时先拿来用 */
+        private const val FRESH_FIX_MS = 60_000L
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, RideService::class.java))

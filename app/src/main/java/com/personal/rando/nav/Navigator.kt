@@ -47,6 +47,9 @@ class Navigator(val route: Route) {
         return progress()
     }
 
+    /** 某个点对到路线上，离起点多远（米）；不跟着当前进度走，全线找最近的 */
+    fun alongOf(p: LatLon): Double = nearest(p, 0 until points.size - 1)?.along ?: 0.0
+
     private fun progress(): NavProgress {
         val upcoming = route.maneuvers.filter { cumulative[it.pointIndex] > along + PASSED_METERS }
         val next = upcoming.getOrNull(0)

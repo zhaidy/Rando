@@ -149,6 +149,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val recording by vm.session.recording.collectAsStateWithLifecycle()
     val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
+    val fix by vm.session.fix.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -203,6 +204,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         vm.startNavigation()
     }
     val finishRide = { finishRide(context, vm.session) }
+    val returnTrip = {
+        Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
+        vm.returnTrip { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
+    }
+    val canReturn = remember(recording?.track?.size, navigating) { !navigating && vm.session.canReturn(recording) }
 
     // 记录中把骑过的轨迹画出来；按点数变化重画，不用每次重组都画
     val trackSize = recording?.track?.size ?: 0
@@ -231,16 +237,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         view.keepScreenOn = screenOn
         onDispose { view.keepScreenOn = false }
     }
+    // 导航时镜头跟着人：在骑按前进方向，停着按手机朝向；拖开地图后右边出现「回到我的位置」
+    val follow = rememberFollow(map, active = navigating && style != null && hasLocation, moving = fix?.moving == true, zoom = 17.0, tilt = 40.0)
     LaunchedEffect(map, style, hasLocation, navigating) {
         val m = map ?: return@LaunchedEffect
         if (style == null || !hasLocation || !m.locationComponent.isLocationComponentActivated) return@LaunchedEffect
+        if (navigating) follow.recenter()
         m.locationComponent.apply {
-            if (navigating) {
-                renderMode = RenderMode.GPS
-                cameraMode = CameraMode.TRACKING_GPS
-                zoomWhileTracking(17.0)
-                tiltWhileTracking(40.0)
-            } else {
+            if (!navigating) {
                 cameraMode = CameraMode.NONE
                 renderMode = RenderMode.COMPASS
                 m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(m.cameraPosition).bearing(0.0).tilt(0.0).build()))
@@ -251,9 +255,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     // 路线变了就重画，并把镜头框住整条路线（上下留出搜索框和底部卡片的位置）。
     // 导航中画的是正在走的那条，骑偏重新规划后会换
     val route = navigation?.route ?: (state.route as? RouteState.Ready)?.route
-    LaunchedEffect(style, route, state.start, state.destination) {
+    val via = navigation?.via ?: state.via.map { it.location }
+    LaunchedEffect(style, route, state.start, state.destination, via) {
         val s = style ?: return@LaunchedEffect
-        MapLayers.show(s, route, state.start?.location, state.destination?.location)
+        MapLayers.show(s, route, state.start?.location, state.destination?.location, via)
         val m = map ?: return@LaunchedEffect
         // 导航中重新算路时镜头还跟着人，不要跳去看全程
         if (navigating) return@LaunchedEffect
@@ -335,15 +340,24 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
                 Layer.RIDE_VIEW -> navigation?.let { nav ->
                     BackHandler { openRideView(false) }
-                    RideView(nav, recording, onMap = { openRideView(false) }, onStop = finishRide)
+                    RideView(
+                        nav, recording,
+                        onMap = { openRideView(false) },
+                        onStop = finishRide,
+                        onReturn = returnTrip,
+                    ) { RideMap(nav, fix, it) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
-                    NavigationOverlay(
-                        nav,
-                        onRideView = { openRideView(true) },
-                        onDashboard = { dashboard = true },
-                        onStop = finishRide,
-                    )
+                    Box(Modifier.fillMaxSize()) {
+                        NavigationOverlay(
+                            nav,
+                            onRideView = { openRideView(true) },
+                            onDashboard = { dashboard = true },
+                            onStop = finishRide,
+                            onReturn = returnTrip,
+                        )
+                        RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp))
+                    }
                 }
                 Layer.PLANNER -> Box(Modifier.fillMaxSize()) {
                     Column(
@@ -354,7 +368,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                     ) {
                         SearchBar(
                             query = state.query,
-                            pickingStart = state.pickingStart,
+                            hint = when {
+                                state.pickingStart -> "搜索起点"
+                                state.pickingVia -> "搜索途经点"
+                                else -> "去哪儿骑？"
+                            },
                             results = state.results,
                             build = appBuild(),
                             onQuery = vm::onQueryChange,
@@ -367,10 +385,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         )
                         PrefsRow(state.prefs, vm::setPrefs)
                         AnimatedVisibility(
-                            state.pickingStart,
+                            state.pickingStart || state.pickingVia,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
                             exit = fadeOut() + slideOutVertically { -it },
-                        ) { HintPill("长按地图选起点，或者在上面搜一个地方") }
+                        ) { HintPill("长按地图选${if (state.pickingVia) "途经点" else "起点"}，或者在上面搜一个地方") }
                     }
 
                     Column(
@@ -420,24 +438,30 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 )
                             } else {
                                 PlannerSheet(
-                                    destination = state.destination,
-                                    start = state.start,
-                                    pickingStart = state.pickingStart,
-                                    route = state.route,
-                                    prefs = state.prefs,
+                                    state = state,
                                     saved = saved,
-                                    onChooseSaved = vm::chooseSaved,
-                                    onToggleSave = { place, savedHere ->
-                                        if (savedHere != null) vm.savedPlaces.remove(savedHere) else saving = place
-                                    },
-                                    onClear = vm::clearRoute,
-                                    onPickStart = vm::startPickingStart,
-                                    onUseMyLocation = vm::useMyLocationAsStart,
-                                    onRetry = vm::retry,
-                                    onStart = startNavigation,
-                                    onShowOnMap = { target ->
-                                        val items = (state.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
-                                        if (items.isNotEmpty()) focus = Focus(items, 0)
+                                    canReturn = canReturn,
+                                    actions = remember(vm) {
+                                        PlannerActions(
+                                            onChooseSaved = vm::chooseSaved,
+                                            onToggleSave = { place, savedHere ->
+                                                if (savedHere != null) vm.savedPlaces.remove(savedHere) else saving = place
+                                            },
+                                            onClear = vm::clearRoute,
+                                            onPickStart = vm::startPickingStart,
+                                            onUseMyLocation = vm::useMyLocationAsStart,
+                                            onAddVia = vm::startPickingVia,
+                                            onRemoveVia = vm::removeVia,
+                                            onLoop = vm::chooseLoop,
+                                            onAnotherLoop = vm::anotherLoop,
+                                            onReturn = returnTrip,
+                                            onRetry = vm::retry,
+                                            onStart = startNavigation,
+                                            onShowOnMap = { target ->
+                                                val items = (vm.state.value.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
+                                                if (items.isNotEmpty()) focus = Focus(items, 0)
+                                            },
+                                        )
                                     },
                                 )
                             }
@@ -465,15 +489,17 @@ private enum class Layer { PLANNER, NAVIGATION, RIDE_VIEW, DASHBOARD }
 /** 正在指给你看的几处，看到第几处 */
 private data class Focus(val items: List<SegmentInfo>, val index: Int)
 
-/** 用 Google 地图看街景；没装 Google 地图就开网页版 */
+/**
+ * 用 Google 地图看街景。用 Maps 链接而不是 google.streetview:，
+ * 这样点上正好没有街景（桥底下、公园里）时会找附近最近的一张，而不是退回卫星图。
+ * 没装 Google 地图就开网页版
+ */
 private fun openStreetView(context: Context, at: LatLon) {
-    val app = Intent(Intent.ACTION_VIEW, Uri.parse("google.streetview:cbll=${at.lat},${at.lon}"))
-        .setPackage("com.google.android.apps.maps")
+    val url = Uri.parse("https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at.lat},${at.lon}")
     try {
-        context.startActivity(app)
+        context.startActivity(Intent(Intent.ACTION_VIEW, url).setPackage("com.google.android.apps.maps"))
     } catch (_: ActivityNotFoundException) {
-        val web = Uri.parse("https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at.lat},${at.lon}")
-        context.startActivity(Intent(Intent.ACTION_VIEW, web))
+        context.startActivity(Intent(Intent.ACTION_VIEW, url))
     }
 }
 

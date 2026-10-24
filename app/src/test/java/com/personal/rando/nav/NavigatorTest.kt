@@ -95,4 +95,12 @@ class NavigatorTest {
         assertTrue(progress.arrived)
         assertNull(progress.next)
     }
+
+    @Test
+    fun `途经点对到路线上，离起点多远`() {
+        val nav = Navigator(route)
+        // 拐弯后往东半段的旁边
+        val along = nav.alongOf(LatLon(1.300 + 2 * step + 0.0001, 103.800 + 1.5 * step))
+        assertEquals(3.5 * metersPerStep, along, 3.0)
+    }
 }

@@ -21,27 +21,37 @@ class BRouterClient(
     private val baseUrl: String = "https://brouter.de/brouter",
 ) {
 
-    suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
-        val custom = prefs.customProfile ?: return@withContext fetch(url(from, to, prefs.profile.brouterName))
+    suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
+
+    /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点 */
+    suspend fun route(stops: List<LatLon>, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
+        val custom = prefs.customProfile ?: return@withContext fetch(url(stops, prefs.profile.brouterName))
         // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
         val cached = uploaded[custom]
         if (cached != null) {
             try {
-                return@withContext fetch(url(from, to, cached))
+                return@withContext fetch(url(stops, cached))
             } catch (_: IOException) {
                 uploaded.remove(custom)
             }
         }
-        fetch(url(from, to, upload(custom)))
+        fetch(url(stops, upload(custom)))
     }
 
     private fun fetch(url: String): Route =
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
             val body = response.body.string()
             // 出错时服务器返回纯文本说明，比如 "target island detected"
-            if (!response.isSuccessful) throw IOException(body.trim().ifEmpty { "HTTP ${response.code}" })
+            if (!response.isSuccessful) throw IOException(explain(body.trim()).ifEmpty { "HTTP ${response.code}" })
             RouteParser.parse(body)
         }
+
+    /** 常见的几种出错换成中文 */
+    private fun explain(message: String): String = when {
+        "island" in message -> "有个点在走不通的地方（小岛、封闭区域），换个点试试"
+        "not mapped" in message || "no track found" in message -> "附近找不到能骑的路"
+        else -> message
+    }
 
     /** 上传自己的配置，换回 custom_xxx 的配置名 */
     private fun upload(profile: String): String {
@@ -57,9 +67,9 @@ class BRouterClient(
         return json.getString("profileid").also { uploaded[profile] = it }
     }
 
-    fun url(from: LatLon, to: LatLon, profileName: String): String =
+    fun url(stops: List<LatLon>, profileName: String): String =
         baseUrl.toHttpUrl().newBuilder()
-            .addQueryParameter("lonlats", "${coord(from)}|${coord(to)}")
+            .addQueryParameter("lonlats", stops.joinToString("|", transform = ::coord))
             .addQueryParameter("profile", profileName)
             .addQueryParameter("alternativeidx", "0")
             .addQueryParameter("format", "geojson")
