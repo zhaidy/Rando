@@ -9,6 +9,7 @@ import android.widget.Toast
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Close
@@ -41,6 +43,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -61,6 +65,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -105,7 +111,7 @@ import org.maplibre.android.maps.Style
 private val SINGAPORE = LatLng(1.3521, 103.8198)
 
 @Composable
-fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
+fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheckUpdate: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val recording by vm.session.recording.collectAsStateWithLifecycle()
@@ -174,8 +180,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
 
     // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
     val view = LocalView.current
-    DisposableEffect(navigating) {
-        view.keepScreenOn = navigating
+    var dashboard by rememberSaveable { mutableStateOf(false) }
+    // 骑行结束码表也就收起来了
+    val showDashboard = dashboard && recording != null
+    val screenOn = navigating || showDashboard
+    DisposableEffect(screenOn) {
+        view.keepScreenOn = screenOn
         onDispose { view.keepScreenOn = false }
     }
     LaunchedEffect(map, style, hasLocation, navigating) {
@@ -223,8 +233,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
+        if (showDashboard) {
+            BackHandler { dashboard = false }
+            BikeComputer(recording!!, navigation, onMap = { dashboard = false }, onStop = finishRide)
+            return@Box
+        }
+
         navigation?.let {
-            NavigationOverlay(it, recording, onStop = finishRide)
+            NavigationOverlay(it, onDashboard = { dashboard = true }, onStop = finishRide)
             return@Box
         }
 
@@ -233,7 +249,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
                 .statusBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            SearchBox(state, vm)
+            SearchBox(state, vm, onOpenRides, onCheckUpdate)
             Spacer(Modifier.size(8.dp))
             ProfileChips(state.profile, vm::setProfile)
             if (state.pickingStart) {
@@ -278,7 +294,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
                 Spacer(Modifier.size(8.dp))
             }
             recording?.let {
-                RecordingCard(it, onStop = finishRide)
+                RecordingCard(it, onDashboard = { dashboard = true }, onStop = finishRide)
                 Spacer(Modifier.size(8.dp))
             }
             PlannerCard(state, saved, vm, startNavigation)
@@ -287,8 +303,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit) {
 }
 
 @Composable
-private fun SearchBox(state: PlannerState, vm: RouteViewModel) {
+private fun SearchBox(state: PlannerState, vm: RouteViewModel, onOpenRides: () -> Unit, onCheckUpdate: () -> Unit) {
     val focus = LocalFocusManager.current
+    var menuOpen by remember { mutableStateOf(false) }
     Surface(shape = RoundedCornerShape(16.dp), shadowElevation = 4.dp) {
         Column {
             TextField(
@@ -301,6 +318,17 @@ private fun SearchBox(state: PlannerState, vm: RouteViewModel) {
                     if (state.query.isNotEmpty()) {
                         IconButton(onClick = { vm.onQueryChange("") }) {
                             Icon(Icons.Default.Close, contentDescription = "清空")
+                        }
+                    } else {
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
+                                DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
+                                DropdownMenuItem(text = { Text("当前版本 build ${appBuild()}") }, onClick = {}, enabled = false)
+                            }
                         }
                     }
                 },
@@ -606,44 +634,16 @@ private fun flyToMyLocation(map: MapLibreMap) {
 }
 
 @Composable
-private fun NavigationOverlay(navigation: NavigationState, recording: RecordingState?, onStop: () -> Unit) {
+private fun NavigationOverlay(navigation: NavigationState, onDashboard: () -> Unit, onStop: () -> Unit) {
     val progress = navigation.progress
     Column(Modifier.fillMaxSize()) {
-        Surface(
+        NavBanner(
+            navigation,
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(12.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = RandoGreen,
-            contentColor = Color.White,
-            shadowElevation = 6.dp,
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                when {
-                    progress == null -> NavText("等待 GPS 定位…")
-                    progress.arrived -> NavText("已到达目的地")
-                    navigation.rerouting || progress.offRoute -> NavText("已偏离路线，正在重新规划…")
-                    else -> {
-                        val next = progress.next
-                        Text(next?.turn?.arrow ?: "⚑", fontSize = 44.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                Format.distance(progress.distanceToNext.toInt()),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(next?.text ?: "到达终点", style = MaterialTheme.typography.titleMedium)
-                            val following = progress.following
-                            if (following != null && progress.distanceNextToFollowing <= 100) {
-                                Text("然后${following.text}", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        )
         Spacer(Modifier.weight(1f))
         Surface(
             Modifier
@@ -658,12 +658,50 @@ private fun NavigationOverlay(navigation: NavigationState, recording: RecordingS
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         Stat(Format.distance(progress.remainingMeters.toInt()), "剩余")
                         Stat(Format.duration(progress.remainingSeconds), "还要")
-                        recording?.let { Stat(Format.distance(it.distanceMeters.toInt()), "已骑") }
                     }
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
+                TextButton(onClick = onDashboard) { Text("码表") }
                 Button(onClick = onStop) { Text("结束") }
+            }
+        }
+    }
+}
+
+/** 导航时顶部的绿条：箭头、离路口多远、怎么走 */
+@Composable
+fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier) {
+    val progress = navigation.progress
+    Surface(
+        modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = RandoGreen,
+        contentColor = Color.White,
+        shadowElevation = 6.dp,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            when {
+                progress == null -> NavText("等待 GPS 定位…")
+                progress.arrived -> NavText("已到达目的地")
+                navigation.rerouting || progress.offRoute -> NavText("已偏离路线，正在重新规划…")
+                else -> {
+                    val next = progress.next
+                    Text(next?.turn?.arrow ?: "⚑", fontSize = 44.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            Format.distance(progress.distanceToNext.toInt()),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(next?.text ?: "到达终点", style = MaterialTheme.typography.titleMedium)
+                        val following = progress.following
+                        if (following != null && progress.distanceNextToFollowing <= 100) {
+                            Text("然后${following.text}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             }
         }
     }
@@ -675,7 +713,7 @@ private fun NavText(text: String) {
 }
 
 @Composable
-private fun RecordingCard(recording: RecordingState, onStop: () -> Unit) {
+private fun RecordingCard(recording: RecordingState, onDashboard: () -> Unit, onStop: () -> Unit) {
     Surface(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -689,6 +727,7 @@ private fun RecordingCard(recording: RecordingState, onStop: () -> Unit) {
                 RecordingStat(Format.distance(recording.distanceMeters.toInt()), "距离")
                 RecordingStat(Format.speed(recording.currentSpeed), "速度")
             }
+            TextButton(onClick = onDashboard) { Text("码表", color = Color.White) }
             TextButton(onClick = onStop) { Text("结束", color = Color.White, fontWeight = FontWeight.Bold) }
         }
     }
@@ -708,4 +747,12 @@ private fun finishRide(context: Context, session: RideSession) {
     val ride = session.stopRecording()
     val text = if (ride != null) "已保存骑行记录：${Format.distance(ride.distanceMeters.toInt())}" else "骑得太短，没有保存记录"
     Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+}
+
+@Composable
+private fun appBuild(): Long {
+    val context = LocalContext.current
+    return remember {
+        PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
+    }
 }

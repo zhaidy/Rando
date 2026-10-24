@@ -6,7 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,7 +34,9 @@ class MainActivity : ComponentActivity() {
                 // 0 是地图，-1 是记录列表，其他是某条记录的 id
                 var screen by rememberSaveable { mutableLongStateOf(0L) }
                 // 地图一直留着（来回切不用重新加载），记录页盖在上面
-                MapScreen(vm, onOpenRides = { screen = -1L })
+                // 每点一次「检查更新」加一，UpdatePrompt 看到变化就去查
+                var updateChecks by remember { mutableIntStateOf(0) }
+                MapScreen(vm, onOpenRides = { screen = -1L }, onCheckUpdate = { updateChecks++ })
                 when (val s = screen) {
                     0L -> Unit
                     -1L -> {
@@ -45,7 +49,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val navigation by vm.session.navigation.collectAsStateWithLifecycle()
-                UpdatePrompt(navigating = navigation != null)
+                UpdatePrompt(navigating = navigation != null, manualChecks = updateChecks)
             }
         }
     }
