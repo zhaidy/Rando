@@ -48,6 +48,7 @@ import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pieces
 import com.personal.rando.routing.structures
 import com.personal.rando.routing.steepestClimb
+import com.personal.rando.places.AmenityOnRoute
 import kotlin.math.roundToInt
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
@@ -204,7 +205,8 @@ data class SegmentInfo(
 )
 
 /** 卡片上能点的提示，点了在地图上一处处看 */
-enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH, CLIMB }
+/** [AMENITIES] 的几处不在路线数据里，由界面用查到的补给点来填 */
+enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH, CLIMB, AMENITIES }
 
 /** 离点击位置 [toleranceMeters] 以内最近的那段路；都太远就是 null */
 fun Route.segmentAt(tap: LatLon, toleranceMeters: Double): SegmentInfo? {
@@ -235,6 +237,7 @@ fun Route.targets(target: NoteTarget): List<SegmentInfo> = when (target) {
         // 看实景看入口：桥上、通道里面多半没有街景
         SegmentInfo(it.kind.label, "#FFFFFF", it.lengthMeters, it.path.first(), it.path, it.access)
     }
+    NoteTarget.AMENITIES -> emptyList()
     NoteTarget.CLIMB -> listOfNotNull(
         steepestClimb()?.let { c ->
             val path = points.subList(c.fromIndex, c.toIndex + 1)
@@ -264,6 +267,19 @@ private fun Route.piecesWithin(kind: RoadKind, skipEnds: Boolean): List<SegmentI
         along += length
     }
     return result
+}
+
+/** 沿途补给一处处看 */
+fun List<AmenityOnRoute>.targets(): List<SegmentInfo> = map {
+    val a = it.amenity
+    SegmentInfo(
+        a.name?.let { n -> "${a.type.label} · $n" } ?: a.type.label,
+        a.type.color,
+        0,
+        a.location,
+        listOf(a.location),
+        "第 ${Format.km(it.alongMeters)} 公里，离路线 ${it.offRouteMeters.toInt()} 米",
+    )
 }
 
 private fun lengthOf(points: List<LatLon>): Int = points.zipWithNext { p, q -> Geo.distance(p, q) }.sum().toInt()

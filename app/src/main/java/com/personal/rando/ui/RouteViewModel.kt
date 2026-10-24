@@ -17,6 +17,15 @@ import com.personal.rando.routing.Route
 import com.personal.rando.routing.LoopPlanner
 import com.personal.rando.nav.Geo
 import kotlin.math.abs
+import com.personal.rando.places.AmenityClient
+import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.onRoute
+import com.personal.rando.routing.RouteTimeline
+import com.personal.rando.weather.RouteWeather
+import com.personal.rando.weather.Weather
+import com.personal.rando.weather.WeatherClient
+import com.personal.rando.weather.along
+import kotlinx.coroutines.coroutineScope
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
 import kotlinx.coroutines.CancellationException
@@ -57,6 +66,10 @@ data class PlannerState(
     val query: String = "",
     val results: List<Place> = emptyList(),
     val route: RouteState = RouteState.Idle,
+    /** 沿途天气；还没查到或者查不到是 null */
+    val weather: RouteWeather? = null,
+    /** 沿途补给点 */
+    val amenities: List<AmenityOnRoute> = emptyList(),
 )
 
 /** 骑一圈：大约多远，第几次换方向 */
@@ -80,6 +93,10 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     private var myLocation: LatLon? = null
     private var searchJob: Job? = null
     private var routeJob: Job? = null
+    private val weatherClient = WeatherClient()
+    private val amenityClient = AmenityClient()
+    /** 天气十分钟内不重复查 */
+    private var cachedWeather: Pair<Long, Weather>? = null
 
     init {
         viewModelScope.launch { session.location.filterNotNull().collect(::onMyLocation) }
@@ -235,7 +252,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             _state.update { it.copy(route = RouteState.WaitingForLocation) }
             return
         }
-        _state.update { it.copy(route = RouteState.Loading) }
+        _state.update { it.copy(route = RouteState.Loading, weather = null, amenities = emptyList()) }
         routeJob = viewModelScope.launch {
             val next = try {
                 if (s.loop != null) {
@@ -250,6 +267,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 RouteState.Failed(e.message ?: "算路失败")
             }
             _state.update { it.copy(route = next) }
+            if (next is RouteState.Ready) loadExtras(next.route)
         }
     }
 
@@ -292,7 +310,31 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         return RouteState.Failed(error?.message ?: "算路失败")
     }
 
+    /** 路线算好后再查天气和补给点，查不到就不显示，不耽误看路线 */
+    private suspend fun loadExtras(route: Route) = coroutineScope {
+        launch {
+            val now = System.currentTimeMillis()
+            val weather = cachedWeather?.takeIf { now - it.first < WEATHER_TTL_MS }?.second
+                ?: quietly { weatherClient.fetch() }?.also { cachedWeather = now to it }
+            weather?.let { w -> _state.update { it.copy(weather = w.along(route.points)) } }
+        }
+        launch {
+            quietly { amenityClient.along(route.points) }?.let { list ->
+                _state.update { it.copy(amenities = list.onRoute(RouteTimeline(route))) }
+            }
+        }
+    }
+
+    private suspend fun <T> quietly(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
     private companion object {
+        const val WEATHER_TTL_MS = 10 * 60_000L
         const val LOOP_TRIES = 3
         /** 圈的长度差这么多以内就不调了 */
         const val LOOP_TOLERANCE = 0.15

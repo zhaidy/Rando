@@ -12,6 +12,15 @@ import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.RouteTimeline
 import com.personal.rando.routing.ReturnTrip
+import com.personal.rando.nav.DaylightAlerts
+import com.personal.rando.nav.Geo
+import com.personal.rando.places.AmenityClient
+import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.onRoute
+import com.personal.rando.weather.RouteWeather
+import com.personal.rando.weather.WeatherClient
+import com.personal.rando.weather.along
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -51,6 +60,8 @@ class RideSession(
     context: Context,
     private val scope: CoroutineScope,
     private val router: BRouterClient = BRouterClient(),
+    private val weatherClient: WeatherClient = WeatherClient(),
+    private val amenityClient: AmenityClient = AmenityClient(),
 ) {
     private val app = context.applicationContext
     private val speaker by lazy { Speaker(app) }
@@ -72,7 +83,20 @@ class RideSession(
     /** 不为 null 就是在记录轨迹 */
     val recording: StateFlow<RecordingState?> = _recording
 
+    private val _weather = MutableStateFlow<RouteWeather?>(null)
+    /** 骑行中前方（或附近）的天气，十分钟更新一次 */
+    val weather: StateFlow<RouteWeather?> = _weather
+
+    private val _amenities = MutableStateFlow<List<AmenityOnRoute>>(emptyList())
+    /** 导航路线两旁的补给点 */
+    val amenities: StateFlow<List<AmenityOnRoute>> = _amenities
+
     private var recorder: RideRecorder? = null
+    private val daylight = DaylightAlerts()
+    private var weatherJob: Job? = null
+    private var amenityJob: Job? = null
+    /** 上次播过的天气，变了才再说 */
+    private var spokenWeather: String? = null
     private var navigator: Navigator? = null
     private var roadAlerts: RoadAlerts? = null
     private val prompter = VoicePrompter()
@@ -97,6 +121,7 @@ class RideSession(
             if (fix.accuracy != _navigation.value?.gpsAccuracy) _navigation.update { it?.copy(gpsAccuracy = fix.accuracy) }
             if (precise) navigate(fix.location)
         }
+        if (navigator != null || recorder != null) daylight.next(System.currentTimeMillis())?.let(speaker::say)
         recorder?.let {
             it.add(fix)
             _recording.value = it.state()
@@ -108,6 +133,8 @@ class RideSession(
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
         _recording.value = r.state()
+        daylight.reset()
+        watchWeather()
         RideService.start(app)
     }
 
@@ -116,6 +143,7 @@ class RideSession(
         val r = recorder ?: return null
         recorder = null
         _recording.value = null
+        stopWatchingWeather()
         val ride = r.toRide(System.currentTimeMillis())
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
         scope.launch { rides.save(ride) }
@@ -124,6 +152,7 @@ class RideSession(
 
     fun startNavigation(route: Route, destination: LatLon, via: List<LatLon>, prefs: RoutePrefs) {
         follow(route, via)
+        loadAmenities(route)
         rerouteJob?.cancel()
         _navigation.value = NavigationState(route, destination, via, prefs)
         speaker.say(prompter.start(route.distanceMeters.toDouble()))
@@ -151,6 +180,8 @@ class RideSession(
         navigator = null
         roadAlerts = null
         rerouteJob?.cancel()
+        amenityJob?.cancel()
+        _amenities.value = emptyList()
         _navigation.value = null
     }
 
@@ -174,6 +205,60 @@ class RideSession(
         if (progress.offRoute) reroute(point)
     }
 
+    /** 查路线两旁的补给点；查不到就算了，不影响导航 */
+    private fun loadAmenities(route: Route) {
+        amenityJob?.cancel()
+        amenityJob = scope.launch {
+            try {
+                _amenities.value = amenityClient.along(route.points).onRoute(RouteTimeline(route))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * 骑行中每十分钟看一次天气：导航时看前方还没骑的路，自由骑行时看附近。
+     * 前方要下雨了（或者雨的情况变了）说一声
+     */
+    private fun watchWeather() {
+        weatherJob?.cancel()
+        spokenWeather = null
+        weatherJob = scope.launch {
+            while (true) {
+                try {
+                    val weather = weatherClient.fetch()
+                    val ahead = aheadPoints()
+                    val along = if (ahead.isNotEmpty()) weather.along(ahead) else null
+                    _weather.value = along
+                    val text = along?.takeIf { !it.dry }?.summary
+                    if (text != null && text != spokenWeather) speaker.say("注意，$text")
+                    spokenWeather = text
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // 没网就下次再看
+                }
+                delay(WEATHER_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopWatchingWeather() {
+        weatherJob?.cancel()
+        _weather.value = null
+    }
+
+    /** 前方还没骑的路；没在导航就只有现在的位置 */
+    private fun aheadPoints(): List<LatLon> {
+        val here = _location.value
+        val nav = _navigation.value ?: return listOfNotNull(here)
+        val points = nav.route.points
+        val from = here?.let { h -> points.indices.minByOrNull { Geo.distance(points[it], h) } } ?: 0
+        return points.subList(from, points.size)
+    }
+
     /** 骑偏了：从当前位置重新算到终点；隔一会儿才重算一次，免得一路狂发请求 */
     private fun reroute(from: LatLon) {
         val state = _navigation.value ?: return
@@ -187,6 +272,7 @@ class RideSession(
                 val route = router.route(listOf(from) + via + state.destination, state.prefs)
                 if (navigator == null) return@launch
                 follow(route, via)
+                loadAmenities(route)
                 _navigation.update { it?.copy(route = route, via = via, rerouting = false) }
                 _location.value?.let(::navigate)
             } catch (e: CancellationException) {
@@ -201,6 +287,7 @@ class RideSession(
     private companion object {
         const val REROUTE_INTERVAL_MS = 15_000L
         const val MIN_RIDE_METERS = 100.0
+        const val WEATHER_INTERVAL_MS = 10 * 60_000L
         /** 准的定位在这么久以内，不准的不要 */
         const val KEEP_PRECISE_MS = 10_000L
         /** 骑到离途经点这么近就算经过了 */

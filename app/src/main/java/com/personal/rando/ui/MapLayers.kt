@@ -2,6 +2,7 @@ package com.personal.rando.ui
 
 import android.graphics.Color
 import com.personal.rando.routing.LatLon
+import com.personal.rando.places.Amenity
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.RoadPiece
 import com.personal.rando.routing.Route
@@ -45,10 +46,11 @@ object MapLayers {
     private const val START = "rando-start"
     private const val END = "rando-end"
     private const val VIA = "rando-via"
+    private const val AMENITIES = "rando-amenities"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, FOCUS_POINT, VIA, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, FOCUS_POINT, VIA, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -88,6 +90,14 @@ object MapLayers {
         style.addLayer(
             CircleLayer(CROSSINGS, CROSSINGS).withProperties(
                 circleRadius(4.5f), circleColor(Expression.toColor(Expression.get("color"))),
+                circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f),
+            )
+        )
+        // 沿途补给：小圆点，颜色按种类（饮水机蓝、厕所紫……），缩小看全程时点也跟着变小
+        style.addLayer(
+            CircleLayer(AMENITIES, AMENITIES).withProperties(
+                circleRadius(Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(11, 2f), Expression.stop(16, 6f))),
+                circleColor(Expression.toColor(Expression.get("color"))),
                 circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f),
             )
         )
@@ -137,6 +147,17 @@ object MapLayers {
                 Feature.fromGeometry(LineString.fromLngLats(piece.points.map { Point.fromLngLat(it.lon, it.lat) }))
                     .apply { addStringProperty("color", piece.kind.color) }
             }
+        )
+    }
+
+    fun showAmenities(style: Style, amenities: List<Amenity>) {
+        style.getSourceAs<GeoJsonSource>(AMENITIES)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                amenities.map { a ->
+                    Feature.fromGeometry(Point.fromLngLat(a.location.lon, a.location.lat))
+                        .apply { addStringProperty("color", a.type.color) }
+                }
+            )
         )
     }
 
