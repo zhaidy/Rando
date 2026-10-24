@@ -86,6 +86,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
 import com.personal.rando.ride.RecordingState
+import com.personal.rando.ride.Ride
+import com.personal.rando.routing.ReturnTrip
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RoadKind
@@ -341,7 +343,6 @@ class PlannerActions(
     val onRemoveVia: (Place) -> Unit = {},
     val onLoop: (km: Int) -> Unit = {},
     val onAnotherLoop: () -> Unit = {},
-    val onReturn: () -> Unit = {},
     val onRetry: () -> Unit = {},
     val onStart: () -> Unit = {},
     val onShowOnMap: (NoteTarget) -> Unit = {},
@@ -364,8 +365,6 @@ fun PlannerSheet(
     saved: List<SavedPlace>,
     actions: PlannerActions,
     modifier: Modifier = Modifier,
-    /** 正在记录、离出发的地方有段距离了：可以原路返回 */
-    canReturn: Boolean = false,
 ) {
     val header = when {
         state.loop != null -> SheetHeader.Loop(state.loop.targetMeters / 1000)
@@ -440,7 +439,7 @@ fun PlannerSheet(
           if (size == SheetSize.PEEK) {
             PeekLine(state, header, actions.onStart)
           } else Column(Modifier.verticalScroll(rememberScrollState())) {
-            if (header == SheetHeader.Empty) EmptyExtras(saved, canReturn, actions)
+            if (header == SheetHeader.Empty) EmptyExtras(saved, actions)
             StartLine(state.start, state.pickingStart, actions.onPickStart, actions.onUseMyLocation)
             if (state.destination != null) ViaLines(state.via, state.pickingVia, actions.onAddVia, actions.onRemoveVia)
             if (header != SheetHeader.Empty) {
@@ -531,20 +530,10 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
     }
 }
 
-/** 还没选目的地时：原路返回、收藏、骑一圈 */
+/** 还没选目的地时：收藏、骑一圈 */
 @Composable
-private fun EmptyExtras(saved: List<SavedPlace>, canReturn: Boolean, actions: PlannerActions) {
+private fun EmptyExtras(saved: List<SavedPlace>, actions: PlannerActions) {
     Column {
-        if (canReturn) {
-            GlassButton(
-                onClick = actions.onReturn,
-                modifier = Modifier.padding(top = 12.dp),
-                tone = GlassTone.Tinted(RandoGreen),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                Text("原路返回出发的地方", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
         if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
         LoopRow(actions.onLoop)
     }
@@ -1003,6 +992,32 @@ private fun Note(color: Color, text: String, strong: Boolean = false, onClick: (
 }
 
 // ───────────────────────── 记录中 ─────────────────────────
+
+/**
+ * 刚结束一次骑行：已经保存了，骑了多远多久；离出发的地方有段距离时可以原路返回
+ */
+@Composable
+fun FinishedCard(ride: Ride, onReturn: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
+    Row(
+        modifier
+            .fillMaxWidth()
+            .liquidGlass(GlassShapes.Pill)
+            .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("已保存${ride.title}", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}", color = InkSoft, fontSize = 13.sp)
+        }
+        if (canReturn) {
+            GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+                Text("原路返回", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关掉", tint = InkSoft) }
+    }
+}
 
 /** 记录中的小胶囊：红点呼吸，时间、距离、速度 */
 @Composable

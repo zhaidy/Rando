@@ -94,8 +94,6 @@ fun RideView(
     recording: RecordingState?,
     onMap: () -> Unit,
     onStop: () -> Unit,
-    /** 原路返回；null 就不显示。导航时到了才显示 */
-    onReturn: (() -> Unit)? = null,
     /** 前方天气；不下雨就不显示 */
     weather: RouteWeather? = null,
     /** 导航路线两旁的补给点 */
@@ -181,16 +179,6 @@ fun RideView(
                         }
                     }
                     recording?.let { MoreStats(it, navigating = navigation != null, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
-                    // 原路返回单独一行，和下面三个按钮挤在一起字会折行
-                    if (onReturn != null && (navigation == null || progress?.arrived == true)) {
-                        GlassButton(
-                            onClick = onReturn,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
-                            tone = GlassTone.Tinted(RandoGreen),
-                        ) {
-                            Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                        }
-                    }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
