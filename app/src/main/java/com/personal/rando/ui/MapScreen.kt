@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -99,7 +100,10 @@ import com.personal.rando.ride.RecordingState
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
+import com.personal.rando.routing.Crossing
+import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RoadKind
+import com.personal.rando.routing.crossings
 import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import org.maplibre.android.MapLibre
@@ -383,21 +387,46 @@ private fun PlaceRow(place: Place, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 路线偏好。「不上马路」是在公园连道的基础上把马路避开，所以只跟着「公园连道」出现，
+ * 两个可以同时选
+ */
 @Composable
 private fun ProfileChips(selected: BikeProfile, onSelect: (BikeProfile) -> Unit) {
+    val pcnFamily = selected == BikeProfile.PCN || selected == BikeProfile.NO_ROADS
+    val colors = FilterChipDefaults.filterChipColors(
+        containerColor = MaterialTheme.colorScheme.surface,
+        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+    )
     Row(
         Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BikeProfile.entries.forEach { profile ->
+        FilterChip(
+            selected = pcnFamily,
+            onClick = { if (!pcnFamily) onSelect(BikeProfile.PCN) },
+            label = { Text(BikeProfile.PCN.label) },
+            colors = colors,
+        )
+        if (pcnFamily) {
+            FilterChip(
+                selected = selected == BikeProfile.NO_ROADS,
+                onClick = { onSelect(if (selected == BikeProfile.NO_ROADS) BikeProfile.PCN else BikeProfile.NO_ROADS) },
+                label = { Text(BikeProfile.NO_ROADS.label) },
+                leadingIcon = if (selected == BikeProfile.NO_ROADS) {
+                    { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                colors = colors,
+            )
+        }
+        BikeProfile.entries.filter { it != BikeProfile.PCN && it != BikeProfile.NO_ROADS }.forEach { profile ->
             FilterChip(
                 selected = profile == selected,
                 onClick = { onSelect(profile) },
                 label = { Text(profile.label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                ),
+                colors = colors,
             )
         }
     }
@@ -569,13 +598,13 @@ private fun RouteSummary(ready: RouteState.Ready, profile: BikeProfile) {
     val breakdown = route.breakdown()
     if (breakdown.isEmpty()) return
     Spacer(Modifier.size(10.dp))
-    RoadBreakdown(breakdown, profile)
+    RoadBreakdown(breakdown, route.crossings(), profile)
 }
 
 /** 这条路线各种路各占多少：一条彩色条加图例，再提醒要不要上马路 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, profile: BikeProfile) {
+private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, crossings: List<Crossing>, profile: BikeProfile) {
     val total = breakdown.values.sum().coerceAtLeast(1)
     Row(
         Modifier
@@ -617,7 +646,11 @@ private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, profile: BikeProfile) {
     val push = breakdown[RoadKind.PUSH] ?: 0
     Spacer(Modifier.size(6.dp))
     if (road > 0) {
-        val hint = if (profile == BikeProfile.NO_ROADS) "，附近没有别的路可走" else "；选「不上马路」可以尽量避开"
+        val hint = when (profile) {
+            BikeProfile.NO_ROADS -> "，附近没有别的路可走"
+            BikeProfile.PCN -> "；打开「不上马路」可以尽量避开"
+            else -> "；选「公园连道」再打开「不上马路」可以尽量避开"
+        }
         Text(
             "有 ${Format.distance(road)} 要在马路上骑$hint",
             style = MaterialTheme.typography.bodyMedium,
@@ -625,6 +658,15 @@ private fun RoadBreakdown(breakdown: Map<RoadKind, Int>, profile: BikeProfile) {
         )
     } else {
         Text("全程不用上马路", style = MaterialTheme.typography.bodyMedium, color = RandoGreen)
+    }
+    if (crossings.isNotEmpty()) {
+        val byType = crossings.groupingBy { it.type }.eachCount()
+        Text(
+            "过马路 ${crossings.size} 次：" +
+                CrossingType.entries.filter { (byType[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${byType[it]}" },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     if (push > 0) {
         Text(

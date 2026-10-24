@@ -92,6 +92,9 @@ assign classifiermask add          isbadoneway
                       add multiply islinktype     8
                           multiply isgoodforcars 16
 
+# 用到才会出现在返回的 WayTags 里：路线卡片要靠它认出单独画的斑马线
+assign isCrossingWay = or footway=crossing cycleway=crossing
+
 assign turncost = 20
 assign initialcost = 0
 
