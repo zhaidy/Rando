@@ -130,6 +130,8 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import androidx.compose.runtime.produceState
+import com.personal.rando.ride.RouteRecord
 import com.personal.rando.nav.Geo
 import com.personal.rando.places.Hazard
 import com.personal.rando.ride.RideService
@@ -514,7 +516,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             exit = fadeOut() + slideOutVertically { it },
                         ) {
                             finished?.let { ride ->
-                                FinishedCard(ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null })
+                                val record by produceState<String?>(null, ride) {
+                                    value = RouteRecord.of(ride, vm.session.rides.list())?.text
+                                }
+                                FinishedCard(ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record)
                             }
                         }
                         AnimatedVisibility(
