@@ -88,6 +88,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -130,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.produceState
 import com.personal.rando.ride.RouteRecord
 import com.personal.rando.nav.Geo
@@ -165,6 +167,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var hazardShown by remember { mutableStateOf<Hazard?>(null) }
     val savedRoutes by vm.savedRoutes.routes.collectAsStateWithLifecycle()
     var savingRoute by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val sosList by group.sos.collectAsStateWithLifecycle()
     val crash by vm.session.crash.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
@@ -521,7 +524,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 val record by produceState<String?>(null, ride) {
                                     value = RouteRecord.of(ride, vm.session.rides.list())?.text
                                 }
-                                FinishedCard(ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record)
+                                FinishedCard(
+                                    ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record,
+                                    onShare = { scope.launch { ShareCard.share(context, ride, record) } },
+                                )
                             }
                         }
                         AnimatedVisibility(
