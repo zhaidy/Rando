@@ -278,7 +278,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             with(density) {
                 m.animateCamera(
                     CameraUpdateFactory.newLatLngBounds(
-                        bounds, 48.dp.roundToPx(), 200.dp.roundToPx(), 48.dp.roundToPx(), 300.dp.roundToPx(),
+                        bounds, 48.dp.roundToPx(), 200.dp.roundToPx(), 48.dp.roundToPx(), 380.dp.roundToPx(),
                     )
                 )
             }

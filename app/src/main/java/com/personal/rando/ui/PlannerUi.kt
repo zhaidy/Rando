@@ -102,6 +102,10 @@ import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.routing.steepestClimb
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlin.math.roundToInt
@@ -356,7 +360,9 @@ fun PlannerSheet(
         state.destination != null -> SheetHeader.Destination(state.destination)
         else -> SheetHeader.Empty
     }
-    GlassPanel(modifier.fillMaxWidth()) {
+    // 展开详情时最多占屏幕六成，剩下的在卡片里滑
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+    GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight)) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
@@ -612,21 +618,72 @@ fun RouteSummary(
     /** 是骑一圈：马路绕不开时提示换个方向，而不是说附近没路 */
     loop: Boolean = false,
 ) {
+    // 默认收起，只留最要紧的，地图不被挡住；点「详情」再展开爬升图和各项提示
+    var expanded by rememberSaveable { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
         BigStat(Format.distance(route.distanceMeters), "距离")
         BigStat(Format.duration(route.durationSeconds), "预计")
         BigStat("${route.ascendMeters} 米", "爬升")
     }
-    ElevationChart(route)
     val breakdown = route.breakdown()
-    if (breakdown.isEmpty()) return
-    Spacer(Modifier.height(14.dp))
-    RoadBar(route, breakdown)
-    Legend(breakdown)
-    Spacer(Modifier.height(10.dp))
-    Notes(route, breakdown, prefs, onShowOnMap, loop)
-    Spacer(Modifier.height(5.dp))
-    Outlook(route, weather, amenities, onShowOnMap)
+    if (breakdown.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        RoadBar(route, breakdown)
+    }
+    Column(Modifier.animateContentSize(Motion.smooth())) {
+        if (expanded) {
+            ElevationChart(route)
+            if (breakdown.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Legend(breakdown)
+                Spacer(Modifier.height(10.dp))
+                Notes(route, breakdown, prefs, onShowOnMap, loop)
+            }
+            Spacer(Modifier.height(5.dp))
+            Outlook(route, weather, amenities, onShowOnMap)
+        } else {
+            Spacer(Modifier.height(10.dp))
+            Headline(breakdown, weather, onShowOnMap)
+        }
+        DetailsToggle(expanded) { expanded = !expanded }
+    }
+}
+
+/** 收起时的一两句：要不要上马路，会不会下雨 */
+@Composable
+private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onShowOnMap: (NoteTarget) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        val road = breakdown[RoadKind.ROAD] ?: 0
+        when {
+            breakdown.isEmpty() -> Unit
+            road > 0 -> Note(RandoRed, "有 ${Format.distance(road)} 要在马路上骑", strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            else -> Note(RandoGreen, "全程不用上马路", strong = true)
+        }
+        weather?.takeIf { !it.dry }?.let { Note(RandoBlue, it.summary, strong = true) }
+    }
+}
+
+@Composable
+private fun DetailsToggle(expanded: Boolean, onClick: () -> Unit) {
+    val turn by animateFloatAsState(if (expanded) 180f else 0f, Motion.smooth(), label = "chevron")
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(GlassShapes.Pill)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (expanded) "收起" else "详情：爬升、过马路、天气、补给", color = RandoGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Icon(
+            Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = RandoGreen,
+            modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn },
+        )
+    }
 }
 
 @Composable
