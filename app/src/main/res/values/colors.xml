@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#E4F1E6</color>
+    <!-- 和地图底色接近，启动时不闪白 -->
+    <color name="rando_background">#F8F4F0</color>
+</resources>
