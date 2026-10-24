@@ -63,7 +63,6 @@ import com.personal.rando.ui.glass.PrimaryButton
 fun NavigationOverlay(
     navigation: NavigationState,
     onRideView: () -> Unit,
-    onDashboard: () -> Unit,
     onStop: () -> Unit,
     /** 到了以后原路返回；null 就不显示 */
     onReturn: (() -> Unit)? = null,
@@ -99,10 +98,6 @@ fun NavigationOverlay(
                     if (onReturn != null && progress?.arrived == true) {
                         GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
                             Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    } else {
-                        GlassButton(onClick = onDashboard, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text("码表", color = Ink, fontSize = 15.sp)
                         }
                     }
                     Spacer(Modifier.weight(1f))

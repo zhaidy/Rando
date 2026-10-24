@@ -267,7 +267,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
 
     // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
     val view = LocalView.current
-    var dashboard by rememberSaveable { mutableStateOf(false) }
     // 骑行视图：上次导航用了它，这次开始导航就直接进
     val viewPrefs = remember { context.getSharedPreferences("planner", Context.MODE_PRIVATE) }
     var rideView by rememberSaveable { mutableStateOf(false) }
@@ -279,9 +278,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         rideView = show
         viewPrefs.edit { putBoolean(KEY_RIDE_VIEW, show) }
     }
-    // 骑行结束码表也就收起来了
-    val showDashboard = dashboard && recording != null
-    val screenOn = navigating || showDashboard
+    // 导航、骑行视图（自由骑行时它就是码表）里屏幕常亮
+    val screenOn = navigating || (rideView && recording != null)
     DisposableEffect(screenOn) {
         view.keepScreenOn = screenOn
         onDispose { view.keepScreenOn = false }
@@ -379,7 +377,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
 
         AnimatedContent(
             targetState = when {
-                showDashboard -> Layer.DASHBOARD
                 riding && rideView -> Layer.RIDE_VIEW
                 navigation != null -> Layer.NAVIGATION
                 else -> Layer.PLANNER
@@ -388,10 +385,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             label = "layer",
         ) { layer ->
             when (layer) {
-                Layer.DASHBOARD -> recording?.let { rec ->
-                    BackHandler { dashboard = false }
-                    BikeComputer(rec, navigation, onMap = { dashboard = false }, onStop = finishRide)
-                }
                 Layer.RIDE_VIEW -> {
                     BackHandler { openRideView(false) }
                     RideView(
@@ -401,7 +394,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onMap = { openRideView(false) },
                         onStop = finishRide,
                         onReturn = returnTrip.takeIf { navigating || canReturnFree },
-                        onDashboard = { dashboard = true }.takeIf { !navigating },
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieText(walkieState).takeIf { groupState != null },
                     ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it) }
@@ -411,7 +403,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         NavigationOverlay(
                             nav,
                             onRideView = { openRideView(true) },
-                            onDashboard = { dashboard = true },
                             onStop = finishRide,
                             onReturn = returnTrip,
                         )
@@ -574,7 +565,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
 }
 
 /** 地图上叠的是哪一层 */
-private enum class Layer { PLANNER, NAVIGATION, RIDE_VIEW, DASHBOARD }
+private enum class Layer { PLANNER, NAVIGATION, RIDE_VIEW }
 
 /** 正在指给你看的几处，看到第几处 */
 private data class Focus(val items: List<SegmentInfo>, val index: Int)
