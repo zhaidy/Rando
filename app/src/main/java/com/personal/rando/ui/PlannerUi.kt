@@ -96,6 +96,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -163,6 +164,7 @@ fun SearchBar(
     onOpenRides: () -> Unit,
     onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier,
+    onOfflineMaps: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -198,6 +200,7 @@ fun SearchBar(
                         containerColor = Color(0xF7F7FAF8),
                     ) {
                         DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
+                        DropdownMenuItem(text = { Text("离线地图") }, onClick = { menuOpen = false; onOfflineMaps() })
                         DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
                         DropdownMenuItem(text = { Text("当前版本 build $build") }, onClick = {}, enabled = false)
                     }
@@ -1260,3 +1263,48 @@ fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () 
 private fun PillStat(value: String) {
     Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
 }
+
+/** 离线地图：没下载 / 下载中 / 下好了，可以更新、删掉 */
+@Composable
+fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: () -> Unit, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("离线地图") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("把整个新加坡的地图存到手机里，没信号的地方地图也不会空白。大约 30–60 MB，最好连着 Wi-Fi 下。", color = InkSoft, fontSize = 14.sp)
+                val progress = state.progress
+                when {
+                    progress != null -> {
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = RandoGreen)
+                        Text("正在下载 ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}", color = Ink, fontSize = 15.sp)
+                    }
+                    state.downloadedAt != null -> Text(
+                        "已下载 · ${java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA).format(java.util.Date(state.downloadedAt))} · ${megabytes(state.bytes)}",
+                        color = Ink, fontSize = 15.sp,
+                    )
+                    else -> Text("还没下载", color = Ink, fontSize = 15.sp)
+                }
+                state.error?.let { Text("出错了：$it", color = RandoRed, fontSize = 13.sp) }
+                Text("规划路线、骑行导航还是要联网（算路、搜索在服务器上）。", color = InkSoft, fontSize = 13.sp)
+            }
+        },
+        confirmButton = {
+            when {
+                state.progress != null -> TextButton(onClick = onCancel) { Text("取消下载", color = RandoRed) }
+                state.downloadedAt != null -> TextButton(onClick = onDownload) { Text("更新") }
+                else -> TextButton(onClick = onDownload) { Text("下载", color = RandoGreen, fontWeight = FontWeight.SemiBold) }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text("删掉", color = RandoRed) }
+                TextButton(onClick = onDismiss) { Text("关闭") }
+            }
+        },
+    )
+}
+
+private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
