@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.ride.Fix
+import com.personal.rando.group.Teammate
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.nextOfEach
 import com.personal.rando.weather.RouteWeather
@@ -99,6 +100,8 @@ fun RideView(
     weather: RouteWeather? = null,
     /** 导航路线两旁的补给点 */
     amenities: List<AmenityOnRoute> = emptyList(),
+    /** 一起骑时队友离我多远的一行 */
+    teammates: String? = null,
     map: @Composable (Modifier) -> Unit,
 ) {
     val progress = navigation?.progress
@@ -130,6 +133,7 @@ fun RideView(
                         RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
                     }
                     Extras(weather, amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
+                    teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                 }
             }
             GlassPanel(
@@ -394,7 +398,7 @@ private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
 /** 黑底地图，镜头倾斜跟着人、朝骑行方向转；路线照样按路的种类上色 */
 @SuppressLint("MissingPermission")
 @Composable
-fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, modifier: Modifier) {
+fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, teammates: List<Teammate>, modifier: Modifier) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
     val mapView = rememberMapView(textureMode = true)
@@ -436,6 +440,10 @@ fun RideMap(navigation: NavigationState?, fix: Fix?, track: List<LatLon>, modifi
     LaunchedEffect(map, navigation?.route, navigation?.via) {
         val s = map?.style ?: return@LaunchedEffect
         MapLayers.show(s, navigation?.route, start = null, end = navigation?.destination, via = navigation?.via.orEmpty())
+    }
+    LaunchedEffect(map, teammates) {
+        val s = map?.style ?: return@LaunchedEffect
+        MapLayers.showTeam(s, teammates)
     }
     // 骑过的轨迹；按点数变化重画
     LaunchedEffect(map, track.size) {

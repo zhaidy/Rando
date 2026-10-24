@@ -1,0 +1,13 @@
+{
+  "name": "rando-group",
+  "private": true,
+  "description": "Rando 一起骑的服务端：Cloudflare Worker + Durable Object，每个队伍一个房间，转发位置和对讲语音",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.42.0"
+  }
+}

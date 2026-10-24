@@ -13,6 +13,7 @@ import com.personal.rando.routing.Route
 import com.personal.rando.routing.RouteTimeline
 import com.personal.rando.routing.ReturnTrip
 import com.personal.rando.nav.DaylightAlerts
+import com.personal.rando.group.GroupRide
 import com.personal.rando.nav.Geo
 import com.personal.rando.places.AmenityClient
 import com.personal.rando.places.AmenityOnRoute
@@ -62,6 +63,7 @@ class RideSession(
     private val router: BRouterClient = BRouterClient(),
     private val weatherClient: WeatherClient = WeatherClient(),
     private val amenityClient: AmenityClient = AmenityClient(),
+    private val group: GroupRide? = null,
 ) {
     private val app = context.applicationContext
     private val speaker by lazy { Speaker(app) }
@@ -122,6 +124,10 @@ class RideSession(
             if (precise) navigate(fix.location)
         }
         if (navigator != null || recorder != null) daylight.next(System.currentTimeMillis())?.let(speaker::say)
+        group?.let { g ->
+            g.onFix(fix)
+            if (precise && recorder != null) g.stragglerAlert(fix.location)?.let(speaker::say)
+        }
         recorder?.let {
             it.add(fix)
             _recording.value = it.state()
