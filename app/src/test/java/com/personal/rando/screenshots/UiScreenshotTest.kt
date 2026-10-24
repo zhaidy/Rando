@@ -43,6 +43,7 @@ import com.personal.rando.ui.PlannerState
 import com.personal.rando.ui.PlannerActions
 import com.personal.rando.ui.LoopRequest
 import com.personal.rando.ui.GroupPill
+import com.personal.rando.ui.FinishedCard
 import com.personal.rando.group.GroupState
 import com.personal.rando.group.WalkieState
 import com.personal.rando.group.Teammate
@@ -103,6 +104,7 @@ class UiScreenshotTest {
         weather: RouteWeather? = null,
         amenities: List<AmenityOnRoute> = emptyList(),
         group: GroupState? = null,
+        finished: Ride? = null,
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
@@ -112,6 +114,7 @@ class UiScreenshotTest {
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
             group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, playing = "小红")) }
+            finished?.let { FinishedCard(it, {}, {}) }
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
                 state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities),
@@ -173,6 +176,8 @@ class UiScreenshotTest {
             group = GroupState("K7PX3M", connected = true, teammates = listOf(Teammate("a", "小红"), Teammate("b", "阿明"))),
         )
     }
+
+    @Test fun finished() = shot("6c_finished") { Planner(finished = rides[0]) }
 
     @Test fun recording() = shot("6_recording") {
         Planner(recording = RecordingState(startedAt = 0, distanceMeters = 5320.0, movingSeconds = 1234, currentSpeed = 5.2))
@@ -244,7 +249,7 @@ class UiScreenshotTest {
     @Test fun freeRide() {
         compose.setContent {
             RandoTheme {
-                RideView(null, RecordingState(System.currentTimeMillis() - 2_100_000, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, onReturn = {}, teammates = "队友：小红 120 米 · 阿明 1.4 公里", map = { m ->
+                RideView(null, RecordingState(System.currentTimeMillis() - 2_100_000, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, teammates = "队友：小红 120 米 · 阿明 1.4 公里", map = { m ->
                     Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
                 })
             }

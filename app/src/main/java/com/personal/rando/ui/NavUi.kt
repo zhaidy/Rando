@@ -64,8 +64,6 @@ fun NavigationOverlay(
     navigation: NavigationState,
     onRideView: () -> Unit,
     onStop: () -> Unit,
-    /** 到了以后原路返回；null 就不显示 */
-    onReturn: (() -> Unit)? = null,
 ) {
     val progress = navigation.progress
     Column(Modifier.fillMaxSize()) {
@@ -94,11 +92,6 @@ fun NavigationOverlay(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GlassButton(onClick = onRideView, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
                         Text("骑行视图", color = Ink, fontSize = 15.sp)
-                    }
-                    if (onReturn != null && progress?.arrived == true) {
-                        GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text("原路返回", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        }
                     }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton(onClick = onStop, color = RandoRed) {

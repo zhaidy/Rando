@@ -131,6 +131,7 @@ import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
 import com.personal.rando.ride.RideService
+import com.personal.rando.ride.Ride
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -237,9 +238,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         walkie.turnOff()
         group.leave()
     }
+    // 刚结束的这次骑行：弹一张卡片，问要不要原路返回
+    var finished by remember { mutableStateOf<Ride?>(null) }
     val finishRide = {
         leaveGroup()
-        finishRide(context, vm.session)
+        finished = finishRide(context, vm.session)
     }
     // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
     val joinGroup = { code: String, name: String ->
@@ -251,12 +254,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     LaunchedEffect(style, teammates) {
         style?.let { MapLayers.showTeam(it, teammates) }
     }
-    val returnTrip = {
+    val returnTrip = { ride: Ride ->
+        finished = null
         Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
-        vm.returnTrip { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
+        askNotifications()
+        vm.returnTrip(ride.points.map { it.location }) { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
     }
-    val canReturnFree = remember(recording?.track?.size) { vm.session.canReturn(recording) }
-    val canReturn = !navigating && canReturnFree
 
     // 记录中把骑过的轨迹画出来；按点数变化重画，不用每次重组都画
     val trackSize = recording?.track?.size ?: 0
@@ -393,7 +396,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         amenities = rideAmenities,
                         onMap = { openRideView(false) },
                         onStop = finishRide,
-                        onReturn = returnTrip.takeIf { navigating || canReturnFree },
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieText(walkieState).takeIf { groupState != null },
                     ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it) }
@@ -404,7 +406,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             nav,
                             onRideView = { openRideView(true) },
                             onStop = finishRide,
-                            onReturn = returnTrip,
                         )
                         RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp))
                     }
@@ -477,6 +478,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             }
                         }
                         AnimatedVisibility(
+                            finished != null && recording == null,
+                            enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
+                            exit = fadeOut() + slideOutVertically { it },
+                        ) {
+                            finished?.let { ride ->
+                                FinishedCard(ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null })
+                            }
+                        }
+                        AnimatedVisibility(
                             recording != null,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
                             exit = fadeOut() + slideOutVertically { it },
@@ -507,7 +517,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 PlannerSheet(
                                     state = state,
                                     saved = saved,
-                                    canReturn = canReturn,
                                     actions = remember(vm) {
                                         PlannerActions(
                                             onChooseSaved = vm::chooseSaved,
@@ -521,7 +530,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                             onRemoveVia = vm::removeVia,
                                             onLoop = vm::chooseLoop,
                                             onAnotherLoop = vm::anotherLoop,
-                                            onReturn = returnTrip,
                                             onRetry = vm::retry,
                                             onStart = startNavigation,
                                             onShowOnMap = { target ->
@@ -662,11 +670,11 @@ private fun shareTeamCode(context: Context, code: String) {
 }
 
 /** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */
-private fun finishRide(context: Context, session: RideSession) {
+private fun finishRide(context: Context, session: RideSession): Ride? {
     session.stopNavigation()
     val ride = session.stopRecording()
-    val text = if (ride != null) "已保存骑行记录：${Format.distance(ride.distanceMeters.toInt())}" else "骑得太短，没有保存记录"
-    Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    if (ride == null) Toast.makeText(context, "骑得太短，没有保存记录", Toast.LENGTH_SHORT).show()
+    return ride
 }
 
 @Composable

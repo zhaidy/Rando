@@ -233,12 +233,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun retry() = planRoute()
 
-    /** 沿骑过的轨迹原路返回，直接开始导航 */
-    fun returnTrip(onFailed: (String) -> Unit) {
-        val prefs = session.navigation.value?.prefs ?: _state.value.prefs
+    /** 沿刚骑完的轨迹原路返回，直接开始导航 */
+    fun returnTrip(track: List<LatLon>, onFailed: (String) -> Unit) {
+        val prefs = _state.value.prefs
         viewModelScope.launch {
             try {
-                session.startReturnTrip(prefs)
+                session.startReturnTrip(track, prefs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

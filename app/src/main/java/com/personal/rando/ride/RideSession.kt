@@ -171,18 +171,14 @@ class RideSession(
     }
 
     /**
-     * 原路返回：沿着这次骑过的轨迹倒着回到出发的地方。
+     * 原路返回：沿着刚结束的那次骑行的轨迹倒着回到出发的地方，开始一次新的导航。
      * 轨迹上每隔一段取一个点当途经点，BRouter 就会走回同样的路
      */
-    suspend fun startReturnTrip(prefs: RoutePrefs) {
-        val track = _recording.value?.track?.map { it.location }.orEmpty()
+    suspend fun startReturnTrip(track: List<LatLon>, prefs: RoutePrefs) {
         val stops = ReturnTrip.stops(track) ?: throw IllegalStateException("还没骑多远，没有路可以原路返回")
         val route = router.route(stops, prefs)
         startNavigation(route, stops.last(), stops.drop(1).dropLast(1), prefs)
     }
-
-    /** 能不能原路返回：在记录，而且离出发的地方有段距离了 */
-    fun canReturn(recording: RecordingState?): Boolean = ReturnTrip.stops(recording?.track?.map { it.location }.orEmpty()) != null
 
     /** 停掉导航；RideService 看到没事可做了会自己退出 */
     fun stopNavigation() {
