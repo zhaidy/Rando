@@ -79,4 +79,17 @@ class RideRecorderTest {
         assertEquals(111.3 / 20, ride.averageSpeed, 0.05)
         assertEquals(11, ride.points.size)
     }
+
+    @Test
+    fun `有 GPS 速度就用它当当前速度和最快速度`() {
+        val r = RideRecorder(0)
+        r.add(fix(0, 0))
+        r.add(fix(1, 2).copy(speed = 6.5f)) // 两点算出来是 5.6 米/秒
+        val s = r.state()
+        assertEquals(6.5, s.currentSpeed, 0.01)
+        assertEquals(6.5, s.maxSpeed, 0.01)
+        // 停下来时 GPS 速度接近 0，马上就显示出来
+        r.add(Fix(LatLon(1.3001, 103.8), accuracy = 5f, speed = 0.2f, time = 3_000))
+        assertEquals(0.2, r.state().currentSpeed, 0.01)
+    }
 }

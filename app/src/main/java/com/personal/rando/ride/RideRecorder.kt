@@ -8,8 +8,10 @@ data class RecordingState(
     val distanceMeters: Double = 0.0,
     val movingSeconds: Long = 0,
     val ascendMeters: Double = 0.0,
-    /** 米/秒，最近一段的速度；停下来了就是 0 */
+    /** 米/秒，当前速度；停下来了就是 0 */
     val currentSpeed: Double = 0.0,
+    /** 米/秒 */
+    val maxSpeed: Double = 0.0,
     val track: List<TrackPoint> = emptyList(),
 )
 
@@ -43,16 +45,18 @@ class RideRecorder(private val startedAt: Long) {
         val d = Geo.distance(last.location, fix.location)
         val speed = d / seconds
         if (speed > MAX_SPEED) return false
+        // GPS 芯片按多普勒算的速度比两点距离除时间稳得多，有就用它
+        val gpsSpeed = fix.speed?.toDouble()?.coerceAtMost(MAX_SPEED)
         if (d < MIN_STEP_METERS) {
-            // 原地没动；停太久的话当前速度归零
-            if (seconds > 5) currentSpeed = 0.0
+            // 原地没动；没有 GPS 速度时，停太久就当速度归零
+            currentSpeed = gpsSpeed ?: if (seconds > 5) 0.0 else currentSpeed
             return false
         }
         distance += d
-        currentSpeed = speed
+        currentSpeed = gpsSpeed ?: speed
         // 中间断了很久（比如隧道里没信号）就不算进骑行时间
         if (speed >= MOVING_SPEED && seconds <= MAX_GAP_SECONDS) moving += Math.round(seconds)
-        maxSpeed = maxOf(maxSpeed, (fix.speed?.toDouble() ?: speed).coerceAtMost(MAX_SPEED))
+        maxSpeed = maxOf(maxSpeed, gpsSpeed ?: speed)
         fix.altitude?.let { alt ->
             val ref = altitudeRef
             when {
@@ -74,6 +78,7 @@ class RideRecorder(private val startedAt: Long) {
         movingSeconds = moving,
         ascendMeters = ascend,
         currentSpeed = currentSpeed,
+        maxSpeed = maxSpeed,
         track = points.toList(),
     )
 

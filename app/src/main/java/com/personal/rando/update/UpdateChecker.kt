@@ -114,7 +114,7 @@ class UpdateChecker(private val context: Context) {
 
     private fun updatesDir() = File(context.cacheDir, "updates")
 
-    private fun currentBuild(): Long =
+    fun currentBuild(): Long =
         PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
 
     internal companion object {

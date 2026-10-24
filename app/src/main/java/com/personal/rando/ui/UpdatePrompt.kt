@@ -2,6 +2,7 @@ package com.personal.rando.ui
 
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -28,9 +29,12 @@ import com.personal.rando.update.UpdateInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** 启动时静默检查 GitHub Releases，有新版本才弹窗；导航中先不弹，免得挡住路 */
+/**
+ * 启动时静默检查 GitHub Releases，有新版本才弹窗；导航中先不弹，免得挡住路。
+ * [manualChecks] 每加一就是用户在菜单里点了「检查更新」，这时没新版本也提示一声
+ */
 @Composable
-fun UpdatePrompt(navigating: Boolean) {
+fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     val context = LocalContext.current
     val updater = remember { UpdateChecker(context.applicationContext) }
     val scope = rememberCoroutineScope()
@@ -40,14 +44,20 @@ fun UpdatePrompt(navigating: Boolean) {
     // 装好后的「已更新」通知要这个权限；不给也不影响更新本身
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
-    LaunchedEffect(Unit) {
-        updater.cleanup()
-        update = try {
-            updater.check()
+    LaunchedEffect(manualChecks) {
+        val manual = manualChecks > 0
+        if (!manual) updater.cleanup()
+        try {
+            val info = updater.check()
+            if (info != null) {
+                update = info
+            } else if (manual) {
+                Toast.makeText(context, "已是最新版本（build ${updater.currentBuild()}）", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            if (manual) Toast.makeText(context, "检查更新失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
