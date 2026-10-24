@@ -20,6 +20,10 @@ import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.onRoute
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.WeatherClient
+import com.personal.rando.weather.Climate
+import com.personal.rando.weather.ClimateClient
+import com.personal.rando.weather.HydrationReminder
+import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.along
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
@@ -67,6 +71,7 @@ class RideSession(
     private val router: BRouterClient = BRouterClient(),
     private val weatherClient: WeatherClient = WeatherClient(),
     private val amenityClient: AmenityClient = AmenityClient(),
+    private val climateClient: ClimateClient = ClimateClient(),
     private val group: GroupRide? = null,
 ) {
     private val app = context.applicationContext
@@ -93,6 +98,10 @@ class RideSession(
     /** 骑行中前方（或附近）的天气，十分钟更新一次 */
     val weather: StateFlow<RouteWeather?> = _weather
 
+    private val _climate = MutableStateFlow<Climate?>(null)
+    /** 骑行中所在地方的气温、紫外线、空气质量，跟天气一起十分钟更新一次 */
+    val climate: StateFlow<Climate?> = _climate
+
     private val _amenities = MutableStateFlow<List<AmenityOnRoute>>(emptyList())
     /** 导航路线两旁的补给点 */
     val amenities: StateFlow<List<AmenityOnRoute>> = _amenities
@@ -103,6 +112,8 @@ class RideSession(
     private var amenityJob: Job? = null
     /** 上次播过的天气，变了才再说 */
     private var spokenWeather: String? = null
+    private var spokenClimate: String? = null
+    private val hydration = HydrationReminder()
     private var navigator: Navigator? = null
     private var roadAlerts: RoadAlerts? = null
     private val prompter = VoicePrompter()
@@ -148,14 +159,23 @@ class RideSession(
         }
         recorder?.let {
             it.add(fix)
-            _recording.value = it.state()
+            val state = it.state()
+            _recording.value = state
+            hydration.next(System.currentTimeMillis(), state.startedAt, _climate.value?.hot == true, waterAhead())?.let(speaker::say)
         }
+    }
+
+    /** 导航中前方最近的饮水机还有多远 */
+    private fun waterAhead(): Double? {
+        val along = _navigation.value?.progress?.takeIf { !it.offRoute }?.alongMeters ?: return null
+        return _amenities.value.filter { it.amenity.type == AmenityType.WATER && it.alongMeters > along }.minOfOrNull { it.alongMeters - along }
     }
 
     fun startRecording() {
         if (recorder != null) return
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
+        hydration.reset(r.state().startedAt)
         _recording.value = r.state()
         daylight.reset()
         watchWeather()
@@ -269,8 +289,22 @@ class RideSession(
     private fun watchWeather() {
         weatherJob?.cancel()
         spokenWeather = null
+        spokenClimate = null
         weatherJob = scope.launch {
             while (true) {
+                // 气温、空气质量：酷热、烟霾、紫外线很强时说一声，变了再说
+                _location.value?.let { here ->
+                    try {
+                        val climate = climateClient.at(here)
+                        _climate.value = climate
+                        val warning = climate.warning
+                        if (warning != null && warning != spokenClimate) speaker.say(warning)
+                        spokenClimate = warning
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
+                }
                 try {
                     val weather = weatherClient.fetch()
                     val ahead = aheadPoints()
@@ -292,6 +326,7 @@ class RideSession(
     private fun stopWatchingWeather() {
         weatherJob?.cancel()
         _weather.value = null
+        _climate.value = null
     }
 
     /** 前方还没骑的路；没在导航就只有现在的位置 */

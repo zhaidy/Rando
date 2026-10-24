@@ -162,6 +162,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val walkieState by walkie.state.collectAsStateWithLifecycle()
     val teammates = groupState?.teammates.orEmpty()
     val rideWeather by vm.session.weather.collectAsStateWithLifecycle()
+    val rideClimate by vm.session.climate.collectAsStateWithLifecycle()
     val rideAmenities by vm.session.amenities.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -394,6 +395,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                     RideView(
                         navigation, recording,
                         weather = rideWeather,
+                        climate = rideClimate,
                         amenities = rideAmenities,
                         onMap = { openRideView(false) },
                         onStop = finishRide,
