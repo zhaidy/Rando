@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import com.personal.rando.group.GroupState
 import com.personal.rando.group.TeamCode
 import com.personal.rando.group.Teammate
+import com.personal.rando.group.VoxLevel
+import com.personal.rando.group.WalkieState
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.glass.GlassButton
@@ -102,16 +104,66 @@ fun GroupDialog(
     )
 }
 
-/** 一起骑中的小胶囊：队伍码、几个人、连没连上；分享队伍码、退出 */
+/**
+ * 一起骑中的小胶囊：队伍码、几个人、连没连上；分享队伍码、退出。
+ * 下面一行是声控对讲：开关、灵敏度（点一下换一档），在说话、在听谁说
+ */
 @Composable
-fun GroupPill(state: GroupState, onShare: () -> Unit, onLeave: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
+fun GroupPill(
+    state: GroupState,
+    onShare: () -> Unit,
+    onLeave: () -> Unit,
+    modifier: Modifier = Modifier,
+    walkie: WalkieState = WalkieState(),
+    onToggleTalk: () -> Unit = {},
+    onLevel: (VoxLevel) -> Unit = {},
+) {
+    Column(
         modifier
             .fillMaxWidth()
-            .liquidGlass(GlassShapes.Pill, GlassTone.Tinted(Color(0xFF6A3FA0)))
+            .liquidGlass(GlassShapes.Card, GlassTone.Tinted(Color(0xFF6A3FA0)))
             .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
+        GroupHeader(state, onShare, onLeave)
+        Row(Modifier.padding(top = 4.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                walkieText(walkie),
+                Modifier.weight(1f),
+                color = Color.White,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (walkie.on) {
+                GlassButton(
+                    onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
+                    tone = GlassTone.Light,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("灵敏度：${walkie.level.label}", color = Ink, fontSize = 13.sp) }
+                Spacer(Modifier.width(6.dp))
+            }
+            GlassButton(
+                onClick = onToggleTalk,
+                tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(if (walkie.on) "对讲开着" else "开对讲", color = if (walkie.on) Color.White else Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** 对讲现在怎样：一句话 */
+fun walkieText(w: WalkieState): String = when {
+    !w.on -> "声控对讲：说话自动发给队友，不用按键"
+    w.playing != null -> "${w.playing} 在说话…"
+    w.sending -> "正在录你说的话，说完停一下就发出去"
+    else -> "在听，直接说话就行"
+}
+
+@Composable
+private fun GroupHeader(state: GroupState, onShare: () -> Unit, onLeave: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(if (state.connected) Color(0xFF7CFFB2) else Color(0xFFBDBDBD)))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {

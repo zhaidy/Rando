@@ -130,6 +130,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.ride.RideService
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -155,6 +156,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val group = LocalContext.current.rando.group
     val groupState by group.state.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
+    val walkie = LocalContext.current.rando.walkie
+    val walkieState by walkie.state.collectAsStateWithLifecycle()
     val teammates = groupState?.teammates.orEmpty()
     val rideWeather by vm.session.weather.collectAsStateWithLifecycle()
     val rideAmenities by vm.session.amenities.collectAsStateWithLifecycle()
@@ -211,8 +214,31 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         askNotifications()
         vm.startNavigation()
     }
-    val finishRide = {
+    // 打开对讲：先要麦克风权限；开了以后让前台服务带上麦克风，锁屏也能听
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            walkie.turnOn()
+            RideService.start(context)
+        } else {
+            Toast.makeText(context, "没有麦克风权限，开不了对讲", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val toggleTalk = {
+        when {
+            walkieState.on -> walkie.turnOff()
+            walkie.hasMicPermission() -> {
+                walkie.turnOn()
+                RideService.start(context)
+            }
+            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    val leaveGroup = {
+        walkie.turnOff()
         group.leave()
+    }
+    val finishRide = {
+        leaveGroup()
         finishRide(context, vm.session)
     }
     // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
@@ -377,6 +403,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onReturn = returnTrip.takeIf { navigating || canReturnFree },
                         onDashboard = { dashboard = true }.takeIf { !navigating },
                         teammates = teammatesText(teammates, fix?.location),
+                        walkie = walkieText(walkieState).takeIf { groupState != null },
                     ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
@@ -448,7 +475,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             exit = fadeOut() + slideOutVertically { it },
                         ) {
                             groupState?.let { g ->
-                                GroupPill(g, onShare = { shareTeamCode(context, g.code) }, onLeave = group::leave)
+                                GroupPill(
+                                    g,
+                                    onShare = { shareTeamCode(context, g.code) },
+                                    onLeave = leaveGroup,
+                                    walkie = walkieState,
+                                    onToggleTalk = toggleTalk,
+                                    onLevel = walkie::setLevel,
+                                )
                             }
                         }
                         AnimatedVisibility(

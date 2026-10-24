@@ -134,6 +134,9 @@ class RideSession(
         }
     }
 
+    /** 导航语音正在念 */
+    val speaking: Boolean get() = speaker.isSpeaking
+
     fun startRecording() {
         if (recorder != null) return
         val r = RideRecorder(System.currentTimeMillis())
