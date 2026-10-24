@@ -21,6 +21,12 @@ class RoadKindTest {
     }
 
     @Test
+    fun `单独画的斑马线算过马路`() {
+        assertEquals(RoadKind.CROSSING, kind("highway=footway footway=crossing"))
+        assertEquals(RoadKind.CROSSING, kind("highway=cycleway cycleway=crossing route_bicycle_lcn=yes"))
+    }
+
+    @Test
     fun `禁止骑车的小路、台阶、商场走廊都要推车`() {
         assertEquals(RoadKind.PUSH, kind("highway=path bicycle=no"))
         assertEquals(RoadKind.PUSH, kind("highway=steps"))

@@ -37,6 +37,7 @@ object RouteParser {
         val columns = (0 until header.length()).map { header.getString(it) }
         val distanceCol = columns.indexOf("Distance")
         val tagsCol = columns.indexOf("WayTags")
+        val nodeTagsCol = columns.indexOf("NodeTags")
         val lonCol = columns.indexOf("Longitude")
         val latCol = columns.indexOf("Latitude")
         if (distanceCol < 0 || tagsCol < 0) return emptyList()
@@ -51,6 +52,7 @@ object RouteParser {
                 distanceMeters = row.optString(distanceCol).toIntOrNull() ?: 0,
                 wayTags = parseTags(row.optString(tagsCol)),
                 endIndex = end,
+                nodeTags = if (nodeTagsCol >= 0) parseTags(row.optString(nodeTagsCol)) else emptyMap(),
             )
         }
     }

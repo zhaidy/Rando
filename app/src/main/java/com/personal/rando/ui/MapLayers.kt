@@ -5,6 +5,7 @@ import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.RoadPiece
 import com.personal.rando.routing.Route
+import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pieces
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
@@ -33,11 +34,12 @@ object MapLayers {
 
     private const val TRACK = "rando-track"
     private const val ROUTE = "rando-route"
+    private const val CROSSINGS = "rando-crossings"
     private const val START = "rando-start"
     private const val END = "rando-end"
 
     fun install(style: Style) {
-        listOf(TRACK, ROUTE, START, END).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, ROUTE, CROSSINGS, START, END).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -59,12 +61,27 @@ object MapLayers {
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
+        // 过马路的地方：小圆点，颜色按路口种类
+        style.addLayer(
+            CircleLayer(CROSSINGS, CROSSINGS).withProperties(
+                circleRadius(4.5f), circleColor(Expression.toColor(Expression.get("color"))),
+                circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f),
+            )
+        )
         style.addLayer(pin(START, "#2E7D4F"))
         style.addLayer(pin(END, "#E0672B"))
     }
 
     fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?) {
         style.getSourceAs<GeoJsonSource>(ROUTE)?.setGeoJson(route?.let(::coloredRoute) ?: EMPTY)
+        style.getSourceAs<GeoJsonSource>(CROSSINGS)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                route?.crossings().orEmpty().map { c ->
+                    Feature.fromGeometry(Point.fromLngLat(c.location.lon, c.location.lat))
+                        .apply { addStringProperty("color", c.type.color) }
+                }
+            )
+        )
         style.getSourceAs<GeoJsonSource>(START)?.setGeoJson(point(start))
         style.getSourceAs<GeoJsonSource>(END)?.setGeoJson(point(end))
     }

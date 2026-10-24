@@ -19,7 +19,7 @@ class RouteParserTest {
               "voicehints": [[1, 4, 0, 139.0, -125], [2, 14, 2, 24.0, 29], [2, 13, 0, 0.0, 0], [9, 2, 0, 10.0, -90]],
               "messages": [
                 ["Longitude", "Latitude", "Elevation", "Distance", "CostPerKm", "ElevCost", "TurnCost", "NodeCost", "InitialCost", "WayTags", "NodeTags", "Time", "Energy"],
-                ["103826931", "1353220", "44", "860", "9050", "321", "73", "0", "0", "reversedirection=yes highway=path surface=dirt bicycle=no", "", "119", "10756"],
+                ["103826931", "1353220", "44", "860", "9050", "321", "73", "0", "0", "reversedirection=yes highway=path surface=dirt bicycle=no", "highway=crossing crossing=zebra", "119", "10756"],
                 ["103826812", "1354274", "34", "24", "1150", "45", "102", "0", "0", "highway=residential surface=asphalt oneway=yes", "", "132", "11084"]
               ]
             },
@@ -59,6 +59,13 @@ class RouteParserTest {
     fun `每段的终点对到坐标序号上`() {
         val segments = RouteParser.parse(sample).segments
         assertEquals(listOf(1, 2), segments.map { it.endIndex })
+    }
+
+    @Test
+    fun `读出每段终点那个点的标签`() {
+        val segments = RouteParser.parse(sample).segments
+        assertEquals("zebra", segments[0].nodeTags["crossing"])
+        assertEquals(emptyMap<String, String>(), segments[1].nodeTags)
     }
 
     @Test
