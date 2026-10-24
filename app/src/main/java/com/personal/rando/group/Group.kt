@@ -54,6 +54,9 @@ data class SharedRoute(
     fun prefs(mine: RoutePrefs): RoutePrefs = mine.copy(profile = profile, avoidRoads = avoidRoads, avoidBridges = avoidBridges)
 }
 
+/** 队友可能摔车了：在哪儿、什么时候 */
+data class SosAlert(val id: String, val name: String, val location: LatLon, val ts: Long)
+
 /** 收到的消息 */
 sealed interface GroupEvent {
     data class Roster(val members: List<Teammate>) : GroupEvent
@@ -75,6 +78,8 @@ sealed interface GroupEvent {
     ) : GroupEvent
     data class Route(val route: SharedRoute) : GroupEvent
     data class RouteCleared(val id: String) : GroupEvent
+    data class Sos(val alert: SosAlert) : GroupEvent
+    data class SosCleared(val id: String) : GroupEvent
 }
 
 /** 和 server/src/index.js 约定的消息格式 */
@@ -107,6 +112,10 @@ object GroupProtocol {
     }.toString()
 
     const val ROUTE_CLEAR = """{"t":"route_clear"}"""
+
+    fun sos(at: LatLon): String = JSONObject().put("t", "sos").put("lat", at.lat).put("lon", at.lon).toString()
+
+    const val SOS_CLEAR = """{"t":"sos_clear"}"""
 
     /** 认不出来的消息返回 null */
     fun parse(text: String, now: Long): GroupEvent? = try {
@@ -141,6 +150,10 @@ object GroupProtocol {
                 )
             }
             "route_clear" -> GroupEvent.RouteCleared(o.getString("id"))
+            "sos" -> GroupEvent.Sos(
+                SosAlert(o.getString("id"), o.optString("name", "队友"), LatLon(o.getDouble("lat"), o.getDouble("lon")), o.optLong("ts")),
+            )
+            "sos_clear" -> GroupEvent.SosCleared(o.getString("id"))
             else -> null
         }
     } catch (_: Exception) {

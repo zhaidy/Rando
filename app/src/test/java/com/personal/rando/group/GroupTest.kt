@@ -105,4 +105,13 @@ class GroupTest {
         assertEquals("去 Marina Bay Sands · 13.6 公里 · 公园连道、不上马路", com.personal.rando.ui.sharedRouteText(r))
         assertEquals("原路返回 · 13.6 公里 · 公园连道、不上马路", com.personal.rando.ui.sharedRouteText(r.copy(title = "原路返回")))
     }
+
+    @Test
+    fun `求助消息`() {
+        val json = JSONObject(GroupProtocol.sos(LatLon(1.3, 103.8)))
+        assertEquals("sos", json.getString("t"))
+        json.put("id", "a").put("name", "阿明").put("ts", 5)
+        assertEquals(GroupEvent.Sos(SosAlert("a", "阿明", LatLon(1.3, 103.8), 5)), GroupProtocol.parse(json.toString(), 0))
+        assertEquals(GroupEvent.SosCleared("a"), GroupProtocol.parse("""{"t":"sos_clear","id":"a"}""", 0))
+    }
 }

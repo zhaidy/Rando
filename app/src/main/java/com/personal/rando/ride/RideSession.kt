@@ -33,6 +33,8 @@ import com.personal.rando.group.SharedRoute
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.combine
+import com.personal.rando.ui.Format
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -57,6 +59,9 @@ data class NavigationState(
             ?.let { "GPS 信号弱，误差约 ${Math.round(it)} 米，到空旷处会好些" }
             ?: "等待 GPS 定位…"
 }
+
+/** 可能摔车了：[deadline] 前没点「我没事」就告诉队友；[sent] 已经告诉了 */
+data class CrashAlert(val deadline: Long, val sent: Boolean = false)
 
 /** 导航时精度比这差的定位不要 */
 const val NAV_MAX_ACCURACY_METERS = 50f
@@ -102,6 +107,13 @@ class RideSession(
     /** 骑行中所在地方的气温、紫外线、空气质量，跟天气一起十分钟更新一次 */
     val climate: StateFlow<Climate?> = _climate
 
+    private val _crash = MutableStateFlow<CrashAlert?>(null)
+    /** 检测到可能摔车了，等你回答 */
+    val crash: StateFlow<CrashAlert?> = _crash
+    private val crashDetector = CrashDetector()
+    private val crashWatch = CrashWatch(context, crashDetector) { scope.launch { onCrash() } }
+    private var crashJob: Job? = null
+
     private val _amenities = MutableStateFlow<List<AmenityOnRoute>>(emptyList())
     /** 导航路线两旁的补给点 */
     val amenities: StateFlow<List<AmenityOnRoute>> = _amenities
@@ -128,6 +140,24 @@ class RideSession(
         group?.let { g ->
             scope.launch {
                 g.state.map { it?.code }.distinctUntilChanged().collect { code -> if (code != null) shared?.let(g::shareRoute) }
+            }
+            // 一起骑、在记录时才开摔车检测（只通知队友）
+            scope.launch {
+                combine(g.state.map { it != null }, _recording.map { it != null }) { inGroup, riding -> inGroup && riding }
+                    .distinctUntilChanged()
+                    .collect { on -> if (on) crashWatch.start() else crashWatch.stop() }
+            }
+            // 队友可能摔车了：大声说出来
+            scope.launch {
+                var known = emptySet<String>()
+                g.sos.collect { list ->
+                    val here = _location.value
+                    list.filter { "${it.id}:${it.ts}" !in known }.forEach { s ->
+                        val far = here?.let { "，离你 ${Format.distance(Geo.distance(it, s.location).toInt())}" }.orEmpty()
+                        speaker.say("注意，${s.name}可能摔车了$far")
+                    }
+                    known = list.map { "${it.id}:${it.ts}" }.toSet()
+                }
             }
             // 队友分享了路线：骑车时不一定看屏幕，念一声
             scope.launch {
@@ -156,6 +186,7 @@ class RideSession(
         group?.let { g ->
             g.onFix(fix)
             if (precise && recorder != null) g.stragglerAlert(fix.location)?.let(speaker::say)
+            fix.speed?.let { crashDetector.onSpeed(fix.time, it.toDouble()) }
         }
         recorder?.let {
             it.add(fix)
@@ -163,6 +194,44 @@ class RideSession(
             _recording.value = state
             hydration.next(System.currentTimeMillis(), state.startedAt, _climate.value?.hot == true, waterAhead())?.let(speaker::say)
         }
+    }
+
+    /** 检测到可能摔车：倒计时，到时间还没说没事就告诉队友 */
+    private fun onCrash() {
+        if (_crash.value != null || group?.state?.value == null) return
+        val deadline = System.currentTimeMillis() + CRASH_COUNTDOWN_MS
+        _crash.value = CrashAlert(deadline)
+        speaker.say("你可能摔车了，没事的话点我没事，${CRASH_COUNTDOWN_MS / 1000} 秒后通知队友")
+        crashJob?.cancel()
+        crashJob = scope.launch {
+            delay(CRASH_COUNTDOWN_MS - 10_000)
+            speaker.say("10 秒后通知队友")
+            delay(10_000)
+            sendSos()
+        }
+    }
+
+    /** 马上告诉队友 */
+    fun sendSos() {
+        crashJob?.cancel()
+        val at = _location.value ?: return
+        group?.sendSos(at)
+        _crash.update { (it ?: CrashAlert(System.currentTimeMillis())).copy(sent = true) }
+        speaker.say("已经通知队友")
+    }
+
+    /** 我没事：取消倒计时，已经通知了的也撤回 */
+    fun imOk() {
+        crashJob?.cancel()
+        if (_crash.value?.sent == true) group?.clearSos()
+        _crash.value = null
+    }
+
+    /** 导航到 [target]（比如摔车的队友那儿），不分享给队友 */
+    suspend fun navigateTo(target: LatLon, prefs: RoutePrefs, title: String) {
+        val from = _location.value ?: throw IllegalStateException("还没定位到")
+        val stops = listOf(from, target)
+        startNavigation(router.route(stops, prefs), stops, prefs, title, share = false)
     }
 
     /** 导航中前方最近的饮水机还有多远 */
@@ -187,6 +256,8 @@ class RideSession(
         val r = recorder ?: return null
         recorder = null
         _recording.value = null
+        // 都结束骑行了，人肯定没事
+        imOk()
         stopWatchingWeather()
         val ride = r.toRide(System.currentTimeMillis())
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
@@ -371,5 +442,7 @@ class RideSession(
         const val KEEP_PRECISE_MS = 10_000L
         /** 骑到离途经点这么近就算经过了 */
         const val VIA_PASSED_METERS = 50.0
+        /** 可能摔车后等这么久没回答就告诉队友 */
+        const val CRASH_COUNTDOWN_MS = 30_000L
     }
 }

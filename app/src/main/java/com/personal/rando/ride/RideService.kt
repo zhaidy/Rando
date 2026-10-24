@@ -36,11 +36,16 @@ class RideService : Service() {
     private var listener: LocationListener? = null
     private var watchJob: Job? = null
     private var lastText: String? = null
+    private var crashJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val session = rando.session
+        when (intent?.action) {
+            ACTION_IM_OK -> session.imOk()
+            ACTION_SOS_NOW -> session.sendSos()
+        }
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value),
@@ -52,6 +57,15 @@ class RideService : Service() {
             return START_NOT_STICKY
         }
         if (listener == null) startLocation(session)
+        if (crashJob == null) {
+            // 可能摔车了：通知栏弹一条，锁着屏也能点「我没事」
+            crashJob = scope.launch {
+                session.crash.collect { alert ->
+                    val manager = getSystemService(NotificationManager::class.java)
+                    if (alert == null) manager.cancel(CRASH_NOTIFICATION_ID) else manager.notify(CRASH_NOTIFICATION_ID, crashNotification(alert))
+                }
+            }
+        }
         if (watchJob == null) {
             watchJob = scope.launch {
                 combine(session.navigation, session.recording) { nav, rec -> nav to rec }.collect { (nav, rec) ->
@@ -77,9 +91,37 @@ class RideService : Service() {
         return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
     }
 
+    private fun crashNotification(alert: CrashAlert): Notification {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(CRASH_CHANNEL, "摔车检测", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "一起骑时检测到可能摔车，问你没事吧"
+            }
+        )
+        fun action(name: String, code: Int) = PendingIntent.getService(
+            this, code, Intent(this, RideService::class.java).setAction(name),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = NotificationCompat.Builder(this, CRASH_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .addAction(0, "我没事", action(ACTION_IM_OK, 1))
+        return if (alert.sent) {
+            builder.setContentTitle("已经通知队友").setContentText("没事的话点「我没事」，队友那边会撤掉").build()
+        } else {
+            builder.setContentTitle("你可能摔车了")
+                .setContentText("没事就点「我没事」，否则 30 秒后通知队友")
+                .setWhen(alert.deadline).setUsesChronometer(true).setChronometerCountDown(true)
+                .addAction(0, "马上通知队友", action(ACTION_SOS_NOW, 2))
+                .build()
+        }
+    }
+
     override fun onDestroy() {
         listener?.let { getSystemService(LocationManager::class.java)?.removeUpdates(it) }
         listener = null
+        getSystemService(NotificationManager::class.java).cancel(CRASH_NOTIFICATION_ID)
         scope.cancel()
         super.onDestroy()
     }
@@ -143,6 +185,10 @@ class RideService : Service() {
 
     companion object {
         private const val CHANNEL = "ride"
+        private const val CRASH_CHANNEL = "crash"
+        private const val CRASH_NOTIFICATION_ID = 30_001
+        private const val ACTION_IM_OK = "com.personal.rando.IM_OK"
+        private const val ACTION_SOS_NOW = "com.personal.rando.SOS_NOW"
         private const val NOTIFICATION_ID = 30_000
         /** 上一个 GPS 点在这么久以内，开始时先拿来用 */
         private const val FRESH_FIX_MS = 60_000L

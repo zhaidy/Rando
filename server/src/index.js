@@ -8,11 +8,13 @@
 //          {"t":"route","ts":..,"title":"Marina Bay Sands","meters":13600,"profile":"PCN","avoidRoads":true,"avoidBridges":false,
 //           "stops":[[lat,lon],...]}（开始导航时分享路线；队友按同样的点和配置算，得到同一条路）
 //          {"t":"route_clear"}（结束导航）
+//          {"t":"sos","lat":..,"lon":..}（可能摔车了） {"t":"sos_clear"}（我没事）
 // 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
 //          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
 //          {"t":"route",id,name,ts,title,meters,profile,avoidRoads,avoidBridges,stops} {"t":"route_clear",id}
-//          分享的路线存在房间里，后来加入的人连上就能收到；分享的人离队就删掉
+//          {"t":"sos",id,name,lat,lon,ts} {"t":"sos_clear",id}
+//          分享的路线、求助存在房间里，后来加入的人连上就能收到；本人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
 
 import { DurableObject } from "cloudflare:workers";
@@ -70,9 +72,10 @@ export class Room extends DurableObject {
 
     const others = this.members().filter((m) => m.id !== id);
     server.send(JSON.stringify({ t: "roster", members: others }));
-    // 队友已经分享的路线
-    const routes = await this.ctx.storage.get(others.map((m) => `route:${m.id}`));
-    for (const route of routes.values()) server.send(JSON.stringify(route));
+    // 队友已经分享的路线、还没撤掉的求助
+    const keys = others.flatMap((m) => [`route:${m.id}`, `sos:${m.id}`]);
+    const saved = await this.ctx.storage.get(keys);
+    for (const msg of saved.values()) server.send(JSON.stringify(msg));
     this.broadcast({ t: "join", id, name }, id);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -114,8 +117,15 @@ export class Room extends DurableObject {
       await this.ctx.storage.put(`route:${me.id}`, out);
       this.broadcast(out, me.id);
     } else if (msg.t === "route_clear") {
-      await this.ctx.storage.delete(`route:${me.id}`);
+      await this.ctx.storage.delete([`route:${me.id}`, `sos:${me.id}`]);
       this.broadcast({ t: "route_clear", id: me.id }, me.id);
+    } else if (msg.t === "sos" && Number.isFinite(msg.lat) && Number.isFinite(msg.lon)) {
+      const out = { t: "sos", id: me.id, name: me.name, lat: msg.lat, lon: msg.lon, ts };
+      await this.ctx.storage.put(`sos:${me.id}`, out);
+      this.broadcast(out, me.id);
+    } else if (msg.t === "sos_clear") {
+      await this.ctx.storage.delete(`sos:${me.id}`);
+      this.broadcast({ t: "sos_clear", id: me.id }, me.id);
     }
   }
 
