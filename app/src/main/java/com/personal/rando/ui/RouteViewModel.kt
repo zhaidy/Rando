@@ -1,6 +1,8 @@
 package com.personal.rando.ui
 
 import android.app.Application
+import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.personal.rando.places.SavedPlace
@@ -11,7 +13,6 @@ import com.personal.rando.routing.BRouterClient
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
-import com.personal.rando.routing.SafetyScore
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
 import kotlinx.coroutines.CancellationException
@@ -28,12 +29,12 @@ sealed interface RouteState {
     /** 起点用「我的位置」，但还没定位到 */
     data object WaitingForLocation : RouteState
     data object Loading : RouteState
-    data class Ready(val route: Route, val safety: SafetyScore.Result?) : RouteState
+    data class Ready(val route: Route) : RouteState
     data class Failed(val message: String) : RouteState
 }
 
 data class PlannerState(
-    val profile: BikeProfile = BikeProfile.CITY,
+    val profile: BikeProfile = BikeProfile.PCN,
     /** null 表示从我的位置出发 */
     val start: Place? = null,
     val destination: Place? = null,
@@ -52,7 +53,15 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
     val session: RideSession = app.rando.session
     val savedPlaces: SavedPlaceStore = app.rando.savedPlaces
 
-    private val _state = MutableStateFlow(PlannerState())
+    /** 记住上次选的路线偏好 */
+    private val prefs = app.getSharedPreferences("planner", Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(
+        PlannerState(
+            profile = prefs.getString(KEY_PROFILE, null)
+                ?.let { name -> BikeProfile.entries.firstOrNull { it.name == name } }
+                ?: BikeProfile.PCN,
+        )
+    )
     val state: StateFlow<PlannerState> = _state
 
     private var myLocation: LatLon? = null
@@ -64,6 +73,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setProfile(profile: BikeProfile) {
+        prefs.edit { putString(KEY_PROFILE, profile.name) }
         _state.update { it.copy(profile = profile) }
         planRoute()
     }
@@ -150,7 +160,7 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
         routeJob = viewModelScope.launch {
             val next = try {
                 val route = router.route(from, to, s.profile)
-                RouteState.Ready(route, SafetyScore.of(route))
+                RouteState.Ready(route)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -158,5 +168,9 @@ class RouteViewModel(app: Application) : AndroidViewModel(app) {
             }
             _state.update { it.copy(route = next) }
         }
+    }
+
+    private companion object {
+        const val KEY_PROFILE = "profile"
     }
 }

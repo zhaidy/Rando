@@ -2,6 +2,11 @@ package com.personal.rando.ui
 
 import android.graphics.Color
 import com.personal.rando.routing.LatLon
+import com.personal.rando.routing.RoadKind
+import com.personal.rando.routing.RoadPiece
+import com.personal.rando.routing.Route
+import com.personal.rando.routing.pieces
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
@@ -47,9 +52,10 @@ object MapLayers {
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
+        // 每段按路的种类上色（公园连道绿、马路红……），颜色放在每段的 color 属性里
         style.addLayer(
             LineLayer(ROUTE, ROUTE).withProperties(
-                lineColor(Color.parseColor("#2E7D4F")), lineWidth(5.5f),
+                lineColor(Expression.toColor(Expression.get("color"))), lineWidth(5.5f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
@@ -57,10 +63,23 @@ object MapLayers {
         style.addLayer(pin(END, "#E0672B"))
     }
 
-    fun show(style: Style, route: List<LatLon>?, start: LatLon?, end: LatLon?) {
-        style.getSourceAs<GeoJsonSource>(ROUTE)?.setGeoJson(line(route))
+    fun show(style: Style, route: Route?, start: LatLon?, end: LatLon?) {
+        style.getSourceAs<GeoJsonSource>(ROUTE)?.setGeoJson(route?.let(::coloredRoute) ?: EMPTY)
         style.getSourceAs<GeoJsonSource>(START)?.setGeoJson(point(start))
         style.getSourceAs<GeoJsonSource>(END)?.setGeoJson(point(end))
+    }
+
+    /** 按路的种类切成几段；分不出来时整条画成公园连道的绿色 */
+    private fun coloredRoute(route: Route): FeatureCollection {
+        val pieces = route.pieces().ifEmpty {
+            if (route.points.size >= 2) listOf(RoadPiece(RoadKind.PCN, route.points)) else emptyList()
+        }
+        return FeatureCollection.fromFeatures(
+            pieces.map { piece ->
+                Feature.fromGeometry(LineString.fromLngLats(piece.points.map { Point.fromLngLat(it.lon, it.lat) }))
+                    .apply { addStringProperty("color", piece.kind.color) }
+            }
+        )
     }
 
     fun showTrack(style: Style, track: List<LatLon>?) {

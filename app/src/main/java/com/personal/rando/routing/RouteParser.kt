@@ -19,7 +19,7 @@ object RouteParser {
             distanceMeters = props.intOf("track-length"),
             durationSeconds = props.intOf("total-time"),
             ascendMeters = props.intOf("filtered ascend"),
-            segments = props.optJSONArray("messages")?.let(::segments).orEmpty(),
+            segments = props.optJSONArray("messages")?.let { segments(it, points) }.orEmpty(),
             maneuvers = props.optJSONArray("voicehints")?.let { maneuvers(it, points.size) }.orEmpty(),
         )
     }
@@ -27,19 +27,30 @@ object RouteParser {
     /** BRouter 的数字都是字符串，比如 "track-length": "15863" */
     private fun JSONObject.intOf(key: String): Int = optString(key).toIntOrNull() ?: 0
 
-    /** messages 第一行是表头，后面每行一段，按表头找「Distance」和「WayTags」两列 */
-    private fun segments(messages: JSONArray): List<RouteSegment> {
+    /**
+     * messages 第一行是表头，后面每行一段，按表头找「Distance」和「WayTags」两列。
+     * 每行的经纬度（百万分之一度的整数）是这段的终点，顺着往后在坐标里找到它，就知道这段画到哪
+     */
+    private fun segments(messages: JSONArray, points: List<LatLon>): List<RouteSegment> {
         if (messages.length() < 2) return emptyList()
         val header = messages.getJSONArray(0)
         val columns = (0 until header.length()).map { header.getString(it) }
         val distanceCol = columns.indexOf("Distance")
         val tagsCol = columns.indexOf("WayTags")
+        val lonCol = columns.indexOf("Longitude")
+        val latCol = columns.indexOf("Latitude")
         if (distanceCol < 0 || tagsCol < 0) return emptyList()
+        val keys = points.map { Math.round(it.lon * 1e6) to Math.round(it.lat * 1e6) }
+        var cursor = 0
         return (1 until messages.length()).map {
             val row = messages.getJSONArray(it)
+            val key = row.optString(lonCol).toLongOrNull() to row.optString(latCol).toLongOrNull()
+            val end = (cursor until keys.size).firstOrNull { i -> keys[i] == key } ?: -1
+            if (end >= 0) cursor = end
             RouteSegment(
                 distanceMeters = row.optString(distanceCol).toIntOrNull() ?: 0,
                 wayTags = parseTags(row.optString(tagsCol)),
+                endIndex = end,
             )
         }
     }
