@@ -3,77 +3,22 @@ package com.personal.rando.group
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import java.io.ByteArrayOutputStream
+import java.io.Closeable
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * 对讲录音压成 AAC（每秒 3 KB 左右），带 ADTS 头，收到的一方直接存成 .aac 文件就能播。
- * 用手机自带的硬件/系统编码器，不用另外带库
+ * 对讲的声音压成 AAC（每秒 3 KB 左右），一帧一帧带 ADTS 头，边说边发、边收边放。
+ * 用手机自带的编解码器，不用另外带库
  */
 object AacCodec {
 
-    const val FORMAT = "aac"
-    private const val BIT_RATE = 24_000
-    private const val TIMEOUT_US = 10_000L
+    const val FORMAT = "aac-live"
+    const val BIT_RATE = 24_000
+    /** 一帧 AAC 是 1024 个采样，16 kHz 时是 64 毫秒 */
+    const val FRAME_SAMPLES = 1024
+    const val ADTS_HEADER = 7
 
-    fun encode(pcm: ShortArray, sampleRate: Int = Vox.SAMPLE_RATE): ByteArray {
-        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
-            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-            setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
-            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
-        }
-        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-        try {
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
-            val input = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN).also { it.asShortBuffer().put(pcm) }.array()
-            val out = ByteArrayOutputStream()
-            val info = MediaCodec.BufferInfo()
-            var offset = 0
-            var inputDone = false
-            while (true) {
-                if (!inputDone) {
-                    val i = codec.dequeueInputBuffer(TIMEOUT_US)
-                    if (i >= 0) {
-                        val buf = codec.getInputBuffer(i)!!
-                        buf.clear()
-                        val n = minOf(buf.remaining(), input.size - offset)
-                        val timeUs = offset / 2 * 1_000_000L / sampleRate
-                        if (n <= 0) {
-                            codec.queueInputBuffer(i, 0, 0, timeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            inputDone = true
-                        } else {
-                            buf.put(input, offset, n)
-                            codec.queueInputBuffer(i, 0, n, timeUs, 0)
-                            offset += n
-                        }
-                    }
-                }
-                val o = codec.dequeueOutputBuffer(info, TIMEOUT_US)
-                if (o >= 0) {
-                    val config = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                    if (!config && info.size > 0) {
-                        val buf = codec.getOutputBuffer(o)!!
-                        buf.position(info.offset)
-                        buf.limit(info.offset + info.size)
-                        val frame = ByteArray(info.size)
-                        buf.get(frame)
-                        out.write(adtsHeader(frame.size + ADTS_HEADER, sampleRate))
-                        out.write(frame)
-                    }
-                    codec.releaseOutputBuffer(o, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-                }
-            }
-            return out.toByteArray()
-        } finally {
-            runCatching { codec.stop() }
-            codec.release()
-        }
-    }
-
-    private const val ADTS_HEADER = 7
     private val FREQUENCIES = intArrayOf(96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000)
 
     /** ADTS 帧头：AAC-LC、单声道、没有 CRC；[length] 包括这 7 个字节 */
@@ -90,5 +35,168 @@ object AacCodec {
             (((length and 7) shl 5) or 0x1F).toByte(),
             0xFC.toByte(),
         )
+    }
+
+    /** 把连在一起的几个 ADTS 帧拆开；不完整的尾巴丢掉 */
+    fun splitAdts(bytes: ByteArray): List<ByteArray> {
+        val frames = mutableListOf<ByteArray>()
+        var i = 0
+        while (i + ADTS_HEADER <= bytes.size) {
+            if (bytes[i] != 0xFF.toByte() || (bytes[i + 1].toInt() and 0xF0) != 0xF0) break
+            val length = ((bytes[i + 3].toInt() and 3) shl 11) or ((bytes[i + 4].toInt() and 0xFF) shl 3) or ((bytes[i + 5].toInt() and 0xFF) shr 5)
+            if (length < ADTS_HEADER || i + length > bytes.size) break
+            frames += bytes.copyOfRange(i, i + length)
+            i += length
+        }
+        return frames
+    }
+}
+
+/** 边说边压：喂 PCM 进去，吐出已经压好的 ADTS 帧 */
+class AacStreamEncoder(private val sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
+
+    private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
+        configure(
+            MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                setInteger(MediaFormat.KEY_BIT_RATE, AacCodec.BIT_RATE)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
+            },
+            null, null, MediaCodec.CONFIGURE_FLAG_ENCODE,
+        )
+        start()
+    }
+    private val info = MediaCodec.BufferInfo()
+    private var samples = 0L
+
+    fun encode(pcm: ShortArray): List<ByteArray> {
+        val bytes = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN).also { it.asShortBuffer().put(pcm) }.array()
+        var offset = 0
+        val out = mutableListOf<ByteArray>()
+        while (offset < bytes.size) {
+            val i = codec.dequeueInputBuffer(TIMEOUT_US)
+            if (i < 0) {
+                drain(out, 0)
+                continue
+            }
+            val buf = codec.getInputBuffer(i)!!
+            buf.clear()
+            val n = minOf(buf.remaining(), bytes.size - offset)
+            buf.put(bytes, offset, n)
+            codec.queueInputBuffer(i, 0, n, samples * 1_000_000 / sampleRate, 0)
+            samples += n / 2
+            offset += n
+        }
+        drain(out, 0)
+        return out
+    }
+
+    /** 说完了：把编码器里剩下的都倒出来 */
+    fun finish(): List<ByteArray> {
+        val out = mutableListOf<ByteArray>()
+        val i = codec.dequeueInputBuffer(TIMEOUT_US * 10)
+        if (i >= 0) codec.queueInputBuffer(i, 0, 0, samples * 1_000_000 / sampleRate, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+        drain(out, TIMEOUT_US * 10)
+        return out
+    }
+
+    private fun drain(out: MutableList<ByteArray>, timeoutUs: Long) {
+        while (true) {
+            val o = codec.dequeueOutputBuffer(info, timeoutUs)
+            if (o == MediaCodec.INFO_TRY_AGAIN_LATER) return
+            if (o < 0) continue // 输出格式变了之类，接着拿
+            val config = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+            if (!config && info.size > 0) {
+                val buf = codec.getOutputBuffer(o)!!
+                buf.position(info.offset)
+                buf.limit(info.offset + info.size)
+                val frame = ByteArray(AacCodec.ADTS_HEADER + info.size)
+                AacCodec.adtsHeader(frame.size, sampleRate).copyInto(frame)
+                buf.get(frame, AacCodec.ADTS_HEADER, info.size)
+                out += frame
+            }
+            codec.releaseOutputBuffer(o, false)
+            if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return
+        }
+    }
+
+    override fun close() {
+        runCatching { codec.stop() }
+        codec.release()
+    }
+
+    private companion object {
+        const val TIMEOUT_US = 5_000L
+    }
+}
+
+/** 边收边解：喂 ADTS 帧进去，吐出 PCM */
+class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
+
+    private val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
+        configure(
+            MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
+                setInteger(MediaFormat.KEY_IS_ADTS, 1)
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            },
+            null, null, 0,
+        )
+        start()
+    }
+    private val info = MediaCodec.BufferInfo()
+    private var timeUs = 0L
+
+    fun decode(frames: List<ByteArray>): ShortArray {
+        val pcm = ArrayList<ShortArray>()
+        for (frame in frames) {
+            val i = codec.dequeueInputBuffer(TIMEOUT_US)
+            if (i >= 0) {
+                codec.getInputBuffer(i)!!.apply { clear(); put(frame) }
+                codec.queueInputBuffer(i, 0, frame.size, timeUs, 0)
+                timeUs += 64_000
+            }
+            drain(pcm)
+        }
+        drain(pcm)
+        val all = ShortArray(pcm.sumOf { it.size })
+        var at = 0
+        for (p in pcm) {
+            p.copyInto(all, at)
+            at += p.size
+        }
+        return all
+    }
+
+    /** 有的解码器把单声道解成双声道，那就两路取平均 */
+    private var channels = 1
+
+    private fun drain(out: MutableList<ShortArray>) {
+        while (true) {
+            val o = codec.dequeueOutputBuffer(info, 0)
+            if (o == MediaCodec.INFO_TRY_AGAIN_LATER) return
+            if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                channels = codec.outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                continue
+            }
+            if (o < 0) continue
+            if (info.size > 0) {
+                val buf = codec.getOutputBuffer(o)!!.order(ByteOrder.LITTLE_ENDIAN)
+                buf.position(info.offset)
+                buf.limit(info.offset + info.size)
+                val shorts = ShortArray(info.size / 2)
+                buf.asShortBuffer().get(shorts)
+                out += if (channels == 2) ShortArray(shorts.size / 2) { ((shorts[it * 2] + shorts[it * 2 + 1]) / 2).toShort() } else shorts
+            }
+            codec.releaseOutputBuffer(o, false)
+        }
+    }
+
+    override fun close() {
+        runCatching { codec.stop() }
+        codec.release()
+    }
+
+    private companion object {
+        const val TIMEOUT_US = 10_000L
     }
 }

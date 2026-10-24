@@ -5,13 +5,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
-import android.media.MediaPlayer
+import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.media.ToneGenerator
+import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Base64
 import android.util.Log
@@ -21,43 +19,43 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.File
-import kotlin.coroutines.resume
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.random.Random
 
-/** 对讲：开没开、灵敏度、我在不在说、谁在说 */
+/** 对讲：开没开、灵敏度、声音走哪儿、我在不在说、谁在说 */
 data class WalkieState(
     val on: Boolean = false,
     val level: VoxLevel = VoxLevel.NORMAL,
-    /** 正在录我说的话 */
+    /** 「蓝牙耳机 xxx」或者「手机喇叭和麦克风」 */
+    val device: String? = null,
+    /** 我正在说，声音正在发出去 */
     val sending: Boolean = false,
-    /** 正在播谁的话 */
-    val playing: String? = null,
+    /** 正在说话的队友 */
+    val talking: Set<String> = emptySet(),
 )
 
 /**
- * 声控对讲机：不用按键。打开后一直听麦克风，听到你说话就录下来，说完停顿一下自动发给队友；
- * 收到队友的话排队自动播放，播之前「嘀」一声。播放、导航播报的时候不听，免得把喇叭里的声音又发出去。
- * 骑行的前台服务带着麦克风权限，锁屏也能用
+ * 声控实时对讲：不用按键，像打电话。打开后走通话线路（优先蓝牙耳机的麦克风和耳机，系统开回声消除），
+ * 一直听麦克风，听到你说话就边说边发（每 0.1 秒多一小段），队友那边边收边放，延迟半秒左右；
+ * 几个人可以同时说，各放各的，系统混在一起。没人说话的时候什么都不发，省流量也省服务器额度。
+ * 骑行的前台服务带着麦克风类型，锁屏也能用
  */
 class Walkie(
     context: Context,
     private val scope: CoroutineScope,
     private val group: GroupRide,
-    /** 导航语音正在播 */
-    private val ttsSpeaking: () -> Boolean,
 ) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("walkie", Context.MODE_PRIVATE)
-    private val audio = app.getSystemService(AudioManager::class.java)
+    private val route = AudioRoute(app) { device -> _state.update { it.copy(device = device) } }
 
     private val _state = MutableStateFlow(
         WalkieState(level = VoxLevel.entries.firstOrNull { it.name == prefs.getString(KEY_LEVEL, null) } ?: VoxLevel.NORMAL)
@@ -65,12 +63,11 @@ class Walkie(
     val state: StateFlow<WalkieState> = _state
 
     private var listenJob: Job? = null
-    private val inbox = Channel<GroupEvent.Voice>(capacity = 16)
-    @Volatile private var playing = false
+    /** 每个正在说话的队友一路播放 */
+    private val players = mutableMapOf<String, Player>()
 
     init {
-        scope.launch { group.voices.collect { if (_state.value.on) inbox.trySend(it) } }
-        scope.launch { playLoop() }
+        scope.launch { group.voices.collect { if (_state.value.on) receive(it) } }
     }
 
     fun hasMicPermission(): Boolean =
@@ -78,14 +75,19 @@ class Walkie(
 
     fun turnOn() {
         if (_state.value.on || !hasMicPermission()) return
-        _state.update { it.copy(on = true) }
+        val device = route.start()
+        _state.update { it.copy(on = true, device = device) }
         listenJob = scope.launch(Dispatchers.Default) { listen() }
     }
 
     fun turnOff() {
+        if (!_state.value.on) return
         listenJob?.cancel()
         listenJob = null
-        _state.update { it.copy(on = false, sending = false) }
+        players.values.forEach { it.close() }
+        players.clear()
+        route.stop()
+        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null) }
     }
 
     fun setLevel(level: VoxLevel) {
@@ -93,10 +95,12 @@ class Walkie(
         _state.update { it.copy(level = level) }
     }
 
+    // ───────────── 说 ─────────────
+
     @SuppressLint("MissingPermission")
     private suspend fun listen() {
         val minBuffer = AudioRecord.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        // 通话用的输入：手机会开降噪、自动增益，风声车声小一些
+        // 通话用的输入：跟着通话线路走（蓝牙耳机的麦克风），带回声消除和降噪
         val record = try {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION, Vox.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
@@ -104,12 +108,15 @@ class Walkie(
             )
         } catch (e: Exception) {
             Log.w(TAG, "mic unavailable", e)
-            turnOff()
+            withContext(Dispatchers.Main) { turnOff() }
             return
         }
-        val suppressor = if (NoiseSuppressor.isAvailable()) runCatching { NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null
+        val effects = listOfNotNull(
+            if (NoiseSuppressor.isAvailable()) runCatching { NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null,
+            if (AcousticEchoCanceler.isAvailable()) runCatching { AcousticEchoCanceler.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null,
+        )
         val vox = Vox(_state.value.level)
-        val clip = ArrayList<ShortArray>()
+        var sender: Sender? = null
         try {
             record.startRecording()
             val frame = ShortArray(Vox.FRAME_SAMPLES)
@@ -120,130 +127,151 @@ class Walkie(
                     continue
                 }
                 vox.level = _state.value.level
-                // 喇叭在响（队友的话、导航播报）时不听；正在说的这段直接结束
-                if (playing || ttsSpeaking()) {
-                    if (vox.isTalking) finish(clip, keep = clip.size >= MIN_SEND_FRAMES)
-                    vox.pause()
-                    continue
-                }
                 for (event in vox.feed(frame.copyOf(n))) {
                     when (event) {
                         is Vox.Event.Start -> {
-                            clip.clear()
-                            clip.addAll(event.frames)
+                            sender = Sender().also { s -> event.frames.forEach(s::add) }
                             _state.update { it.copy(sending = true) }
                         }
-                        is Vox.Event.Speech -> clip += event.frame
-                        is Vox.Event.End -> finish(clip, event.keep)
+                        is Vox.Event.Speech -> sender?.add(event.frame)
+                        is Vox.Event.End -> {
+                            sender?.finish()
+                            sender = null
+                            _state.update { it.copy(sending = false) }
+                        }
                     }
                 }
             }
         } finally {
+            sender?.finish()
             runCatching { record.stop() }
             record.release()
-            suppressor?.release()
+            effects.forEach { it.release() }
             _state.update { it.copy(sending = false) }
         }
     }
 
-    /** 一段话说完：压缩、发出去 */
-    private fun finish(clip: ArrayList<ShortArray>, keep: Boolean) {
-        _state.update { it.copy(sending = false) }
-        if (!keep || clip.isEmpty()) {
-            clip.clear()
-            return
+    /** 一句话：边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段 */
+    private inner class Sender {
+        private val stream = Random.nextInt(1, Int.MAX_VALUE)
+        private val encoder = AacStreamEncoder()
+        private val pending = mutableListOf<ByteArray>()
+        private var seq = 0
+
+        fun add(pcm: ShortArray) {
+            pending += encoder.encode(pcm)
+            if (pending.size >= CHUNK_FRAMES) send(end = false)
         }
-        val pcm = ShortArray(clip.sumOf { it.size })
-        var i = 0
-        for (f in clip) {
-            f.copyInto(pcm, i)
-            i += f.size
+
+        fun finish() {
+            runCatching { pending += encoder.finish() }
+            send(end = true)
+            encoder.close()
         }
-        clip.clear()
-        scope.launch(Dispatchers.Default) {
-            try {
-                val aac = AacCodec.encode(pcm)
-                val ms = pcm.size * 1000 / Vox.SAMPLE_RATE
-                group.sendVoice(AacCodec.FORMAT, ms, Base64.encodeToString(aac, Base64.NO_WRAP))
-            } catch (e: Exception) {
-                Log.w(TAG, "encode failed", e)
-            }
+
+        private fun send(end: Boolean) {
+            val bytes = pending.fold(ByteArray(0)) { acc, f -> acc + f }
+            pending.clear()
+            group.sendVoice(stream, seq++, end, Base64.encodeToString(bytes, Base64.NO_WRAP))
         }
     }
 
-    /** 队友的话一条条播，播之前嘀一声，播的时候音乐、导航先压低 */
-    private suspend fun playLoop() {
-        for (voice in inbox) {
-            if (!_state.value.on) continue
-            val file = File(app.cacheDir, "walkie-${System.nanoTime()}.aac")
+    // ───────────── 听 ─────────────
+
+    private fun receive(voice: GroupEvent.Voice) {
+        val player = players[voice.id]?.takeIf { it.stream == voice.stream }
+            ?: Player(voice.id, voice.name, voice.stream).also { new ->
+                players.put(voice.id, new)?.close()
+            }
+        player.offer(voice)
+    }
+
+    /**
+     * 一个队友的一句话：解码后写进一路通话音轨。先攒 0.2 秒再开始放，网络抖一下也不断；
+     * 说完或者一秒多没新数据就收掉
+     */
+    private inner class Player(private val id: String, private val name: String, val stream: Int) {
+        private val inbox = Channel<GroupEvent.Voice>(Channel.UNLIMITED)
+        private val job = scope.launch(Dispatchers.Default) { run() }
+
+        fun offer(voice: GroupEvent.Voice) {
+            inbox.trySend(voice)
+        }
+
+        fun close() {
+            inbox.close()
+            job.cancel()
+        }
+
+        private suspend fun run() {
+            _state.update { it.copy(talking = it.talking + name) }
+            val decoder = runCatching { AacStreamDecoder() }.getOrNull()
+            val track = newTrack()
+            var buffered = 0
+            var playing = false
             try {
-                withContext(Dispatchers.IO) { file.writeBytes(Base64.decode(voice.data, Base64.DEFAULT)) }
-                playing = true
-                _state.update { it.copy(playing = voice.name) }
-                val focus = requestFocus()
-                beep()
-                play(file)
-                focus?.let { audio?.abandonAudioFocusRequest(it) }
+                if (decoder == null) return
+                while (true) {
+                    val voice = withTimeoutOrNull(SILENCE_MS) { inbox.receiveCatching().getOrNull() } ?: break
+                    val frames = AacCodec.splitAdts(Base64.decode(voice.data, Base64.DEFAULT))
+                    val pcm = decoder.decode(frames)
+                    if (pcm.isNotEmpty()) {
+                        track.write(pcm, 0, pcm.size)
+                        buffered += pcm.size
+                        if (!playing && (buffered >= PREBUFFER_SAMPLES || voice.end)) {
+                            track.play()
+                            playing = true
+                        }
+                    }
+                    if (voice.end) {
+                        if (!playing) track.play()
+                        // 等最后写进去的放完
+                        delay(TAIL_MS)
+                        break
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "play failed", e)
             } finally {
-                file.delete()
-                // 喇叭停了再等一下才开始听，免得录到回声
-                delay(300)
-                playing = false
-                _state.update { it.copy(playing = null) }
+                runCatching { track.stop() }
+                track.release()
+                decoder?.close()
+                _state.update { it.copy(talking = it.talking - name) }
+                withContext(Dispatchers.Main.immediate) { if (players[id] === this@Player) players.remove(id) }
             }
         }
-    }
 
-    private fun requestFocus(): AudioFocusRequest? {
-        val am = audio ?: return null
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(ATTRIBUTES)
-            .build()
-        am.requestAudioFocus(request)
-        return request
-    }
-
-    private suspend fun beep() {
-        runCatching {
-            val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 70)
-            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
-            delay(180)
-            tone.release()
+        private fun newTrack(): AudioTrack {
+            val min = AudioTrack.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            return AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(Vox.SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .build()
+                )
+                .setBufferSizeInBytes(maxOf(min, Vox.SAMPLE_RATE * 2)) // 一秒的缓冲
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
         }
-    }
-
-    private suspend fun play(file: File) = suspendCancellableCoroutine { cont ->
-        val player = MediaPlayer()
-        val done = { _: MediaPlayer ->
-            player.release()
-            if (cont.isActive) cont.resume(Unit)
-        }
-        try {
-            player.setAudioAttributes(ATTRIBUTES)
-            player.setDataSource(file.path)
-            player.setOnCompletionListener { done(it) }
-            player.setOnErrorListener { mp, _, _ ->
-                done(mp)
-                true
-            }
-            player.prepare()
-            player.start()
-        } catch (e: Exception) {
-            done(player)
-        }
-        cont.invokeOnCancellation { runCatching { player.release() } }
     }
 
     private companion object {
         const val TAG = "Walkie"
         const val KEY_LEVEL = "level"
-        /** 被打断时少于这么长（半秒）就不发了 */
-        const val MIN_SEND_FRAMES = 25
-        val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+        /** 攒两帧 AAC（约 0.13 秒）发一次 */
+        const val CHUNK_FRAMES = 2
+        /** 先攒 0.2 秒再放 */
+        const val PREBUFFER_SAMPLES = Vox.SAMPLE_RATE / 5
+        /** 一秒半没收到这个人的声音就当他说完了（网络断了、最后一段丢了） */
+        const val SILENCE_MS = 1_500L
+        const val TAIL_MS = 400L
     }
 }

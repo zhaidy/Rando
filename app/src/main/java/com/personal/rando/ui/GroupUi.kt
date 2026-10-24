@@ -155,10 +155,11 @@ fun GroupPill(
 
 /** 对讲现在怎样：一句话 */
 fun walkieText(w: WalkieState): String = when {
-    !w.on -> "声控对讲：说话自动发给队友，不用按键"
-    w.playing != null -> "${w.playing} 在说话…"
-    w.sending -> "正在录你说的话，说完停一下就发出去"
-    else -> "在听，直接说话就行"
+    !w.on -> "实时对讲：像打电话，直接说话，不用按键"
+    w.talking.isNotEmpty() && w.sending -> "${w.talking.joinToString("、")} 和你都在说"
+    w.talking.isNotEmpty() -> "${w.talking.joinToString("、")} 在说话…"
+    w.sending -> "队友正在听你说"
+    else -> "在听 · ${w.device ?: "手机"}"
 }
 
 @Composable

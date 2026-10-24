@@ -113,7 +113,7 @@ class UiScreenshotTest {
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
-            group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, playing = "小红")) }
+            group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, device = "蓝牙耳机 AirPods", talking = setOf("小红"))) }
             finished?.let { FinishedCard(it, {}, {}) }
             recording?.let { RecordingPill(it, {}, {}) }
             PlannerSheet(
