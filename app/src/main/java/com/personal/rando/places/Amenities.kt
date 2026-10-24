@@ -13,13 +13,15 @@ import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/** 沿途补给：饮水机、厕所、便利店、维修站、避雨亭 */
+/** 沿途补给：饮水机、厕所、便利店、维修站（公共修车点、车店）、避雨亭；终点附近的停车架 */
 enum class AmenityType(val label: String, val color: String, val unit: String) {
     WATER("饮水机", "#1E88E5", "个"),
     TOILET("厕所", "#8E24AA", "个"),
     SHOP("便利店", "#F4511E", "家"),
     REPAIR("维修站", "#43A047", "个"),
-    SHELTER("避雨亭", "#6D4C41", "个");
+    SHELTER("避雨亭", "#6D4C41", "个"),
+    /** 新加坡组屋楼下到处都是，沿途不查，只查终点附近的 */
+    PARKING("停车架", "#546E7A", "处");
 
     companion object {
         fun of(tags: Map<String, String>): AmenityType? = when {
@@ -28,6 +30,7 @@ enum class AmenityType(val label: String, val color: String, val unit: String) {
             tags["shop"] == "convenience" -> SHOP
             tags["amenity"] == "bicycle_repair_station" || tags["shop"] == "bicycle" -> REPAIR
             tags["amenity"] == "shelter" -> SHELTER
+            tags["amenity"] == "bicycle_parking" -> PARKING
             else -> null
         }
     }
@@ -71,6 +74,10 @@ class AmenityClient(
 object AmenityQuery {
 
     const val RADIUS_METERS = 80
+    /** 终点附近这么远以内的停车架 */
+    const val PARKING_RADIUS_METERS = 200
+    /** 停车架最多列这么多处，最近的几处 */
+    const val PARKING_LIMIT = 3
 
     /** 路线抽稀到每隔这么远一个点，查询语句不会太长 */
     private const val STEP_METERS = 150.0
@@ -82,11 +89,13 @@ object AmenityQuery {
     fun build(points: List<LatLon>): String {
         val line = thin(points).joinToString(",") { String.format(Locale.US, "%.5f,%.5f", it.lat, it.lon) }
         val around = "(around:$RADIUS_METERS,$line)"
+        val end = points.last().let { String.format(Locale.US, "%.5f,%.5f", it.lat, it.lon) }
         return """
             [out:json][timeout:30];
             (
               nwr$around[amenity~"^(drinking_water|toilets|bicycle_repair_station|shelter)$"];
               nwr$around[shop~"^(convenience|bicycle)$"];
+              nwr(around:$PARKING_RADIUS_METERS,$end)[amenity=bicycle_parking];
             );
             out center tags;
         """.trimIndent()
@@ -124,7 +133,16 @@ private const val SAME_SPOT_METERS = 40.0
  * 把补给点排到路线上：按全程第几米排好，离路线太远的不要，同类挨着的并成一处
  */
 fun List<Amenity>.onRoute(timeline: RouteTimeline): List<AmenityOnRoute> {
-    val placed = mapNotNull { a ->
+    // 停车架只要终点附近最近的几处，排在终点
+    val end = timeline.end
+    val parking = filter { it.type == AmenityType.PARKING }
+        .map { it to (end?.let { e -> Geo.distance(e, it.location) } ?: Double.MAX_VALUE) }
+        .filter { (_, d) -> d <= AmenityQuery.PARKING_RADIUS_METERS * 1.25 }
+        .sortedBy { it.second }
+        .distinctBy { (a, _) -> a.location.let { (it.lat * 2500).toInt() to (it.lon * 2500).toInt() } }
+        .take(AmenityQuery.PARKING_LIMIT)
+        .map { (a, d) -> AmenityOnRoute(a, timeline.total, d) }
+    val placed = filter { it.type != AmenityType.PARKING }.mapNotNull { a ->
         timeline.locate(a.location)
             ?.takeIf { (_, off) -> off <= AmenityQuery.RADIUS_METERS * 1.5 }
             ?.let { (along, off) -> AmenityOnRoute(a, along, off) }
@@ -135,7 +153,7 @@ fun List<Amenity>.onRoute(timeline: RouteTimeline): List<AmenityOnRoute> {
             ?.takeIf { Geo.distance(it.amenity.location, p.amenity.location) < SAME_SPOT_METERS }
         if (dup == null) result += p
     }
-    return result
+    return result + parking
 }
 
 /** 前方最近的每种补给，离现在多远；[along] 是现在骑到第几米 */

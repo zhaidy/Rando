@@ -49,6 +49,7 @@ import com.personal.rando.routing.pieces
 import com.personal.rando.routing.structures
 import com.personal.rando.routing.steepestClimb
 import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.AmenityType
 import kotlin.math.roundToInt
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
@@ -266,7 +267,8 @@ fun List<AmenityOnRoute>.targets(): List<SegmentInfo> = map {
         0,
         a.location,
         listOf(a.location),
-        "第 ${Format.km(it.alongMeters)} 公里，离路线 ${it.offRouteMeters.toInt()} 米",
+        if (a.type == AmenityType.PARKING) "离终点 ${it.offRouteMeters.toInt()} 米"
+        else "第 ${Format.km(it.alongMeters)} 公里，离路线 ${it.offRouteMeters.toInt()} 米",
     )
 }
 

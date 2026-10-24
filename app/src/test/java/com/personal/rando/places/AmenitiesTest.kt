@@ -58,4 +58,22 @@ class AmenitiesTest {
         assertTrue(q, "around:80,1.30000,103.80000,1.31000,103.80000" in q)
         assertTrue("drinking_water" in q && "convenience" in q)
     }
+
+    @Test
+    fun `停车架只要终点附近最近的三处，排在终点`() {
+        val parking = listOf(
+            Amenity(AmenityType.PARKING, LatLon(1.3101, 103.8000), null),
+            Amenity(AmenityType.PARKING, LatLon(1.3110, 103.8000), null),
+            Amenity(AmenityType.PARKING, LatLon(1.3100, 103.8010), null),
+            Amenity(AmenityType.PARKING, LatLon(1.3100, 103.8005), null),
+            // 离终点太远
+            Amenity(AmenityType.PARKING, LatLon(1.3200, 103.8000), null),
+        )
+        val placed = (AmenityQuery.parse(json) + parking).onRoute(RouteTimeline(route))
+        val p = placed.filter { it.amenity.type == AmenityType.PARKING }
+        assertEquals(3, p.size)
+        assertEquals(11.0, p[0].offRouteMeters, 2.0)
+        assertTrue(p.all { it.alongMeters == RouteTimeline(route).total })
+        assertTrue("bicycle_parking" in AmenityQuery.build(route.points))
+    }
 }
