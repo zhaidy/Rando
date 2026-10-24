@@ -9,7 +9,6 @@ import com.personal.rando.places.SavedPlace
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.rando
 import com.personal.rando.ride.RideSession
-import com.personal.rando.routing.BRouterClient
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.LatLon
@@ -90,7 +89,7 @@ data class LoopRequest(val targetMeters: Int, val attempt: Int = 0)
 /** 规划路线；开始导航后交给 [RideSession]，它跟着进程走，界面关了也继续 */
 class RouteViewModel(app: Application, private val saved: SavedStateHandle) : AndroidViewModel(app) {
 
-    private val router = BRouterClient()
+    private val router = app.rando.router
     private val places = PlaceSearch()
     val session: RideSession = app.rando.session
     val savedPlaces: SavedPlaceStore = app.rando.savedPlaces

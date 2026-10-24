@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.group.GroupState
+import com.personal.rando.places.Hazard
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import com.personal.rando.group.SosAlert
@@ -303,5 +304,25 @@ fun SosDialog(alert: SosAlert, me: LatLon?, onGo: () -> Unit, onDismiss: () -> U
         },
         confirmButton = { TextButton(onClick = onGo) { Text("导航过去", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("知道了", color = InkSoft) } },
+    )
+}
+
+/** 点了地图上的路况：是什么、谁标的、几天前；可以删掉 */
+@Composable
+fun HazardDialog(hazard: Hazard, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text(hazard.type.label) },
+        text = {
+            val days = ((System.currentTimeMillis() - hazard.createdAt) / 86_400_000L).toInt()
+            val whenText = if (days == 0) "今天" else "$days 天前"
+            val who = hazard.by?.let { "${it}标的" } ?: "你标的"
+            val effect = if (hazard.type.avoid) "算路时会绕开这里，30 天后自动失效。" else "骑到附近会提醒你减速。"
+            Text("$who，$whenText。$effect", color = Ink, fontSize = 16.sp)
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("好", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDelete) { Text("已经好了，删掉", color = RandoRed) } },
     )
 }

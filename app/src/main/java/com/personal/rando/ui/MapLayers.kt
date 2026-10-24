@@ -3,6 +3,7 @@ package com.personal.rando.ui
 import android.graphics.Color
 import com.personal.rando.routing.LatLon
 import com.personal.rando.places.Amenity
+import com.personal.rando.places.Hazard
 import com.personal.rando.ride.HeatPiece
 import com.personal.rando.group.Teammate
 import org.maplibre.android.style.layers.SymbolLayer
@@ -60,10 +61,11 @@ object MapLayers {
     private const val VIA = "rando-via"
     private const val AMENITIES = "rando-amenities"
     private const val TEAM = "rando-team"
+    private const val HAZARDS = "rando-hazards"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, HAZARDS, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -113,6 +115,20 @@ object MapLayers {
                 circleColor(Expression.toColor(Expression.get("color"))),
                 circleStrokeColor(Color.WHITE), circleStrokeWidth(1.5f),
             )
+        )
+        // 标过的路况：大一点的圆点，颜色按种类（施工橙、封路红、路面不好棕），中间一个感叹号
+        style.addLayer(
+            CircleLayer(HAZARDS, HAZARDS).withProperties(
+                circleRadius(Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(11, 4f), Expression.stop(16, 10f))),
+                circleColor(Expression.toColor(Expression.get("color"))),
+                circleStrokeColor(Color.WHITE), circleStrokeWidth(2f),
+            )
+        )
+        style.addLayer(
+            SymbolLayer("$HAZARDS-mark", HAZARDS).withProperties(
+                textField("!"), textColor(Color.WHITE), textSize(13f),
+                textFont(arrayOf("Noto Sans Bold")), textAllowOverlap(true), textIgnorePlacement(true),
+            ).apply { minZoom = 13f }
         )
         // 指给你看的路口：一个黄圈
         style.addLayer(
@@ -184,6 +200,17 @@ object MapLayers {
                 amenities.map { a ->
                     Feature.fromGeometry(Point.fromLngLat(a.location.lon, a.location.lat))
                         .apply { addStringProperty("color", a.type.color) }
+                }
+            )
+        )
+    }
+
+    fun showHazards(style: Style, hazards: List<Hazard>) {
+        style.getSourceAs<GeoJsonSource>(HAZARDS)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                hazards.map { h ->
+                    Feature.fromGeometry(Point.fromLngLat(h.location.lon, h.location.lat))
+                        .apply { addStringProperty("color", h.type.color) }
                 }
             )
         )

@@ -3,6 +3,7 @@ package com.personal.rando.group
 import android.content.Context
 import androidx.core.content.edit
 import com.personal.rando.nav.Geo
+import com.personal.rando.places.Hazard
 import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
@@ -73,6 +74,10 @@ class GroupRide(
     /** 回答过的分享（队友 id 和时间），重连后再收到不再问 */
     private val answered = mutableSetOf<Pair<String, Long>>()
 
+    private val _hazards = MutableSharedFlow<GroupEvent>(extraBufferCapacity = 16)
+    /** 队友标的、删掉的路况（[GroupEvent.HazardAdded] / [GroupEvent.HazardRemoved]） */
+    val hazards: SharedFlow<GroupEvent> = _hazards
+
     private val _voices = MutableSharedFlow<GroupEvent.Voice>(extraBufferCapacity = 64)
     /** 收到的对讲语音 */
     val voices: SharedFlow<GroupEvent.Voice> = _voices
@@ -123,6 +128,15 @@ class GroupRide(
     fun sendSos(at: LatLon) {
         mySos = at
         socket?.send(GroupProtocol.sos(at))
+    }
+
+    /** 标了一处路况，告诉队友 */
+    fun shareHazard(h: Hazard) {
+        socket?.send(GroupProtocol.hazard(h))
+    }
+
+    fun shareHazardRemoved(id: String) {
+        socket?.send(GroupProtocol.hazardRemoved(id))
     }
 
     /** 我没事 */
@@ -241,6 +255,7 @@ class GroupRide(
                 _sos.update { list -> list.filterNot { it.id == event.alert.id } + event.alert }
             }
             is GroupEvent.SosCleared -> _sos.update { list -> list.filterNot { it.id == event.id } }
+            is GroupEvent.HazardAdded, is GroupEvent.HazardRemoved -> _hazards.tryEmit(event)
             is GroupEvent.Route -> if (event.route.id != myId && (event.route.id to event.route.ts) !in answered) _offer.value = event.route
             is GroupEvent.RouteCleared -> if (_offer.value?.id == event.id) _offer.value = null
             is GroupEvent.Position -> _state.update { s ->

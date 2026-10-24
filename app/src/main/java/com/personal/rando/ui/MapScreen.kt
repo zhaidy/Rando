@@ -130,6 +130,8 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.nav.Geo
+import com.personal.rando.places.Hazard
 import com.personal.rando.ride.RideService
 import com.personal.rando.ride.Ride
 import org.maplibre.android.MapLibre
@@ -157,6 +159,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val group = LocalContext.current.rando.group
     val groupState by group.state.collectAsStateWithLifecycle()
     val routeOffer by group.offer.collectAsStateWithLifecycle()
+    val hazards by LocalContext.current.rando.hazards.all.collectAsStateWithLifecycle()
+    var hazardShown by remember { mutableStateOf<Hazard?>(null) }
     val sosList by group.sos.collectAsStateWithLifecycle()
     val crash by vm.session.crash.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
@@ -341,12 +345,23 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var focus by remember { mutableStateOf<Focus?>(null) }
     LaunchedEffect(route) { focus = null }
     val currentRoute by rememberUpdatedState(route)
+    val currentHazards by rememberUpdatedState(hazards)
+    LaunchedEffect(style, hazards) {
+        style?.let { MapLayers.showHazards(it, hazards) }
+    }
     LaunchedEffect(map) {
         val m = map ?: return@LaunchedEffect
         m.addOnMapClickListener { latLng ->
-            val r = currentRoute ?: return@addOnMapClickListener false
             // 手指点的范围大约 28 个像素，换成米
             val tolerance = m.projection.getMetersPerPixelAtLatitude(latLng.latitude) * 28
+            val tapped = LatLon(latLng.latitude, latLng.longitude)
+            currentHazards.minByOrNull { Geo.distance(it.location, tapped) }
+                ?.takeIf { Geo.distance(it.location, tapped) <= tolerance }
+                ?.let {
+                    hazardShown = it
+                    return@addOnMapClickListener true
+                }
+            val r = currentRoute ?: return@addOnMapClickListener false
             val hit = r.segmentAt(LatLon(latLng.latitude, latLng.longitude), tolerance) ?: return@addOnMapClickListener false
             focus = Focus(listOf(hit), 0)
             true
@@ -403,7 +418,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onStop = finishRide,
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieText(walkieState).takeIf { groupState != null },
-                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it) }
+                        onReport = { type ->
+                            val ok = vm.session.reportHazard(type)
+                            Toast.makeText(context, if (ok) "已标记：${type.label}" else "还没定位到，标不了", Toast.LENGTH_SHORT).show()
+                        },
+                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it, hazards) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
                     Box(Modifier.fillMaxSize()) {
@@ -563,6 +582,16 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    hazardShown?.let { h ->
+        HazardDialog(
+            h,
+            onDelete = {
+                vm.session.removeHazard(h.id)
+                hazardShown = null
+            },
+            onDismiss = { hazardShown = null },
+        )
     }
     crash?.let { alert -> CrashDialog(alert, onOk = vm.session::imOk, onSendNow = vm.session::sendSos) }
     sosList.firstOrNull()?.takeIf { crash == null }?.let { alert ->
