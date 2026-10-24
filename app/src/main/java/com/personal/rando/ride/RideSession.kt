@@ -3,12 +3,14 @@ package com.personal.rando.ride
 import android.content.Context
 import com.personal.rando.nav.NavProgress
 import com.personal.rando.nav.Navigator
+import com.personal.rando.nav.RoadAlerts
 import com.personal.rando.nav.Speaker
 import com.personal.rando.nav.VoicePrompter
 import com.personal.rando.routing.BRouterClient
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
+import com.personal.rando.routing.RouteTimeline
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -54,6 +56,7 @@ class RideSession(
 
     private var recorder: RideRecorder? = null
     private var navigator: Navigator? = null
+    private var roadAlerts: RoadAlerts? = null
     private val prompter = VoicePrompter()
     private var rerouteJob: Job? = null
     private var lastRerouteAt = 0L
@@ -90,6 +93,7 @@ class RideSession(
 
     fun startNavigation(route: Route, destination: LatLon, profile: BikeProfile) {
         navigator = Navigator(route)
+        roadAlerts = RoadAlerts(RouteTimeline(route))
         prompter.reset()
         rerouteJob?.cancel()
         _navigation.value = NavigationState(route, destination, profile)
@@ -102,6 +106,7 @@ class RideSession(
     /** 停掉导航；RideService 看到没事可做了会自己退出 */
     fun stopNavigation() {
         navigator = null
+        roadAlerts = null
         rerouteJob?.cancel()
         _navigation.value = null
     }
@@ -111,6 +116,7 @@ class RideSession(
         val progress = nav.update(point)
         _navigation.update { it?.copy(progress = progress) }
         prompter.next(progress)?.let(speaker::say)
+        if (!progress.offRoute && !progress.arrived) roadAlerts?.next(progress.alongMeters)?.let(speaker::say)
         if (progress.offRoute) reroute(point)
     }
 
@@ -126,6 +132,7 @@ class RideSession(
                 val route = router.route(from, state.destination, state.profile)
                 if (navigator == null) return@launch
                 navigator = Navigator(route)
+                roadAlerts = RoadAlerts(RouteTimeline(route))
                 prompter.reset()
                 _navigation.update { it?.copy(route = route, rerouting = false) }
                 _location.value?.let(::navigate)

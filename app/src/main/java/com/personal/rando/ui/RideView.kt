@@ -1,7 +1,11 @@
 package com.personal.rando.ui
 
 import android.annotation.SuppressLint
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +23,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,14 +40,22 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.ride.RecordingState
+import com.personal.rando.routing.CrossingType
+import com.personal.rando.routing.RouteTimeline
+import kotlinx.coroutines.delay
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.Style
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 private val DIM = Color(0xFF9E9E9E)
+private val CLOCK = SimpleDateFormat("HH:mm", Locale.CHINA)
+/** 路口离这么近才在屏幕上提示 */
+private const val CROSSING_SHOWN_METERS = 300.0
 
 /**
  * 骑行视图：黑底大字，只留骑车时要看的——下一个路口、当前速度、还剩多久多远。
@@ -53,6 +69,8 @@ fun RideView(
     onStop: () -> Unit,
 ) {
     val progress = navigation.progress
+    val timeline = remember(navigation.route) { RouteTimeline(navigation.route) }
+    val along = progress?.alongMeters ?: 0.0
     Column(
         Modifier
             .fillMaxSize()
@@ -60,8 +78,13 @@ fun RideView(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp))
+        Clock(Modifier.align(Alignment.End).padding(horizontal = 24.dp, vertical = 4.dp))
+        RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+        if (progress != null && !progress.arrived) {
+            RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
+        }
         RideMap(navigation, Modifier.fillMaxWidth().weight(1f))
+        RouteStrip(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6),
@@ -86,6 +109,88 @@ fun RideView(
             OutlinedButton(onClick = onMap, modifier = Modifier.weight(1f)) { Text("地图", color = DIM) }
             OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f)) { Text("结束", color = DIM) }
         }
+    }
+}
+
+/** 右上角的钟，每分钟走一下 */
+@Composable
+private fun Clock(modifier: Modifier) {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(60_000 - System.currentTimeMillis() % 60_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    Text(CLOCK.format(Date(now)), color = DIM, fontSize = 15.sp, modifier = modifier)
+}
+
+/**
+ * 前方路况：现在骑的是什么路、还有多远，接下来换成什么路；
+ * 300 米内有路口时再加一行，说是哪种路口
+ */
+@Composable
+private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier) {
+    val ahead = timeline.ahead(along) ?: return
+    val crossing = timeline.nextCrossing(along)?.takeIf { it.distance <= CROSSING_SHOWN_METERS }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Dot(ahead.current.kind.color)
+            Text(
+                buildString {
+                    append("${ahead.current.kind.label} · 还有 ${Format.distance(ahead.remainingInCurrent.toInt())}")
+                    ahead.next?.let { append("，然后${it.kind.label} ${Format.distance(it.length.toInt())}") }
+                },
+                color = Color.White,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        crossing?.let { c ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot(c.type.color)
+                Text(
+                    "前方 ${Format.distance(c.distance.toInt())} 过马路 · ${c.type.label}",
+                    color = if (c.type == CrossingType.UNMARKED) Color(0xFFFFB074) else Color.White,
+                    fontSize = 16.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Dot(color: String) {
+    Box(
+        Modifier
+            .padding(end = 8.dp)
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(Color(android.graphics.Color.parseColor(color)))
+    )
+}
+
+/** 全程一条细条，按路的种类上色，白色竖线是现在骑到的位置 */
+@Composable
+private fun RouteStrip(timeline: RouteTimeline, along: Double, modifier: Modifier) {
+    if (timeline.stretches.isEmpty() || timeline.total <= 0) return
+    Canvas(modifier.height(10.dp)) {
+        val h = size.height
+        val barTop = h * 0.2f
+        val barHeight = h * 0.6f
+        timeline.stretches.forEach { s ->
+            val x0 = (s.startMeters / timeline.total * size.width).toFloat()
+            val x1 = (s.endMeters / timeline.total * size.width).toFloat()
+            drawRect(
+                Color(android.graphics.Color.parseColor(s.kind.color)),
+                topLeft = Offset(x0, barTop),
+                size = Size((x1 - x0).coerceAtLeast(1f), barHeight),
+            )
+        }
+        // 骑过的部分压暗
+        val x = (along / timeline.total).coerceIn(0.0, 1.0).toFloat() * size.width
+        drawRect(Color.Black.copy(alpha = 0.55f), topLeft = Offset(0f, barTop), size = Size(x, barHeight))
+        drawRect(Color.White, topLeft = Offset(x - 2f, 0f), size = Size(4f, h))
     }
 }
 
