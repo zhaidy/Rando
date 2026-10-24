@@ -3,6 +3,7 @@ package com.personal.rando
 import android.app.Application
 import android.content.Context
 import com.personal.rando.places.HazardStore
+import com.personal.rando.places.ParkingStore
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
@@ -29,7 +30,7 @@ class RandoApp : Application() {
     /** 规划和导航共用：算路时带上要绕开的路况 */
     val router: BRouterClient by lazy { BRouterClient(avoid = { hazards.avoidPoints() }) }
 
-    val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards) }
+    val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards, parking = parking) }
 
     /** 一起骑时的声控对讲 */
     val walkie: Walkie by lazy { Walkie(this, appScope, group) }
@@ -38,6 +39,9 @@ class RandoApp : Application() {
     val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
+
+    /** 车停在哪儿 */
+    val parking: ParkingStore by lazy { ParkingStore(this) }
 
     /** 体重、自动开始记录 */
     val settings: SettingsStore by lazy { SettingsStore(this) }
