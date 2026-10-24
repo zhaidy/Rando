@@ -32,6 +32,8 @@ class RouteTimeline(route: Route) {
         for (i in 1 until route.points.size) acc[i] = acc[i - 1] + Geo.distance(route.points[i - 1], route.points[i])
     }
     val total: Double = cumulative.lastOrNull() ?: 0.0
+    /** 终点；没有点时是 null */
+    val end: LatLon? = points.lastOrNull()
 
     /** 相邻同类的段已经并好；分段对不上坐标时是空的 */
     val stretches: List<Stretch> = buildList {

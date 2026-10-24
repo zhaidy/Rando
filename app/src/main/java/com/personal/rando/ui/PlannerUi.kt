@@ -1031,11 +1031,18 @@ private fun Outlook(route: Route, weather: RouteWeather?, amenities: List<Amenit
         weather?.let { Note(if (it.dry) RandoGreen else RandoBlue, it.summary, strong = !it.dry) }
         val dark = remember(route) { DaylightAlerts.plan(System.currentTimeMillis(), route.durationSeconds) }
         dark?.let { Note(RandoAmber, it) }
-        if (amenities.isNotEmpty()) {
-            val counts = amenities.groupingBy { it.amenity.type }.eachCount()
+        val (parking, along) = amenities.partition { it.amenity.type == AmenityType.PARKING }
+        if (along.isNotEmpty()) {
+            val counts = along.groupingBy { it.amenity.type }.eachCount()
             Note(
                 kindColor(AmenityType.WATER.color),
                 "沿途补给：" + AmenityType.entries.filter { (counts[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${counts[it]}" },
+            ) { onShowOnMap(NoteTarget.AMENITIES) }
+        }
+        parking.minByOrNull { it.offRouteMeters }?.let { nearest ->
+            Note(
+                kindColor(AmenityType.PARKING.color),
+                "终点附近有停车架 ${parking.size} 处，最近的离终点 ${Format.distance(nearest.offRouteMeters.toInt())}",
             ) { onShowOnMap(NoteTarget.AMENITIES) }
         }
     }
