@@ -103,6 +103,12 @@ import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.routing.steepestClimb
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -366,14 +372,32 @@ fun PlannerSheet(
         state.destination != null -> SheetHeader.Destination(state.destination)
         else -> SheetHeader.Empty
     }
-    // 展开详情时最多占屏幕六成，剩下的在卡片里滑
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
-    GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight)) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 18.dp)
-        ) {
+    // 像谷歌地图那样：顶上的拖动条往下拖收成一小条，往上拖展开详情
+    var size by rememberSaveable { mutableStateOf(SheetSize.HALF) }
+    val screen = LocalConfiguration.current.screenHeightDp
+    val maxHeight = (screen * if (size == SheetSize.FULL) 0.75f else 0.6f).dp
+    val density = LocalDensity.current
+    var drag by remember { mutableFloatStateOf(0f) }
+    val dragState = rememberDraggableState { drag += it }
+    GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(Motion.smooth())) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
+          // 拖动条和标题这一块能拖；下面的内容能上下滑，不抢手势
+          Column(
+            Modifier.draggable(
+                dragState,
+                Orientation.Vertical,
+                onDragStarted = { drag = 0f },
+                onDragStopped = {
+                    val step = with(density) { 40.dp.toPx() }
+                    size = when {
+                        drag > step -> size.smaller()
+                        drag < -step -> size.bigger()
+                        else -> size
+                    }
+                },
+            )
+          ) {
+            DragHandle { size = if (size == SheetSize.PEEK) SheetSize.HALF else SheetSize.PEEK }
             AnimatedContent(
                 targetState = header,
                 transitionSpec = {
@@ -387,18 +411,6 @@ fun PlannerSheet(
                     SheetHeader.Empty -> Column {
                         Text("想去哪儿骑？", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                         Text("搜索目的地，或者长按地图选一个点", color = InkSoft, fontSize = 14.sp)
-                        if (canReturn) {
-                            GlassButton(
-                                onClick = actions.onReturn,
-                                modifier = Modifier.padding(top = 12.dp),
-                                tone = GlassTone.Tinted(RandoGreen),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                            ) {
-                                Text("原路返回出发的地方", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
-                        LoopRow(actions.onLoop)
                     }
                     is SheetHeader.Destination -> {
                         val dest = h.place
@@ -424,6 +436,11 @@ fun PlannerSheet(
                     }
                 }
             }
+          }
+          if (size == SheetSize.PEEK) {
+            PeekLine(state, header, actions.onStart)
+          } else Column(Modifier.verticalScroll(rememberScrollState())) {
+            if (header == SheetHeader.Empty) EmptyExtras(saved, canReturn, actions)
             StartLine(state.start, state.pickingStart, actions.onPickStart, actions.onUseMyLocation)
             if (state.destination != null) ViaLines(state.via, state.pickingVia, actions.onAddVia, actions.onRemoveVia)
             if (header != SheetHeader.Empty) {
@@ -449,7 +466,12 @@ fun PlannerSheet(
                             }
                         }
                         is RouteState.Ready -> Column {
-                            RouteSummary(r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities, loop = state.loop != null)
+                            RouteSummary(
+                                r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities,
+                                loop = state.loop != null,
+                                expanded = size == SheetSize.FULL,
+                                onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
+                            )
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
                                 Text("开始导航", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -458,7 +480,73 @@ fun PlannerSheet(
                     }
                 }
             }
+          }
         }
+    }
+}
+
+/** 卡片三种高度：收成一小条、一半、展开详情 */
+private enum class SheetSize {
+    PEEK, HALF, FULL;
+
+    fun smaller() = entries[(ordinal - 1).coerceAtLeast(0)]
+    fun bigger() = entries[(ordinal + 1).coerceAtMost(entries.size - 1)]
+}
+
+/** 顶上的拖动条：拖，或者点一下收起 / 展开 */
+@Composable
+private fun DragHandle(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .padding(top = 10.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(width = 40.dp, height = 5.dp).clip(GlassShapes.Pill).background(InkSoft.copy(alpha = 0.35f)))
+    }
+}
+
+/** 收起时的一行：距离、时间、要不要上马路，旁边就是开始导航 */
+@Composable
+private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Unit) {
+    val route = (state.route as? RouteState.Ready)?.route
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        val text = when {
+            route != null -> {
+                val road = route.breakdown()[RoadKind.ROAD] ?: 0
+                "${Format.distance(route.distanceMeters)} · ${Format.duration(route.durationSeconds)} · " +
+                    if (road > 0) "${Format.distance(road)} 马路" else "不上马路"
+            }
+            header == SheetHeader.Empty -> "往上拉看收藏的地方、骑一圈"
+            state.route is RouteState.Failed -> "算路失败，往上拉看看"
+            else -> "正在算路…"
+        }
+        Text(text, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (route != null) {
+            PrimaryButton(onClick = onStart, color = RandoGreen) {
+                Text("开始导航", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** 还没选目的地时：原路返回、收藏、骑一圈 */
+@Composable
+private fun EmptyExtras(saved: List<SavedPlace>, canReturn: Boolean, actions: PlannerActions) {
+    Column {
+        if (canReturn) {
+            GlassButton(
+                onClick = actions.onReturn,
+                modifier = Modifier.padding(top = 12.dp),
+                tone = GlassTone.Tinted(RandoGreen),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text("原路返回出发的地方", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
+        LoopRow(actions.onLoop)
     }
 }
 
@@ -623,13 +711,14 @@ fun RouteSummary(
     amenities: List<AmenityOnRoute> = emptyList(),
     /** 是骑一圈：马路绕不开时提示换个方向，而不是说附近没路 */
     loop: Boolean = false,
+    /** 展开详情：爬升图和各项提示；收着时只留最要紧的，地图不被挡住 */
+    expanded: Boolean = false,
+    onToggleDetails: () -> Unit = {},
 ) {
-    // 默认收起，只留最要紧的，地图不被挡住；点「详情」再展开爬升图和各项提示
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-        BigStat(Format.distance(route.distanceMeters), "距离")
-        BigStat(Format.duration(route.durationSeconds), "预计")
-        BigStat("${route.ascendMeters} 米", "爬升")
+    Row {
+        BigStat(Format.distance(route.distanceMeters), "距离", Modifier.weight(1.2f))
+        BigStat(Format.duration(route.durationSeconds), "预计", Modifier.weight(1.2f))
+        BigStat("${route.ascendMeters} 米", "爬升", Modifier.weight(1f))
     }
     val breakdown = route.breakdown()
     if (breakdown.isNotEmpty()) {
@@ -651,7 +740,7 @@ fun RouteSummary(
             Spacer(Modifier.height(10.dp))
             Headline(breakdown, weather, onShowOnMap)
         }
-        DetailsToggle(expanded) { expanded = !expanded }
+        DetailsToggle(expanded, onToggleDetails)
     }
 }
 
@@ -693,9 +782,10 @@ private fun DetailsToggle(expanded: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BigStat(value: String, label: String) {
-    Column {
-        Text(value, color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+private fun BigStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        // 「106 米」这种也不折行：放不下就整体缩小一点
+        Text(value, color = Ink, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, autoSize = TextAutoSize.StepBased(minFontSize = 16.sp, maxFontSize = 24.sp))
         Text(label, color = InkSoft, fontSize = 13.sp)
     }
 }
