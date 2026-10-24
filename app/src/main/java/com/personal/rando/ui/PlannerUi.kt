@@ -1100,7 +1100,14 @@ private fun Note(color: Color, text: String, strong: Boolean = false, onClick: (
  * 刚结束一次骑行：已经保存了，骑了多远多久；离出发的地方有段距离时可以原路返回
  */
 @Composable
-fun FinishedCard(ride: Ride, onReturn: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun FinishedCard(
+    ride: Ride,
+    onReturn: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 骑过的路：和以前比的那句 */
+    record: String? = null,
+) {
     val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
     Row(
         modifier
@@ -1112,6 +1119,7 @@ fun FinishedCard(ride: Ride, onReturn: () -> Unit, onDismiss: () -> Unit, modifi
         Column(Modifier.weight(1f)) {
             Text("已保存${ride.title}", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text("${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}", color = InkSoft, fontSize = 13.sp)
+            record?.let { Text(it, color = RandoGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
         }
         if (canReturn) {
             GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {

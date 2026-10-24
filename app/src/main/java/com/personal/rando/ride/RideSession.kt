@@ -310,7 +310,11 @@ class RideSession(
         stopWatchingWeather()
         val ride = r.toRide(System.currentTimeMillis())
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
-        scope.launch { rides.save(ride) }
+        scope.launch {
+            rides.save(ride)
+            // 骑过的路：比一比上次
+            RouteRecord.of(ride, rides.list())?.let { speaker.say(it.text) }
+        }
         return ride
     }
 

@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.RouteRecord
 import com.personal.rando.ui.glass.GlassIconButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassShapes
@@ -275,10 +276,11 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
     val store = LocalContext.current.rando.session.rides
     val scope = rememberCoroutineScope()
     val ride by produceState<Ride?>(null, id) { value = store.get(id) }
+    val record by produceState<String?>(null, ride) { value = ride?.let { r -> RouteRecord.of(r, store.list())?.text } }
     var confirmDelete by remember { mutableStateOf(false) }
     val r = ride
     if (r != null) {
-        RideDetail(r, onBack = onBack, onDelete = { confirmDelete = true }) { modifier -> TrackMap(r, modifier) }
+        RideDetail(r, onBack = onBack, onDelete = { confirmDelete = true }, record = record) { modifier -> TrackMap(r, modifier) }
     }
     if (confirmDelete) {
         AlertDialog(
@@ -306,7 +308,14 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
  * [map] 单独传进来，截图测试里换成一张图
  */
 @Composable
-fun RideDetail(ride: Ride, onBack: () -> Unit, onDelete: () -> Unit, map: @Composable (Modifier) -> Unit) {
+fun RideDetail(
+    ride: Ride,
+    onBack: () -> Unit,
+    onDelete: () -> Unit,
+    /** 骑过的路：和其他几次比的那句 */
+    record: String? = null,
+    map: @Composable (Modifier) -> Unit,
+) {
     val haze = rememberHazeState()
     CompositionLocalProvider(LocalHazeState provides haze) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
@@ -337,6 +346,7 @@ fun RideDetail(ride: Ride, onBack: () -> Unit, onDelete: () -> Unit, map: @Compo
                     .padding(12.dp),
             ) {
                 Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    record?.let { Text(it, color = RandoGreen, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                     Row {
                         DetailStat(Format.distance(ride.distanceMeters.toInt()), "距离", Modifier.weight(1f))
                         DetailStat(Format.clock(ride.movingSeconds), "骑行时间", Modifier.weight(1f))
