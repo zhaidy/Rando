@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -30,9 +32,19 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 
-/** 对讲：开没开、灵敏度、声音走哪儿、我在不在说、谁在说 */
+/**
+ * 对讲方式：实时是边说边发，像打电话；整句是说完一句再整句发出去，网络差的时候更稳，
+ * 收到的人先「嘀」一声再放
+ */
+enum class WalkieMode(val label: String) {
+    LIVE("实时"),
+    CLIP("整句"),
+}
+
+/** 对讲：开没开、方式、灵敏度、声音走哪儿、我在不在说、谁在说 */
 data class WalkieState(
     val on: Boolean = false,
+    val mode: WalkieMode = WalkieMode.LIVE,
     val level: VoxLevel = VoxLevel.NORMAL,
     /** 「蓝牙耳机 xxx」或者「手机喇叭和麦克风」 */
     val device: String? = null,
@@ -58,7 +70,10 @@ class Walkie(
     private val route = AudioRoute(app) { device -> _state.update { it.copy(device = device) } }
 
     private val _state = MutableStateFlow(
-        WalkieState(level = VoxLevel.entries.firstOrNull { it.name == prefs.getString(KEY_LEVEL, null) } ?: VoxLevel.NORMAL)
+        WalkieState(
+            mode = WalkieMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) } ?: WalkieMode.LIVE,
+            level = VoxLevel.entries.firstOrNull { it.name == prefs.getString(KEY_LEVEL, null) } ?: VoxLevel.NORMAL,
+        )
     )
     val state: StateFlow<WalkieState> = _state
 
@@ -88,6 +103,11 @@ class Walkie(
         players.clear()
         route.stop()
         _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null) }
+    }
+
+    fun setMode(mode: WalkieMode) {
+        prefs.edit { putString(KEY_MODE, mode.name) }
+        _state.update { it.copy(mode = mode) }
     }
 
     fun setLevel(level: VoxLevel) {
@@ -130,12 +150,13 @@ class Walkie(
                 for (event in vox.feed(frame.copyOf(n))) {
                     when (event) {
                         is Vox.Event.Start -> {
-                            sender = Sender().also { s -> event.frames.forEach(s::add) }
+                            sender = Sender(_state.value.mode).also { s -> event.frames.forEach(s::add) }
                             _state.update { it.copy(sending = true) }
                         }
                         is Vox.Event.Speech -> sender?.add(event.frame)
                         is Vox.Event.End -> {
-                            sender?.finish()
+                            // 太短的（一阵风、一声喇叭）：整句的就不发了；实时的已经发出去，只是收个尾
+                            sender?.finish(keep = event.keep)
                             sender = null
                             _state.update { it.copy(sending = false) }
                         }
@@ -151,8 +172,11 @@ class Walkie(
         }
     }
 
-    /** 一句话：边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段 */
-    private inner class Sender {
+    /**
+     * 一句话：实时的边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段；
+     * 整句的压好攒着，说完一起发（只有一段，seq 0，end）
+     */
+    private inner class Sender(private val mode: WalkieMode) {
         private val stream = Random.nextInt(1, Int.MAX_VALUE)
         private val encoder = AacStreamEncoder()
         private val pending = mutableListOf<ByteArray>()
@@ -160,12 +184,12 @@ class Walkie(
 
         fun add(pcm: ShortArray) {
             pending += encoder.encode(pcm)
-            if (pending.size >= CHUNK_FRAMES) send(end = false)
+            if (mode == WalkieMode.LIVE && pending.size >= CHUNK_FRAMES) send(end = false)
         }
 
-        fun finish() {
+        fun finish(keep: Boolean = true) {
             runCatching { pending += encoder.finish() }
-            send(end = true)
+            if (mode == WalkieMode.LIVE || keep) send(end = true)
             encoder.close()
         }
 
@@ -209,10 +233,14 @@ class Walkie(
             val track = newTrack()
             var buffered = 0
             var playing = false
+            var first = true
             try {
                 if (decoder == null) return
                 while (true) {
                     val voice = withTimeoutOrNull(SILENCE_MS) { inbox.receiveCatching().getOrNull() } ?: break
+                    // 整句发来的（一段就说完）先嘀一声，像对讲机
+                    if (first && voice.seq == 0 && voice.end) beep()
+                    first = false
                     val frames = AacCodec.splitAdts(Base64.decode(voice.data, Base64.DEFAULT))
                     val pcm = decoder.decode(frames)
                     if (pcm.isNotEmpty()) {
@@ -241,6 +269,15 @@ class Walkie(
             }
         }
 
+        private suspend fun beep() {
+            runCatching {
+                val tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 60)
+                tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+                delay(180)
+                tone.release()
+            }
+        }
+
         private fun newTrack(): AudioTrack {
             val min = AudioTrack.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             return AudioTrack.Builder()
@@ -266,6 +303,7 @@ class Walkie(
     private companion object {
         const val TAG = "Walkie"
         const val KEY_LEVEL = "level"
+        const val KEY_MODE = "mode"
         /** 攒两帧 AAC（约 0.13 秒）发一次 */
         const val CHUNK_FRAMES = 2
         /** 先攒 0.2 秒再放 */
