@@ -32,6 +32,7 @@ import com.personal.rando.routing.LoopShape
 import com.personal.rando.routing.LoopScore
 import com.personal.rando.search.Place
 import com.personal.rando.search.PlaceSearch
+import com.personal.rando.group.SharedRoute
 import com.personal.rando.routing.Pace
 import com.personal.rando.routing.MySpeed
 import kotlinx.coroutines.flow.filter
@@ -253,10 +254,25 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val s = _state.value
         val ready = s.route as? RouteState.Ready ?: return
         _state.update { it.copy(results = emptyList(), query = "") }
-        session.startNavigation(ready.route, ready.stops.last(), ready.stops.drop(1).dropLast(1), s.prefs)
+        val title = s.destination?.name ?: s.loop?.let { "骑一圈 ${it.targetMeters / 1000} 公里" } ?: "路线"
+        session.startNavigation(ready.route, ready.stops, s.prefs, title)
     }
 
     fun retry() = planRoute()
+
+    /** 跟着队友分享的路线骑；算路失败时告诉 [onFailed] */
+    fun followShared(shared: SharedRoute, onFailed: (String) -> Unit) {
+        val prefs = _state.value.prefs
+        viewModelScope.launch {
+            try {
+                session.followShared(shared, prefs)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onFailed(e.message ?: "算路失败")
+            }
+        }
+    }
 
     /** 沿刚骑完的轨迹原路返回，直接开始导航 */
     fun returnTrip(track: List<LatLon>, onFailed: (String) -> Unit) {

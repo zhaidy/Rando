@@ -63,4 +63,46 @@ class GroupTest {
         assertEquals("队友：小红 111 米 · 阿明 1.1 公里 · 小李 信号断了 · 老王 还没定位", teammatesText(mates, me, now))
         assertNull(teammatesText(emptyList(), me, now))
     }
+
+    @Test
+    fun `分享的路线发出去再收回来是一样的`() {
+        val sent = SharedRoute(
+            ts = 42, title = "Marina Bay Sands", meters = 13_600,
+            stops = listOf(LatLon(1.3, 103.8), LatLon(1.31, 103.82), LatLon(1.2838, 103.8591)),
+            profile = com.personal.rando.routing.BikeProfile.PCN, avoidRoads = true, avoidBridges = false,
+        )
+        val json = JSONObject(GroupProtocol.route(sent))
+        assertEquals("route", json.getString("t"))
+        assertEquals("PCN", json.getString("profile"))
+        // 服务器转发时加上是谁分享的
+        json.put("id", "a").put("name", "阿明")
+        val got = (GroupProtocol.parse(json.toString(), 0) as GroupEvent.Route).route
+        assertEquals(sent.copy(id = "a", name = "阿明"), got)
+        assertEquals(GroupEvent.RouteCleared("a"), GroupProtocol.parse("""{"t":"route_clear","id":"a"}""", 0))
+    }
+
+    @Test
+    fun `跟着骑用分享的路线配置，预计时间还按我的速度`() {
+        val shared = SharedRoute(
+            ts = 1, title = "x", meters = 0, stops = listOf(LatLon(1.3, 103.8), LatLon(1.31, 103.81)),
+            profile = com.personal.rando.routing.BikeProfile.CITY, avoidRoads = false, avoidBridges = true,
+        )
+        val mine = com.personal.rando.routing.RoutePrefs(avoidRoads = true, pace = com.personal.rando.routing.Pace.FAST, mySpeed = 5.0)
+        val prefs = shared.prefs(mine)
+        assertEquals(com.personal.rando.routing.BikeProfile.CITY, prefs.profile)
+        assertEquals(false, prefs.avoidRoads)
+        assertEquals(true, prefs.avoidBridges)
+        assertEquals(com.personal.rando.routing.Pace.FAST, prefs.pace)
+        assertEquals(5.0, prefs.mySpeed!!, 0.0)
+    }
+
+    @Test
+    fun `分享路线的提示文字`() {
+        val r = SharedRoute(
+            ts = 1, title = "Marina Bay Sands", meters = 13_600, stops = emptyList(),
+            profile = com.personal.rando.routing.BikeProfile.PCN, avoidRoads = true, avoidBridges = false,
+        )
+        assertEquals("去 Marina Bay Sands · 13.6 公里 · 公园连道、不上马路", com.personal.rando.ui.sharedRouteText(r))
+        assertEquals("原路返回 · 13.6 公里 · 公园连道、不上马路", com.personal.rando.ui.sharedRouteText(r.copy(title = "原路返回")))
+    }
 }
