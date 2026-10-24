@@ -2,6 +2,9 @@ package com.personal.rando.group
 
 import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
+import com.personal.rando.routing.BikeProfile
+import com.personal.rando.routing.RoutePrefs
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.random.Random
 
@@ -29,6 +32,28 @@ data class Teammate(
     }
 }
 
+/**
+ * 分享的路线：起点、途经点、终点和路线配置。队友按同样的点和配置找 BRouter 算，得到同一条路
+ * （只传几个点，不传整条路线）
+ */
+data class SharedRoute(
+    /** 分享的人；自己发出去的时候不用填 */
+    val id: String = "",
+    val name: String = "",
+    /** 分享的时间，用来认出是不是同一次分享（断线重连会再收到） */
+    val ts: Long,
+    /** 去哪儿：「Marina Bay Sands」「骑一圈」「原路返回」 */
+    val title: String,
+    val meters: Int,
+    val stops: List<LatLon>,
+    val profile: BikeProfile,
+    val avoidRoads: Boolean,
+    val avoidBridges: Boolean,
+) {
+    /** 跟着骑时用的配置：路线配置照分享的，预计时间还按我自己的速度 */
+    fun prefs(mine: RoutePrefs): RoutePrefs = mine.copy(profile = profile, avoidRoads = avoidRoads, avoidBridges = avoidBridges)
+}
+
 /** 收到的消息 */
 sealed interface GroupEvent {
     data class Roster(val members: List<Teammate>) : GroupEvent
@@ -48,6 +73,8 @@ sealed interface GroupEvent {
         val end: Boolean,
         val data: String,
     ) : GroupEvent
+    data class Route(val route: SharedRoute) : GroupEvent
+    data class RouteCleared(val id: String) : GroupEvent
 }
 
 /** 和 server/src/index.js 约定的消息格式 */
@@ -68,6 +95,19 @@ object GroupProtocol {
             .put("data", base64)
             .toString()
 
+    fun route(r: SharedRoute): String = JSONObject().apply {
+        put("t", "route")
+        put("ts", r.ts)
+        put("title", r.title)
+        put("meters", r.meters)
+        put("profile", r.profile.name)
+        put("avoidRoads", r.avoidRoads)
+        put("avoidBridges", r.avoidBridges)
+        put("stops", JSONArray().apply { r.stops.forEach { put(JSONArray().put(it.lat).put(it.lon)) } })
+    }.toString()
+
+    const val ROUTE_CLEAR = """{"t":"route_clear"}"""
+
     /** 认不出来的消息返回 null */
     fun parse(text: String, now: Long): GroupEvent? = try {
         val o = JSONObject(text)
@@ -83,6 +123,24 @@ object GroupProtocol {
                 o.getString("id"), o.optString("name", "队友"), o.optString("format"),
                 o.optInt("sid"), o.optInt("seq"), o.optBoolean("end"), o.optString("data"),
             )
+            "route" -> {
+                val list = o.getJSONArray("stops")
+                GroupEvent.Route(
+                    SharedRoute(
+                        id = o.getString("id"),
+                        name = o.optString("name", "队友"),
+                        ts = o.getLong("ts"),
+                        title = o.optString("title"),
+                        meters = o.optInt("meters"),
+                        stops = (0 until list.length()).map { list.getJSONArray(it).let { p -> LatLon(p.getDouble(0), p.getDouble(1)) } },
+                        // 不认识的配置（新版本加的）按公园连道算
+                        profile = BikeProfile.entries.firstOrNull { it.name == o.optString("profile") } ?: BikeProfile.PCN,
+                        avoidRoads = o.optBoolean("avoidRoads"),
+                        avoidBridges = o.optBoolean("avoidBridges"),
+                    )
+                )
+            }
+            "route_clear" -> GroupEvent.RouteCleared(o.getString("id"))
             else -> null
         }
     } catch (_: Exception) {

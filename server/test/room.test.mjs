@@ -96,3 +96,48 @@ test("不同队伍互不干扰，队伍码不对就拒绝", async () => {
   const res = await fetch(`http://127.0.0.1:${PORT}/room/bad!code`);
   assert.equal(res.status, 400);
 });
+
+test("分享的路线转给队友，后来加入的也能收到，结束或离队就撤掉", async () => {
+  const a = join("TEST02", "aaaaaaaa-5", "阿明");
+  await a.opened;
+  await a.next("roster");
+  const b = join("TEST02", "bbbbbbbb-6", "小红");
+  await b.opened;
+  await b.next("roster");
+  await a.next("join");
+
+  const stops = [[1.3, 103.8], [1.29, 103.85]];
+  a.send({ t: "route", ts: 42, title: "Marina Bay Sands", meters: 13600, profile: "PCN", avoidRoads: true, stops });
+  const got = await b.next("route");
+  assert.equal(got.id, "aaaaaaaa-5");
+  assert.equal(got.name, "阿明");
+  assert.equal(got.ts, 42);
+  assert.equal(got.title, "Marina Bay Sands");
+  assert.equal(got.avoidRoads, true);
+  assert.equal(got.avoidBridges, false);
+  assert.deepEqual(got.stops, stops);
+
+  // 不像路线的不转
+  a.send({ t: "route", stops: [[1.3, "x"]] });
+
+  // 后来加入的
+  const c = join("TEST02", "cccccccc-7", "小李");
+  await c.opened;
+  await c.next("roster");
+  assert.equal((await c.next("route")).ts, 42);
+
+  a.send({ t: "route_clear" });
+  assert.equal((await b.next("route_clear")).id, "aaaaaaaa-5");
+  await c.next("route_clear");
+
+  // 再分享一次然后离队：之后加入的收不到
+  a.send({ t: "route", ts: 43, title: "x", stops });
+  await b.next("route");
+  a.ws.close();
+  await b.next("leave");
+  const d = join("TEST02", "dddddddd-8", "小周");
+  await d.opened;
+  await d.next("roster");
+  await assert.rejects(d.next("route"));
+  for (const x of [b, c, d]) x.ws.close();
+});

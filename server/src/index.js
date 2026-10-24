@@ -5,9 +5,14 @@
 // 连接：GET /room/<队伍码>?id=<队员 id>&name=<名字>，带 Upgrade: websocket
 // 客户端发：{"t":"pos","lat":..,"lon":..,"speed":..,"bearing":..}
 //          {"t":"voice","format":"aac-live","sid":..,"seq":..,"end":false,"data":"<base64>"}（实时对讲，一小段一小段地发）
+//          {"t":"route","ts":..,"title":"Marina Bay Sands","meters":13600,"profile":"PCN","avoidRoads":true,"avoidBridges":false,
+//           "stops":[[lat,lon],...]}（开始导航时分享路线；队友按同样的点和配置算，得到同一条路）
+//          {"t":"route_clear"}（结束导航）
 // 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
 //          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
+//          {"t":"route",id,name,ts,title,meters,profile,avoidRoads,avoidBridges,stops} {"t":"route_clear",id}
+//          分享的路线存在房间里，后来加入的人连上就能收到；分享的人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
 
 import { DurableObject } from "cloudflare:workers";
@@ -17,6 +22,9 @@ const MAX_MEMBERS = 20;
 const MAX_NAME = 20;
 // 对讲一小段只有几百字节，这个上限只是防止乱发
 const MAX_MESSAGE = 512 * 1024;
+// 一条路线最多这么多个点（起点、途经点、终点；原路返回会多一些）
+const MAX_STOPS = 100;
+const MAX_TITLE = 40;
 
 export default {
   async fetch(request, env) {
@@ -60,7 +68,11 @@ export class Room extends DurableObject {
     this.ctx.acceptWebSocket(server, [id]);
     server.serializeAttachment({ id, name, pos: null });
 
-    server.send(JSON.stringify({ t: "roster", members: this.members().filter((m) => m.id !== id) }));
+    const others = this.members().filter((m) => m.id !== id);
+    server.send(JSON.stringify({ t: "roster", members: others }));
+    // 队友已经分享的路线
+    const routes = await this.ctx.storage.get(others.map((m) => `route:${m.id}`));
+    for (const route of routes.values()) server.send(JSON.stringify(route));
     this.broadcast({ t: "join", id, name }, id);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -95,23 +107,35 @@ export class Room extends DurableObject {
         },
         me.id,
       );
+    } else if (msg.t === "route") {
+      const route = parseRoute(msg);
+      if (!route) return;
+      const out = { t: "route", id: me.id, name: me.name, ...route };
+      await this.ctx.storage.put(`route:${me.id}`, out);
+      this.broadcast(out, me.id);
+    } else if (msg.t === "route_clear") {
+      await this.ctx.storage.delete(`route:${me.id}`);
+      this.broadcast({ t: "route_clear", id: me.id }, me.id);
     }
   }
 
   async webSocketClose(ws) {
-    this.left(ws);
+    await this.left(ws);
   }
 
   async webSocketError(ws) {
-    this.left(ws);
+    await this.left(ws);
   }
 
-  left(ws) {
+  async left(ws) {
     const me = ws.deserializeAttachment();
     if (!me) return;
     // 被同一个人的新连接顶掉时，新连接还在，不算离队
     const stillHere = this.ctx.getWebSockets(me.id).some((other) => other !== ws);
-    if (!stillHere) this.broadcast({ t: "leave", id: me.id }, me.id);
+    if (stillHere) return;
+    // 断线重连时客户端会重新分享
+    await this.ctx.storage.delete(`route:${me.id}`);
+    this.broadcast({ t: "leave", id: me.id }, me.id);
   }
 
   /** 房间里的人和他们最后的位置 */
@@ -132,4 +156,21 @@ export class Room extends DurableObject {
       try { ws.send(text); } catch {}
     }
   }
+}
+
+/** 检查分享的路线；不对返回 null */
+function parseRoute(msg) {
+  const stops = msg.stops;
+  if (!Array.isArray(stops) || stops.length < 2 || stops.length > MAX_STOPS) return null;
+  const ok = stops.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+  if (!ok) return null;
+  return {
+    ts: Number(msg.ts) || Date.now(),
+    title: String(msg.title ?? "").slice(0, MAX_TITLE),
+    meters: Number.isFinite(msg.meters) ? msg.meters : 0,
+    profile: String(msg.profile ?? "").slice(0, 20),
+    avoidRoads: msg.avoidRoads === true,
+    avoidBridges: msg.avoidBridges === true,
+    stops,
+  };
 }

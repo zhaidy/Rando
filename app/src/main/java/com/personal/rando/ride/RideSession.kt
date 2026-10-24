@@ -25,6 +25,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import com.personal.rando.group.SharedRoute
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -106,6 +110,20 @@ class RideSession(
     /** 还没经过的途经点在当前路线上的位置（米） */
     private var viaAlong: List<Double> = emptyList()
     private var lastRerouteAt = 0L
+    /** 这次导航分享给队友的路线；导航中才进队的，进队时补发 */
+    private var shared: SharedRoute? = null
+
+    init {
+        group?.let { g ->
+            scope.launch {
+                g.state.map { it?.code }.distinctUntilChanged().collect { code -> if (code != null) shared?.let(g::shareRoute) }
+            }
+            // 队友分享了路线：骑车时不一定看屏幕，念一声
+            scope.launch {
+                g.offer.filterNotNull().distinctUntilChanged().collect { speaker.say("${it.name}分享了路线，${it.title}，要跟着骑吗") }
+            }
+        }
+    }
 
     fun onFix(fix: Fix) {
         // GPS 和网络定位一起听：有了准的点，几秒内来的明显更不准的就不要，免得蓝点来回跳
@@ -156,7 +174,22 @@ class RideSession(
         return ride
     }
 
-    fun startNavigation(route: Route, destination: LatLon, via: List<LatLon>, prefs: RoutePrefs) {
+    /**
+     * 按 [stops]（起点、途经点、终点）算好的 [route] 开始导航。
+     * 在一起骑时把路线分享给队友（[share]）；跟着队友的路线骑时不再分享出去
+     */
+    fun startNavigation(route: Route, stops: List<LatLon>, prefs: RoutePrefs, title: String, share: Boolean = true) {
+        val destination = stops.last()
+        val via = stops.drop(1).dropLast(1)
+        shared = if (share) {
+            SharedRoute(
+                ts = System.currentTimeMillis(), title = title, meters = route.distanceMeters, stops = stops,
+                profile = prefs.profile, avoidRoads = prefs.avoidRoads, avoidBridges = prefs.avoidBridges,
+            ).also { group?.shareRoute(it) }
+        } else {
+            group?.clearRoute()
+            null
+        }
         follow(route, via)
         loadAmenities(route)
         rerouteJob?.cancel()
@@ -174,11 +207,20 @@ class RideSession(
     suspend fun startReturnTrip(track: List<LatLon>, prefs: RoutePrefs) {
         val stops = ReturnTrip.stops(track) ?: throw IllegalStateException("还没骑多远，没有路可以原路返回")
         val route = router.route(stops, prefs)
-        startNavigation(route, stops.last(), stops.drop(1).dropLast(1), prefs)
+        startNavigation(route, stops, prefs, title = "原路返回")
+    }
+
+    /** 跟着队友分享的路线骑：按同样的点和配置算，预计时间还按我的速度 */
+    suspend fun followShared(shared: SharedRoute, mine: RoutePrefs) {
+        val prefs = shared.prefs(mine)
+        val route = router.route(shared.stops, prefs)
+        startNavigation(route, shared.stops, prefs, title = shared.title, share = false)
     }
 
     /** 停掉导航；RideService 看到没事可做了会自己退出 */
     fun stopNavigation() {
+        shared = null
+        group?.clearRoute()
         navigator = null
         roadAlerts = null
         rerouteJob?.cancel()

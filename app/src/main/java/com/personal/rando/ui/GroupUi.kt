@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.group.GroupState
+import com.personal.rando.group.SharedRoute
 import com.personal.rando.group.TeamCode
 import com.personal.rando.group.Teammate
 import com.personal.rando.group.VoxLevel
@@ -222,4 +223,35 @@ fun TeammatesRow(text: String, modifier: Modifier = Modifier) {
         Box(Modifier.padding(end = 8.dp).size(10.dp).clip(CircleShape).background(Color(0xFFB388FF)))
         Text(text, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** 队友分享了路线：跟着骑，还是不用 */
+@Composable
+fun SharedRouteDialog(route: SharedRoute, navigating: Boolean, onFollow: () -> Unit, onDecline: () -> Unit) {
+    AlertDialog(
+        // 骑车时容易误碰，点外面不关，要明确选一个
+        onDismissRequest = {},
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("${route.name}分享了路线") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(sharedRouteText(route), color = Ink, fontSize = 16.sp)
+                if (navigating) Text("跟着骑会换掉你现在的导航", color = InkSoft, fontSize = 14.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onFollow) { Text("跟着骑", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDecline) { Text("不用", color = InkSoft) } },
+    )
+}
+
+/** 「去 Marina Bay Sands · 13.6 公里 · 公园连道、不上马路」 */
+fun sharedRouteText(route: SharedRoute): String {
+    val options = listOfNotNull(
+        route.profile.label,
+        "不上马路".takeIf { route.avoidRoads },
+        "不走天桥".takeIf { route.avoidBridges },
+    ).joinToString("、")
+    val where = if (route.title.startsWith("骑一圈") || route.title == "原路返回") route.title else "去 ${route.title}"
+    return listOfNotNull(where, route.meters.takeIf { it > 0 }?.let { Format.distance(it) }, options).joinToString(" · ")
 }

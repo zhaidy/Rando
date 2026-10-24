@@ -57,6 +57,15 @@ class GroupRide(
     /** 不为 null 就是在队伍里 */
     val state: StateFlow<GroupState?> = _state
 
+    private val _offer = MutableStateFlow<SharedRoute?>(null)
+    /** 队友分享过来、还没回答的路线 */
+    val offer: StateFlow<SharedRoute?> = _offer
+
+    /** 我分享出去的路线；断线重连后再发一次 */
+    private var myRoute: SharedRoute? = null
+    /** 回答过的分享（队友 id 和时间），重连后再收到不再问 */
+    private val answered = mutableSetOf<Pair<String, Long>>()
+
     private val _voices = MutableSharedFlow<GroupEvent.Voice>(extraBufferCapacity = 64)
     /** 收到的对讲语音 */
     val voices: SharedFlow<GroupEvent.Voice> = _voices
@@ -81,7 +90,31 @@ class GroupRide(
         socket = null
         lastSent = null
         warnedAt.clear()
+        myRoute = null
+        answered.clear()
+        _offer.value = null
         _state.value = null
+    }
+
+    /** 开始导航时把路线分享给队友；不在队伍里就不发 */
+    fun shareRoute(route: SharedRoute) {
+        if (_state.value == null) return
+        myRoute = route
+        socket?.send(GroupProtocol.route(route))
+    }
+
+    /** 结束导航：队友那边撤掉还没回答的提示 */
+    fun clearRoute() {
+        if (myRoute == null) return
+        myRoute = null
+        socket?.send(GroupProtocol.ROUTE_CLEAR)
+    }
+
+    /** 跟不跟着骑都回答过了，不再问 */
+    fun answerOffer() {
+        val r = _offer.value ?: return
+        answered += r.id to r.ts
+        _offer.value = null
     }
 
     /** 新定位：动了够远或者隔了够久才发，省流量也省服务器额度 */
@@ -133,6 +166,7 @@ class GroupRide(
                     if (socket !== webSocket) return@launch
                     lastSent = null
                     _state.update { it?.copy(connected = true) }
+                    myRoute?.let { webSocket.send(GroupProtocol.route(it)) }
                 }
             }
 
@@ -170,7 +204,12 @@ class GroupRide(
             is GroupEvent.Joined -> _state.update { s ->
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.id } + Teammate(event.id, event.name))
             }
-            is GroupEvent.Left -> _state.update { s -> s?.copy(teammates = s.teammates.filterNot { it.id == event.id }) }
+            is GroupEvent.Left -> {
+                _state.update { s -> s?.copy(teammates = s.teammates.filterNot { it.id == event.id }) }
+                if (_offer.value?.id == event.id) _offer.value = null
+            }
+            is GroupEvent.Route -> if (event.route.id != myId && (event.route.id to event.route.ts) !in answered) _offer.value = event.route
+            is GroupEvent.RouteCleared -> if (_offer.value?.id == event.id) _offer.value = null
             is GroupEvent.Position -> _state.update { s ->
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.mate.id } + event.mate)
             }

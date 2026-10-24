@@ -156,6 +156,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val fix by vm.session.fix.collectAsStateWithLifecycle()
     val group = LocalContext.current.rando.group
     val groupState by group.state.collectAsStateWithLifecycle()
+    val routeOffer by group.offer.collectAsStateWithLifecycle()
     var groupDialog by remember { mutableStateOf(false) }
     val walkie = LocalContext.current.rando.walkie
     val walkieState by walkie.state.collectAsStateWithLifecycle()
@@ -558,6 +559,19 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    routeOffer?.let { offer ->
+        SharedRouteDialog(
+            offer,
+            navigating = navigating,
+            onFollow = {
+                group.answerOffer()
+                askNotifications()
+                Toast.makeText(context, "正在算${offer.name}的路线…", Toast.LENGTH_SHORT).show()
+                vm.followShared(offer) { Toast.makeText(context, "跟着骑失败：$it", Toast.LENGTH_LONG).show() }
+            },
+            onDecline = group::answerOffer,
+        )
     }
     if (groupDialog) {
         GroupDialog(
