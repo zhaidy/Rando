@@ -132,6 +132,8 @@ class UiScreenshotTest {
                 saved = saved,
                 actions = PlannerActions(),
                 savedRoutes = savedRoutes,
+                parked = com.personal.rando.places.ParkedBike(LatLon(1.29, 103.85), System.currentTimeMillis() - 2 * 3_600_000L),
+                here = LatLon(1.30, 103.85),
             )
         }
     }

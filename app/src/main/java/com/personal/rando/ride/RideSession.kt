@@ -17,6 +17,7 @@ import com.personal.rando.group.GroupRide
 import com.personal.rando.nav.Geo
 import com.personal.rando.places.AmenityClient
 import com.personal.rando.places.AmenityOnRoute
+import com.personal.rando.places.ParkingStore
 import com.personal.rando.group.GroupEvent
 import com.personal.rando.places.HazardType
 import com.personal.rando.places.HazardStore
@@ -85,6 +86,8 @@ class RideSession(
     private val group: GroupRide? = null,
     /** 标过的路况：骑近了提醒；施工封路由 [router] 算路时绕开 */
     private val hazards: HazardStore? = null,
+    /** 结束骑行时记下车停在哪儿 */
+    private val parking: ParkingStore? = null,
 ) {
     private val app = context.applicationContext
     private val speaker by lazy { Speaker(app) }
@@ -327,6 +330,7 @@ class RideSession(
         stopWatchingWeather()
         val ride = r.toRide(System.currentTimeMillis())
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
+        (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
             rides.save(ride)
             // 骑过的路：比一比上次

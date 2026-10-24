@@ -131,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import androidx.core.content.FileProvider
 import com.personal.rando.ride.Calories
 import com.personal.rando.voice.VoiceState
 import com.personal.rando.voice.VoiceCommand
@@ -177,6 +178,21 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val settingsStore = LocalContext.current.rando.settings
     val settings by settingsStore.settings.collectAsStateWithLifecycle()
     var settingsDialog by remember { mutableStateOf(false) }
+    val parking = LocalContext.current.rando.parking
+    val parked by parking.bike.collectAsStateWithLifecycle()
+    var parkedDialog by remember { mutableStateOf(false) }
+    val photoContext = LocalContext.current
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) {
+            parking.photoTaken()
+            Toast.makeText(photoContext, "车位照片存好了", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val photoParking = {
+        val uri = FileProvider.getUriForFile(photoContext, "${photoContext.packageName}.files", parking.photoFile)
+        runCatching { takePhoto.launch(uri) }.onFailure { Toast.makeText(photoContext, "打不开相机", Toast.LENGTH_SHORT).show() }
+        Unit
+    }
     val voice = LocalContext.current.rando.voice
     val voiceState by voice.state.collectAsStateWithLifecycle()
     val sosList by group.sos.collectAsStateWithLifecycle()
@@ -596,6 +612,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                     ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record,
                                     onShare = { scope.launch { ShareCard.share(context, ride, record) } },
                                     kcal = Calories.of(ride, settings.weightKg),
+                                    onParkPhoto = photoParking,
                                 )
                             }
                         }
@@ -631,6 +648,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                     state = state,
                                     saved = saved,
                                     savedRoutes = savedRoutes,
+                                    parked = parked,
+                                    here = fix?.location,
                                     actions = remember(vm) {
                                         PlannerActions(
                                             onChooseSaved = vm::chooseSaved,
@@ -659,6 +678,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                             onSaveRoute = { savingRoute = true },
                                             onChooseRoute = vm::chooseSavedRoute,
                                             onRemoveRoute = vm.savedRoutes::remove,
+                                            onParked = { parkedDialog = true },
                                         )
                                     },
                                 )
@@ -668,6 +688,30 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             }
         }
+    }
+    parked?.takeIf { parkedDialog }?.let { bike ->
+        ParkedDialog(
+            bike,
+            here = fix?.location,
+            onShow = {
+                parkedDialog = false
+                style?.let { MapLayers.showFocus(it, listOf(bike.location)) }
+                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(bike.location.lat, bike.location.lon), 17.5), 700)
+            },
+            onWalk = {
+                parkedDialog = false
+                // 走路过去交给谷歌地图（有步行导航）
+                val uri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${bike.location.lat},${bike.location.lon}&travelmode=walking")
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            },
+            onPhoto = photoParking,
+            onClear = {
+                parking.clear()
+                parkedDialog = false
+                style?.let { MapLayers.showFocus(it, null) }
+            },
+            onDismiss = { parkedDialog = false },
+        )
     }
     if (settingsDialog) {
         SettingsDialog(

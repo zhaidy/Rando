@@ -100,6 +100,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import com.personal.rando.ride.Settings
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import com.personal.rando.places.ParkedBike
+import androidx.compose.ui.graphics.asImageBitmap
+import com.personal.rando.nav.Geo
+import com.personal.rando.routing.LatLon
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -396,6 +400,8 @@ class PlannerActions(
     val onChooseRoute: (SavedRoute) -> Unit = {},
     /** 长按收藏的路线：删掉 */
     val onRemoveRoute: (SavedRoute) -> Unit = {},
+    /** 点了「我的车」 */
+    val onParked: () -> Unit = {},
 )
 
 /** 卡片顶上那行：还没选、去某个地方、骑一圈 */
@@ -416,6 +422,9 @@ fun PlannerSheet(
     actions: PlannerActions,
     modifier: Modifier = Modifier,
     savedRoutes: List<SavedRoute> = emptyList(),
+    /** 车停在哪儿、我在哪儿（算离车多远） */
+    parked: ParkedBike? = null,
+    here: LatLon? = null,
 ) {
     val header = when {
         state.loop != null -> SheetHeader.Loop(state.loop.targetMeters / 1000)
@@ -512,7 +521,10 @@ fun PlannerSheet(
           if (size == SheetSize.PEEK) {
             PeekLine(state, header, actions.onStart)
           } else Column(Modifier.verticalScroll(rememberScrollState())) {
-            if (header == SheetHeader.Empty) EmptyExtras(saved, savedRoutes, actions)
+            if (header == SheetHeader.Empty) {
+                parked?.let { ParkedRow(it, here, actions.onParked) }
+                EmptyExtras(saved, savedRoutes, actions)
+            }
             StartLine(state.start, state.pickingStart, actions.onPickStart, actions.onUseMyLocation)
             if (state.destination != null) ViaLines(state.via, state.pickingVia, actions.onAddVia, actions.onRemoveVia)
             if (header != SheetHeader.Empty) {
@@ -615,6 +627,77 @@ private fun EmptyExtras(saved: List<SavedPlace>, routes: List<SavedRoute>, actio
         if (routes.isNotEmpty()) SavedRoutesRow(routes, actions.onChooseRoute, actions.onRemoveRoute)
         LoopRow(actions.onLoop)
     }
+}
+
+/** 「我的车 · 1.2 公里 · 2 小时前」，点开看照片、导航过去 */
+@Composable
+private fun ParkedRow(bike: ParkedBike, here: LatLon?, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .padding(top = 12.dp)
+            .clip(GlassShapes.Pill)
+            .liquidGlass(GlassShapes.Pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("P", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(RandoBlue).padding(horizontal = 6.dp, vertical = 1.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("我的车", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(" · " + parkedText(bike, here, System.currentTimeMillis()), color = InkSoft, fontSize = 14.sp, maxLines = 1)
+    }
+}
+
+/** 「1.2 公里 · 2 小时前」 */
+fun parkedText(bike: ParkedBike, here: LatLon?, now: Long): String {
+    val minutes = ((now - bike.at) / 60_000).coerceAtLeast(0)
+    val ago = when {
+        minutes < 1 -> "刚刚"
+        minutes < 60 -> "$minutes 分钟前"
+        minutes < 24 * 60 -> "${minutes / 60} 小时前"
+        else -> "${minutes / (24 * 60)} 天前"
+    }
+    return listOfNotNull(here?.let { Format.distance(Geo.distance(it, bike.location).toInt()) }, ago).joinToString(" · ")
+}
+
+/** 我的车：照片、在地图上看、走路过去、已取车 */
+@Composable
+fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: () -> Unit, onPhoto: () -> Unit, onClear: () -> Unit, onDismiss: () -> Unit) {
+    val photo = remember(bike.photo) {
+        bike.photo?.let { path ->
+            runCatching {
+                val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                android.graphics.BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("我的车") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("停在这里 · " + parkedText(bike, here, System.currentTimeMillis()), color = Ink, fontSize = 15.sp)
+                if (photo != null) {
+                    androidx.compose.foundation.Image(
+                        photo, contentDescription = "车位照片",
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).clip(RoundedCornerShape(12.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                } else {
+                    LinkText("拍一张车位照片", onPhoto)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinkText("在地图上看", onShow)
+                    LinkText("走路过去", onWalk)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClear) { Text("已取车", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
 }
 
 /** 收藏的路线：点一下再骑，长按删掉 */
@@ -1212,6 +1295,8 @@ fun FinishedCard(
     record: String? = null,
     onShare: () -> Unit = {},
     kcal: Int? = null,
+    /** 拍一张车位照片，回来好找车 */
+    onParkPhoto: () -> Unit = {},
 ) {
     val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
     Row(
@@ -1235,6 +1320,7 @@ fun FinishedCard(
                 Text("原路返回", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        IconTap(onClick = onParkPhoto) { Icon(CameraIcon, contentDescription = "拍车位照片", tint = InkSoft) }
         IconTap(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "分享", tint = InkSoft) }
         IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关掉", tint = InkSoft) }
     }

@@ -2,4 +2,6 @@
 <!-- 分享骑行图：先存在缓存的 share 目录里，再通过 FileProvider 给别的 App -->
 <paths>
     <cache-path name="share" path="share/" />
+    <!-- 车位照片：相机 App 拍好写到这里 -->
+    <files-path name="parking" path="parking/" />
 </paths>
