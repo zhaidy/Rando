@@ -9,6 +9,8 @@ import java.util.Locale
 class Speaker(context: Context) {
 
     private var ready = false
+    /** TTS 引擎还没启动好时先记着最后一句，好了再念（比如「开始导航」） */
+    private var pending: String? = null
     private val tts: TextToSpeech = TextToSpeech(context.applicationContext) { status ->
         if (status == TextToSpeech.SUCCESS) {
             ready = true
@@ -16,6 +18,8 @@ class Speaker(context: Context) {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.setLanguage(Locale.getDefault())
             }
+            pending?.let(::say)
+            pending = null
         }
     }
 
@@ -30,8 +34,6 @@ class Speaker(context: Context) {
     }
 
     fun say(text: String) {
-        if (ready) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, text)
+        if (ready) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, text) else pending = text
     }
-
-    fun shutdown() = tts.shutdown()
 }

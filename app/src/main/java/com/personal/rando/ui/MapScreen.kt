@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
@@ -71,7 +72,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.personal.rando.nav.Speaker
+import com.personal.rando.ride.Fix
+import com.personal.rando.ride.NavigationState
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.SafetyScore
@@ -94,6 +96,7 @@ private val SINGAPORE = LatLng(1.3521, 103.8198)
 @Composable
 fun MapScreen(vm: RouteViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -134,12 +137,16 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         val s = style ?: return@LaunchedEffect
         if (hasLocation) enableMyLocation(context, m, s)
     }
-    val navigating = state.navigation != null
-    LocationUpdates(enabled = hasLocation, navigating = navigating) { vm.onMyLocation(it) }
+    val navigating = navigation != null
+    // 导航时由 RideService 收定位（锁屏也不停），这里只管规划时的
+    LocationUpdates(enabled = hasLocation && !navigating) { vm.session.onFix(it) }
 
-    val speaker = remember { Speaker(context) }
-    DisposableEffect(speaker) { onDispose { speaker.shutdown() } }
-    LaunchedEffect(vm) { vm.speech.collect { speaker.say(it) } }
+    // 导航结束的通知栏提示要这个权限；不给也能导航，只是通知栏看不到
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val startNavigation = {
+        if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        vm.startNavigation()
+    }
 
     // 导航时屏幕常亮，镜头跟着人走、朝前进方向转
     val view = LocalView.current
@@ -164,14 +171,15 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
         }
     }
 
-    // 路线变了就重画，并把镜头框住整条路线（上下留出搜索框和底部卡片的位置）
-    val route = (state.route as? RouteState.Ready)?.route
+    // 路线变了就重画，并把镜头框住整条路线（上下留出搜索框和底部卡片的位置）。
+    // 导航中画的是正在走的那条，骑偏重新规划后会换
+    val route = navigation?.route ?: (state.route as? RouteState.Ready)?.route
     LaunchedEffect(style, route, state.start, state.destination) {
         val s = style ?: return@LaunchedEffect
         MapLayers.show(s, route?.points, state.start?.location, state.destination?.location)
         val m = map ?: return@LaunchedEffect
         // 导航中重新算路时镜头还跟着人，不要跳去看全程
-        if (state.navigation != null) return@LaunchedEffect
+        if (navigating) return@LaunchedEffect
         if (route != null && route.points.size >= 2) {
             val bounds = LatLngBounds.Builder()
                 .includes(route.points.map { LatLng(it.lat, it.lon) })
@@ -191,9 +199,8 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
-        val navigation = state.navigation
-        if (navigation != null) {
-            NavigationOverlay(navigation, onStop = vm::stopNavigation)
+        navigation?.let {
+            NavigationOverlay(it, onStop = vm.session::stopNavigation)
             return@Box
         }
 
@@ -227,7 +234,7 @@ fun MapScreen(vm: RouteViewModel = viewModel()) {
                 }
                 Spacer(Modifier.size(8.dp))
             }
-            PlannerCard(state, vm)
+            PlannerCard(state, vm, startNavigation)
         }
     }
 }
@@ -322,7 +329,7 @@ private fun Banner(text: String) {
 }
 
 @Composable
-private fun PlannerCard(state: PlannerState, vm: RouteViewModel) {
+private fun PlannerCard(state: PlannerState, vm: RouteViewModel, onStartNavigation: () -> Unit) {
     Surface(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -364,7 +371,7 @@ private fun PlannerCard(state: PlannerState, vm: RouteViewModel) {
                 is RouteState.Ready -> {
                     RouteSummary(r)
                     Spacer(Modifier.size(12.dp))
-                    Button(onClick = vm::startNavigation, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = onStartNavigation, modifier = Modifier.fillMaxWidth()) {
                         Text("开始导航")
                     }
                 }
@@ -478,43 +485,24 @@ private fun enableMyLocation(context: Context, map: MapLibreMap, style: Style) {
     flyToMyLocation(map)
 }
 
-/**
- * 算路要用的位置：平时 GPS 和网络定位都听，哪个先到用哪个；
- * 导航时只要 GPS、每秒一次，网络定位误差上百米，会被当成骑偏了
- */
+/** 规划路线要用的位置：GPS 和网络定位都听，哪个先到用哪个 */
 @SuppressLint("MissingPermission")
 @Composable
-private fun LocationUpdates(enabled: Boolean, navigating: Boolean, onLocation: (LatLon) -> Unit) {
+private fun LocationUpdates(enabled: Boolean, onFix: (Fix) -> Unit) {
     val context = LocalContext.current
-    DisposableEffect(enabled, navigating) {
+    DisposableEffect(enabled) {
         val manager = context.getSystemService(LocationManager::class.java)
         if (!enabled || manager == null) return@DisposableEffect onDispose {}
-        val listener = LocationListener {
-            if (navigating && it.hasAccuracy() && it.accuracy > NAV_MAX_ACCURACY_METERS) return@LocationListener
-            onLocation(LatLon(it.latitude, it.longitude))
-        }
-        val enabledProviders = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        val listener = LocationListener { onFix(Fix.of(it)) }
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             .filter { manager.isProviderEnabled(it) }
-        // GPS 关着的话导航也只能将就用网络定位
-        val providers = if (navigating && LocationManager.GPS_PROVIDER in enabledProviders) {
-            listOf(LocationManager.GPS_PROVIDER)
-        } else {
-            enabledProviders
-        }
-        providers.forEach { provider ->
-            if (!navigating) manager.getLastKnownLocation(provider)?.let { onLocation(LatLon(it.latitude, it.longitude)) }
-            if (navigating) {
-                manager.requestLocationUpdates(provider, 1_000L, 0f, listener, Looper.getMainLooper())
-            } else {
+            .forEach { provider ->
+                manager.getLastKnownLocation(provider)?.let { onFix(Fix.of(it)) }
                 manager.requestLocationUpdates(provider, 2_000L, 5f, listener, Looper.getMainLooper())
             }
-        }
         onDispose { manager.removeUpdates(listener) }
     }
 }
-
-/** 导航时精度比这差的定位不要 */
-private const val NAV_MAX_ACCURACY_METERS = 50f
 
 private fun flyToMyLocation(map: MapLibreMap) {
     val component = map.locationComponent

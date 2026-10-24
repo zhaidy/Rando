@@ -1,10 +1,10 @@
 package com.personal.rando.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.personal.rando.nav.NavProgress
-import com.personal.rando.nav.Navigator
-import com.personal.rando.nav.VoicePrompter
+import com.personal.rando.rando
+import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BRouterClient
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
@@ -15,10 +15,9 @@ import com.personal.rando.search.PlaceSearch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -41,20 +40,14 @@ data class PlannerState(
     val query: String = "",
     val results: List<Place> = emptyList(),
     val route: RouteState = RouteState.Idle,
-    /** 不为 null 就是在导航中 */
-    val navigation: NavigationState? = null,
 )
 
-data class NavigationState(
-    /** 还没定位到时是 null */
-    val progress: NavProgress? = null,
-    val rerouting: Boolean = false,
-)
+/** 规划路线；开始导航后交给 [RideSession]，它跟着进程走，界面关了也继续 */
+class RouteViewModel(app: Application) : AndroidViewModel(app) {
 
-class RouteViewModel(
-    private val router: BRouterClient = BRouterClient(),
-    private val places: PlaceSearch = PlaceSearch(),
-) : ViewModel() {
+    private val router = BRouterClient()
+    private val places = PlaceSearch()
+    val session: RideSession = app.rando.session
 
     private val _state = MutableStateFlow(PlannerState())
     val state: StateFlow<PlannerState> = _state
@@ -63,14 +56,9 @@ class RouteViewModel(
     private var searchJob: Job? = null
     private var routeJob: Job? = null
 
-    /** 要播报的话，界面那边交给 TTS 念 */
-    private val _speech = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val speech: SharedFlow<String> = _speech
-
-    private var navigator: Navigator? = null
-    private val prompter = VoicePrompter()
-    private var rerouteJob: Job? = null
-    private var lastRerouteAt = 0L
+    init {
+        viewModelScope.launch { session.location.filterNotNull().collect(::onMyLocation) }
+    }
 
     fun setProfile(profile: BikeProfile) {
         _state.update { it.copy(profile = profile) }
@@ -124,70 +112,22 @@ class RouteViewModel(
     }
 
     fun clearRoute() {
-        stopNavigation()
         routeJob?.cancel()
         _state.update { it.copy(destination = null, route = RouteState.Idle) }
     }
 
-    fun onMyLocation(point: LatLon) {
+    private fun onMyLocation(point: LatLon) {
         val first = myLocation == null
         myLocation = point
         if (first && _state.value.route == RouteState.WaitingForLocation) planRoute()
-        navigate(point)
     }
 
     fun startNavigation() {
-        val ready = _state.value.route as? RouteState.Ready ?: return
-        val nav = Navigator(ready.route)
-        navigator = nav
-        prompter.reset()
-        _state.update { it.copy(navigation = NavigationState(), results = emptyList(), query = "") }
-        _speech.tryEmit(prompter.start(ready.route.distanceMeters.toDouble()))
-        myLocation?.let(::navigate)
-    }
-
-    fun stopNavigation() {
-        navigator = null
-        rerouteJob?.cancel()
-        _state.update { it.copy(navigation = null) }
-    }
-
-    private fun navigate(point: LatLon) {
-        val nav = navigator ?: return
-        val progress = nav.update(point)
-        _state.update { s -> s.navigation?.let { s.copy(navigation = it.copy(progress = progress)) } ?: s }
-        prompter.next(progress)?.let { _speech.tryEmit(it) }
-        if (progress.offRoute) reroute(point)
-    }
-
-    /** 骑偏了：从当前位置重新算到终点；隔一会儿才重算一次，免得一路狂发请求 */
-    private fun reroute(from: LatLon) {
         val s = _state.value
-        val to = s.destination?.location ?: return
-        val now = System.currentTimeMillis()
-        if (rerouteJob?.isActive == true || now - lastRerouteAt < REROUTE_INTERVAL_MS) return
-        lastRerouteAt = now
-        _state.update { it.copy(navigation = it.navigation?.copy(rerouting = true)) }
-        rerouteJob = viewModelScope.launch {
-            try {
-                val route = router.route(from, to, s.profile)
-                if (navigator == null) return@launch
-                navigator = Navigator(route)
-                prompter.reset()
-                _state.update {
-                    it.copy(
-                        route = RouteState.Ready(route, SafetyScore.of(route)),
-                        navigation = it.navigation?.copy(rerouting = false),
-                    )
-                }
-                myLocation?.let(::navigate)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // 没网之类的，过一会儿还偏着会再试
-                _state.update { it.copy(navigation = it.navigation?.copy(rerouting = false)) }
-            }
-        }
+        val ready = s.route as? RouteState.Ready ?: return
+        val destination = s.destination ?: return
+        _state.update { it.copy(results = emptyList(), query = "") }
+        session.startNavigation(ready.route, destination.location, s.profile)
     }
 
     fun retry() = planRoute()
@@ -213,9 +153,5 @@ class RouteViewModel(
             }
             _state.update { it.copy(route = next) }
         }
-    }
-
-    companion object {
-        private const val REROUTE_INTERVAL_MS = 15_000L
     }
 }

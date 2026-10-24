@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.pm.PackageInfoCompat
 import android.os.Build
 import com.personal.rando.MainActivity
 
@@ -18,7 +19,7 @@ class UpdatedReceiver : BroadcastReceiver() {
         if (UpdateChecker.consumeRelaunchRequest(context)) relaunch(context)
         // 新系统（以及小米等 ROM）多半会拦住后台打开界面，而且拦了也不报错，
         // 所以没法根据 relaunch 的结果决定要不要发通知，一律发
-        val build = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        val build = PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
         UpdateNotifications.show(context, "Rando 已更新到 build $build", "点这里打开", UpdateNotifications.UPDATED_ID)
     }
 
