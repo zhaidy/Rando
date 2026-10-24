@@ -85,6 +85,10 @@ class UiScreenshotTest {
     private val route = RouteParser.parse(File("src/test/resources/preview/route.json").readText())
     private val mbs = Place("Marina Bay Sands", "", LatLon(1.2838, 103.8591))
     private val prefs = RoutePrefs(BikeProfile.PCN, avoidRoads = true, mySpeed = 5.1)
+    private val savedRoutes = listOf(
+        com.personal.rando.places.SavedRoute("东海岸一圈", listOf(LatLon(1.30, 103.90), LatLon(1.30, 103.90)), BikeProfile.PCN, true, false, 21_300, 0),
+        com.personal.rando.places.SavedRoute("上班", listOf(LatLon(1.35, 103.82), LatLon(1.28, 103.85)), BikeProfile.PCN, true, false, 9_800, 0),
+    )
     private val saved = listOf(
         SavedPlace(SavedPlace.HOME, LatLon(1.35, 103.82)),
         SavedPlace(SavedPlace.WORK, LatLon(1.28, 103.85)),
@@ -127,6 +131,7 @@ class UiScreenshotTest {
                 state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities, climate = climate),
                 saved = saved,
                 actions = PlannerActions(),
+                savedRoutes = savedRoutes,
             )
         }
     }

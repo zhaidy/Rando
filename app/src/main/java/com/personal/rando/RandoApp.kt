@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.personal.rando.places.HazardStore
 import com.personal.rando.places.SavedPlaceStore
+import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
 import com.personal.rando.ride.RideSession
 import com.personal.rando.group.GroupRide
@@ -31,6 +32,8 @@ class RandoApp : Application() {
     val walkie: Walkie by lazy { Walkie(this, appScope, group) }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
+
+    val savedRoutes: SavedRouteStore by lazy { SavedRouteStore(this) }
 }
 
 val Context.rando: RandoApp get() = applicationContext as RandoApp

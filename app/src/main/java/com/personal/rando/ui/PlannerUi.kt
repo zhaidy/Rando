@@ -88,6 +88,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.personal.rando.routing.Pace
 import androidx.compose.material.icons.filled.ArrowDropDown
+import com.personal.rando.places.SavedRoute
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -369,6 +376,11 @@ class PlannerActions(
     val onStart: () -> Unit = {},
     val onShowOnMap: (NoteTarget) -> Unit = {},
     val onPace: (Pace) -> Unit = {},
+    /** 收藏现在这条路线（弹框起名字） */
+    val onSaveRoute: () -> Unit = {},
+    val onChooseRoute: (SavedRoute) -> Unit = {},
+    /** 长按收藏的路线：删掉 */
+    val onRemoveRoute: (SavedRoute) -> Unit = {},
 )
 
 /** 卡片顶上那行：还没选、去某个地方、骑一圈 */
@@ -388,6 +400,7 @@ fun PlannerSheet(
     saved: List<SavedPlace>,
     actions: PlannerActions,
     modifier: Modifier = Modifier,
+    savedRoutes: List<SavedRoute> = emptyList(),
 ) {
     val header = when {
         state.loop != null -> SheetHeader.Loop(state.loop.targetMeters / 1000)
@@ -484,7 +497,7 @@ fun PlannerSheet(
           if (size == SheetSize.PEEK) {
             PeekLine(state, header, actions.onStart)
           } else Column(Modifier.verticalScroll(rememberScrollState())) {
-            if (header == SheetHeader.Empty) EmptyExtras(saved, actions)
+            if (header == SheetHeader.Empty) EmptyExtras(saved, savedRoutes, actions)
             StartLine(state.start, state.pickingStart, actions.onPickStart, actions.onUseMyLocation)
             if (state.destination != null) ViaLines(state.via, state.pickingVia, actions.onAddVia, actions.onRemoveVia)
             if (header != SheetHeader.Empty) {
@@ -517,6 +530,8 @@ fun PlannerSheet(
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
                                 onPace = actions.onPace,
+                                routeSaved = savedRoutes.any { it.same(r.stops, state.prefs) },
+                                onSaveRoute = actions.onSaveRoute,
                             )
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
@@ -579,11 +594,75 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
 
 /** 还没选目的地时：收藏、骑一圈 */
 @Composable
-private fun EmptyExtras(saved: List<SavedPlace>, actions: PlannerActions) {
+private fun EmptyExtras(saved: List<SavedPlace>, routes: List<SavedRoute>, actions: PlannerActions) {
     Column {
         if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
+        if (routes.isNotEmpty()) SavedRoutesRow(routes, actions.onChooseRoute, actions.onRemoveRoute)
         LoopRow(actions.onLoop)
     }
+}
+
+/** 收藏的路线：点一下再骑，长按删掉 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> Unit, onRemove: (SavedRoute) -> Unit) {
+    var removing by remember { mutableStateOf<SavedRoute?>(null) }
+    Row(
+        Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
+        Text("我的路线", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        routes.forEach { r ->
+            Row(
+                Modifier
+                    .liquidGlass(GlassShapes.Pill)
+                    .clip(GlassShapes.Pill)
+                    .combinedClickable(onClick = { onChoose(r) }, onLongClick = { removing = r })
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(r.name, color = Ink, fontSize = 15.sp, maxLines = 1)
+                Text(" ${Format.distance(r.meters)}", color = InkSoft, fontSize = 13.sp)
+            }
+        }
+    }
+    removing?.let { r ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            shape = GlassShapes.Sheet,
+            containerColor = Color(0xF7F7FAF8),
+            title = { Text("不收藏「${r.name}」了？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRemove(r)
+                    removing = null
+                }) { Text("删掉", color = RandoRed) }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("取消") } },
+        )
+    }
+}
+
+/** 给现在这条路线起个名字收藏起来 */
+@Composable
+fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(suggested) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("收藏这条路线") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("下次在首页点一下就能再骑；同名的会覆盖。", color = InkSoft, fontSize = 14.sp)
+                OutlinedTextField(value = name, onValueChange = { name = it.take(20) }, label = { Text("名字") }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()) }) { Text("收藏") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 /** 不知道去哪儿：选个距离骑一圈回来 */
@@ -752,13 +831,22 @@ fun RouteSummary(
     onToggleDetails: () -> Unit = {},
     onPace: (Pace) -> Unit = {},
     climate: Climate? = null,
+    routeSaved: Boolean = false,
+    onSaveRoute: () -> Unit = {},
 ) {
     Row {
         BigStat(Format.distance(route.distanceMeters), "距离", Modifier.weight(1.2f))
         BigStat(Format.duration(route.durationSeconds), "预计", Modifier.weight(1.2f))
         BigStat("${route.ascendMeters} 米", "爬升", Modifier.weight(1f))
     }
-    PaceLine(prefs, onPace)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { PaceLine(prefs, onPace) }
+        if (routeSaved) {
+            Text("已收藏", color = InkSoft, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp))
+        } else {
+            LinkText("收藏路线", onSaveRoute)
+        }
+    }
     val breakdown = route.breakdown()
     if (breakdown.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
