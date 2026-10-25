@@ -12,6 +12,9 @@ import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.RoadCorrectionStore
+import com.personal.rando.weather.RouteWind
+import com.personal.rando.weather.Wind
+import com.personal.rando.weather.WindClient
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.LoopPlanner
@@ -84,6 +87,8 @@ data class PlannerState(
     val climate: Climate? = null,
     /** 沿途补给点 */
     val amenities: List<AmenityOnRoute> = emptyList(),
+    /** 沿途的风 */
+    val wind: RouteWind? = null,
 )
 
 /** 骑一圈：大约多远，第几次换方向 */
@@ -112,6 +117,9 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     private val weatherClient = WeatherClient()
     private val climateClient = ClimateClient()
     private val amenityClient = AmenityClient()
+    private val windClient = WindClient()
+    /** 风也十分钟内不重复查 */
+    private var cachedWind: Pair<Long, Wind>? = null
     /** 天气十分钟内不重复查 */
     private var cachedWeather: Pair<Long, Weather>? = null
 
@@ -394,7 +402,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             _state.update { it.copy(route = RouteState.WaitingForLocation) }
             return
         }
-        _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList()) }
+        _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList(), wind = null) }
         routeJob = viewModelScope.launch {
             val next = try {
                 if (s.loop != null) {
@@ -431,7 +439,19 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val tried = shapes.map { shape -> async { tryLoop(from, shape, target, prefs) } }.awaitAll()
         val best = tried.mapNotNull { it.getOrNull() }.minByOrNull { (route, _) -> LoopScore.of(route, target) }
             ?: return@coroutineScope RouteState.Failed(tried.firstNotNullOfOrNull { it.exceptionOrNull()?.message } ?: "算路失败")
+        // 先逆风出去、顺风回来：回来的路上累了，别再顶风
+        val wind = windAt(from)
+        if (wind != null && wind.along(best.first.points).betterReversed()) {
+            val stops = best.second.reversed()
+            quietly { router.route(stops, prefs) }?.let { return@coroutineScope RouteState.Ready(it, stops) }
+        }
         RouteState.Ready(best.first, best.second)
+    }
+
+    private suspend fun windAt(at: LatLon): Wind? {
+        val now = System.currentTimeMillis()
+        cachedWind?.takeIf { now - it.first < WEATHER_TTL_MS }?.let { return it.second }
+        return quietly { windClient.at(at) }?.also { cachedWind = now to it }
     }
 
     /** 按一个圈算路线；返回 (路线, 依次经过的点) */
@@ -463,6 +483,9 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             val weather = cachedWeather?.takeIf { now - it.first < WEATHER_TTL_MS }?.second
                 ?: quietly { weatherClient.fetch() }?.also { cachedWeather = now to it }
             weather?.let { w -> _state.update { it.copy(weather = w.along(route.points)) } }
+        }
+        launch {
+            route.points.firstOrNull()?.let { windAt(it) }?.let { w -> _state.update { it.copy(wind = w.along(route.points)) } }
         }
         launch {
             route.points.firstOrNull()?.let { start -> quietly { climateClient.at(start) } }

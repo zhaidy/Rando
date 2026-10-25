@@ -24,12 +24,15 @@ class BRouterClient(
     private val avoid: () -> List<LatLon> = { emptyList() },
     /** 标过「其实是马路」的地方 */
     private val corrections: () -> List<RoadCorrection> = { emptyList() },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
     suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
 
     /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点 */
-    suspend fun route(stops: List<LatLon>, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
+    suspend fun route(stops: List<LatLon>, asked: RoutePrefs): Route = withContext(Dispatchers.IO) {
+        // 中午挑树荫、天黑挑路灯：按现在的时间，规划和导航中重新算路都一样
+        val prefs = with(RideTime) { asked.at(clock()) }
         val watts = prefs.pace.watts
         val nogos = Nogos.near(stops, avoid())
         val marked = corrections()
