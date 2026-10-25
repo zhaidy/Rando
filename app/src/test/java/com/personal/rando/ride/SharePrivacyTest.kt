@@ -65,4 +65,20 @@ class SharePrivacyTest {
     fun `不到 400 米的整段都剪掉`() {
         assertTrue(SharePrivacy.hide(eastFromHome(300), null).isEmpty())
     }
+
+    @Test
+    fun `圈里拍的照片不钉，圈外的钉`() {
+        val zone = SharePrivacy.zone(home, 7)
+        val track = eastFromHome(3000)
+        assertTrue(SharePrivacy.hides(home, listOf(track), zone))
+        assertTrue(!SharePrivacy.hides(Geo.offset(home, 90.0, 2000.0), listOf(track), zone))
+    }
+
+    @Test
+    fun `没收藏家时起点终点附近拍的不钉`() {
+        val track = eastFromHome(3000)
+        assertTrue(SharePrivacy.hides(Geo.offset(home, 90.0, 100.0), listOf(track), null))
+        assertTrue(SharePrivacy.hides(Geo.offset(home, 90.0, 2950.0), listOf(track), null))
+        assertTrue(!SharePrivacy.hides(Geo.offset(home, 90.0, 1500.0), listOf(track), null))
+    }
 }
