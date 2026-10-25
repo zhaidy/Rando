@@ -3,6 +3,7 @@ package com.personal.rando.nav
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Maneuver
 import com.personal.rando.routing.Route
+import kotlin.math.abs
 
 data class NavProgress(
     /** 沿路线已经骑了多远 */
@@ -31,16 +32,25 @@ class Navigator(val route: Route) {
     private var segment = 0
     private var along = 0.0
     private var missedFixes = 0
+    /** 对上过路线没有；第一次对上的不算跳 */
+    private var located = false
 
     fun update(location: LatLon): NavProgress {
         // 先在当前位置附近往前找，找不到再全线找（比如抄了近路又回到路线上）
-        val snapped = nearest(location, (segment - 3)..(segment + 80))
+        val found = nearest(location, (segment - 3)..(segment + 80))
             ?.takeIf { it.distance <= OFF_ROUTE_METERS }
             ?: nearest(location, 0 until points.size - 1)?.takeIf { it.distance <= OFF_ROUTE_METERS }
+        // 一下子跳很远（抄近路、出隧道）要连着几次都在那边才跳：环线起点终点挨着，起步时飘一下别跳到终点算到达；
+        // 还没骑到一半就直接跳到终点的不跳，当成骑偏了
+        val snapped = found?.takeIf { s ->
+            !located || abs(s.along - along) <= JUMP_METERS ||
+                (missedFixes >= JUMP_AFTER_MISSES && !(total - s.along <= ARRIVED_METERS && along < total / 2))
+        }
         if (snapped != null) {
             segment = snapped.segment
             along = snapped.along
             missedFixes = 0
+            located = true
         } else {
             missedFixes++
         }
@@ -48,7 +58,7 @@ class Navigator(val route: Route) {
     }
 
     /** 某个点对到路线上，离起点多远（米）；不跟着当前进度走，全线找最近的 */
-    fun alongOf(p: LatLon): Double = nearest(p, 0 until points.size - 1)?.along ?: 0.0
+    fun alongOf(p: LatLon): Double = nearest(p, 0 until points.size - 1, followProgress = false)?.along ?: 0.0
 
     private fun progress(): NavProgress {
         val upcoming = route.maneuvers.filter { cumulative[it.pointIndex] > along + PASSED_METERS }
@@ -74,17 +84,21 @@ class Navigator(val route: Route) {
 
     private data class Snap(val segment: Int, val along: Double, val distance: Double)
 
-    private fun nearest(p: LatLon, range: IntRange): Snap? {
+    /**
+     * 范围里离 [p] 最近的那段。路线来回走同一条路（进断头路掉头出来）时去程回程几乎一样近，
+     * 差不多近的几段里取离现在进度最近的，不然一进去就跳到回程上，掉头的提示也没了
+     */
+    private fun nearest(p: LatLon, range: IntRange, followProgress: Boolean = true): Snap? {
         val from = range.first.coerceAtLeast(0)
         val to = range.last.coerceAtMost(points.size - 2)
-        var best: Snap? = null
-        for (i in from..to) {
+        if (from > to) return null
+        val snaps = (from..to).map { i ->
             val (t, d) = Geo.project(p, points[i], points[i + 1])
-            if (best == null || d < best.distance) {
-                best = Snap(i, cumulative[i] + t * (cumulative[i + 1] - cumulative[i]), d)
-            }
+            Snap(i, cumulative[i] + t * (cumulative[i + 1] - cumulative[i]), d)
         }
-        return best
+        val closest = snaps.minBy { it.distance }
+        if (!followProgress) return closest
+        return snaps.filter { it.distance <= closest.distance + SAME_DISTANCE_METERS }.minBy { abs(it.along - along) }
     }
 
     companion object {
@@ -93,6 +107,12 @@ class Navigator(val route: Route) {
         /** 连续这么多次定位都偏，才认定骑错路，免得一次飘点就重新算路 */
         const val OFF_ROUTE_FIXES = 3
         const val ARRIVED_METERS = 25.0
+        /** 离路线的距离差这么点算一样近 */
+        private const val SAME_DISTANCE_METERS = 5.0
+        /** 一次定位沿路线挪了超过这么远算跳 */
+        private const val JUMP_METERS = 200.0
+        /** 连续这么多次对不上，才跳到远处 */
+        private const val JUMP_AFTER_MISSES = 2
         /** 过了路口这么远，就看下一个 */
         private const val PASSED_METERS = 5.0
     }

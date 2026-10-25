@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.RideWidget
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personal.rando.ride.Settings
 import com.personal.rando.ride.Calories
@@ -365,7 +366,8 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
 
 @Composable
 fun RideDetailScreen(id: Long, onBack: () -> Unit) {
-    val store = LocalContext.current.rando.session.rides
+    val context = LocalContext.current
+    val store = context.rando.session.rides
     val scope = rememberCoroutineScope()
     val ride by produceState<Ride?>(null, id) { value = store.get(id) }
     val weight = LocalContext.current.rando.settings.settings.collectAsStateWithLifecycle().value.weightKg
@@ -391,6 +393,8 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
                     confirmDelete = false
                     scope.launch {
                         store.delete(id)
+                        // 桌面小部件上这周的合计跟着变
+                        RideWidget.refresh(context)
                         onBack()
                     }
                 }) { Text(tr("删除", "Delete")) }

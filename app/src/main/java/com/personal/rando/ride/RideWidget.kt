@@ -71,7 +71,8 @@ class RideWidget : AppWidgetProvider() {
             km = String.format(Locale.US, "%.1f", week.meters / 1000),
             detail = if (week.rides == 0) tr("这周还没骑", "No rides this week")
             else tr("${week.rides} 次 · ${Format.clock(week.movingSeconds)}", "${week.rides} ${if (week.rides == 1) "ride" else "rides"} · ${Format.clock(week.movingSeconds)}"),
-            button = recording?.let { tr("记录中 · ${Format.distance(it.distanceMeters.toInt())}", "Recording · ${Format.distance(it.distanceMeters.toInt())}") } ?: tr("开始记录", "Start recording"),
+            // 不写骑了多远：小部件只在开始、结束时刷新，写了会一直停在 0 米
+            button = if (recording != null) tr("记录中", "Recording") else tr("开始记录", "Start recording"),
         )
 
         /** 比这个矮就用一行的布局：两格高大约 110dp，一格高 40～60dp */

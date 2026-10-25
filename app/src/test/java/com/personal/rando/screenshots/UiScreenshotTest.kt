@@ -433,6 +433,7 @@ class UiScreenshotTest {
                 val photo = android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.parseColor(color)) }
                 com.personal.rando.ui.ShareCard.Pin(photo, at)
             },
+            now = evening.endedAt,
         )
         File("build/screenshots").mkdirs()
         File("build/screenshots/12b_share_day_card.png").outputStream().use { card.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }

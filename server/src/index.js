@@ -11,7 +11,7 @@
 //          {"t":"sos","lat":..,"lon":..}（可能摔车了） {"t":"sos_clear"}（我没事）
 //          {"t":"hazard","hid":..,"type":"CONSTRUCTION","lat":..,"lon":..,"ts":..}（标了一处路况） {"t":"hazard_del","hid":..}
 //          {"t":"rtc","to":"<队员 id>","data":{..}}（WebRTC 直连的信令：offer、answer、ICE 候选；没有 to 就发给所有人）
-// 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
+// 服务端发：{"t":"roster","now":..,"members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
 //          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
 //          {"t":"route",id,name,ts,title,meters,profile,avoidRoads,avoidBridges,stops} {"t":"route_clear",id}
@@ -109,6 +109,9 @@ export class Room extends DurableObject {
     for (const old of this.ctx.getWebSockets(id)) {
       try { old.close(4000, "replaced"); } catch {}
     }
+    // 他存着的求助删掉：还在求助的话客户端连上会再发一次；App 被杀了没来得及说「我没事」的，
+    // 后来进队的人就不会看到一条过时的
+    await this.ctx.storage.delete(`sos:${id}`);
     // 被关掉的旧连接可能还没从列表里拿掉，不算自己
     if (this.members().filter((m) => m.id !== id).length >= MAX_MEMBERS) {
       return new Response("队伍满了", { status: 429 });
@@ -120,7 +123,8 @@ export class Room extends DurableObject {
     server.serializeAttachment({ id, name, code, pos: null });
 
     const others = this.members().filter((m) => m.id !== id);
-    server.send(JSON.stringify({ t: "roster", members: others }));
+    // now：客户端按这个算队友的位置是多久以前的
+    server.send(JSON.stringify({ t: "roster", now: Date.now(), members: others }));
     // 队友已经分享的路线、还没撤掉的求助
     const keys = others.flatMap((m) => [`route:${m.id}`, `sos:${m.id}`]);
     const saved = await this.ctx.storage.get(keys);

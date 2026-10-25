@@ -148,7 +148,13 @@ object GroupProtocol {
         when (o.optString("t")) {
             "roster" -> {
                 val list = o.getJSONArray("members")
-                GroupEvent.Roster((0 until list.length()).map { mate(list.getJSONObject(it), now) })
+                // 位置是服务器上存的最后一个，可能是很久以前的：按服务器时间算它多旧（老服务器没给就跟本机时间比）
+                val serverNow = o.optLong("now", now)
+                GroupEvent.Roster((0 until list.length()).map { i ->
+                    val m = list.getJSONObject(i)
+                    val age = m.optLong("ts", 0).takeIf { it > 0 }?.let { (serverNow - it).coerceAtLeast(0) }
+                    mate(m, now).let { mate -> if (mate.location != null) mate.copy(updatedAt = age?.let { now - it } ?: 0) else mate }
+                })
             }
             "join" -> GroupEvent.Joined(o.getString("id"), o.optString("name", MATE))
             "leave" -> GroupEvent.Left(o.getString("id"))

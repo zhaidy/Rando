@@ -381,7 +381,13 @@ class GroupRide(
 
     private fun apply(event: GroupEvent) {
         when (event) {
-            is GroupEvent.Roster -> _state.update { it?.copy(teammates = event.members) }
+            is GroupEvent.Roster -> {
+                _state.update { it?.copy(teammates = event.members) }
+                // 刚连上（重连）：断线时错过的「我没事」「结束导航」「离队」都收不到了，先清掉；
+                // 服务器接着会把还有效的求助、路线再发一遍（回答过的路线不会再问）
+                _sos.value = emptyList()
+                _offer.value = null
+            }
             is GroupEvent.Joined -> _state.update { s ->
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.id } + Teammate(event.id, event.name))
             }

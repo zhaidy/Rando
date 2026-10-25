@@ -29,6 +29,7 @@ import com.personal.rando.places.SavedPlace
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
 import com.personal.rando.ride.RidePhotos
+import com.personal.rando.ride.RideStats
 import com.personal.rando.ride.SharePrivacy
 import com.personal.rando.ride.timeOfDay
 import com.personal.rando.routing.LatLon
@@ -92,7 +93,7 @@ object ShareCard {
     /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
     suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card? {
         if (rides.isEmpty()) return null
-        return render(context, "rando-day-${rides.first().id}", tr("分享今天的骑行", "Share today's rides"), rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins) }
+        return render(context, "rando-day-${rides.first().id}", if (RideStats.today(rides, System.currentTimeMillis()).isNotEmpty()) tr("分享今天的骑行", "Share today's rides") else tr("分享这天的骑行", "Share this day's rides"), rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins) }
     }
 
     /** 分享图的隐私圈：收藏了家才有；没有的话隐私靠剪掉起点终点 */
@@ -262,11 +263,19 @@ object ShareCard {
             ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, pins,
         )
 
-    /** 今天几次骑行合在一张图上：标题写骑了几次，下面是合计 */
-    fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>, pins: List<Pin> = emptyList()): Bitmap {
+    /** 同一天几次骑行合在一张图上：标题写骑了几次，下面是合计；以前某天的不说「今天」 */
+    fun drawDay(
+        map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>, pins: List<Pin> = emptyList(),
+        now: Long = System.currentTimeMillis(),
+    ): Bitmap {
         val first = rides.first()
         val last = rides.last()
-        val title = if (rides.size == 1) tr("今天${first.title}", "Today: ${first.title}") else tr("今天骑了 ${rides.size} 次", "${rides.size} rides today")
+        val today = RideStats.today(rides, now).isNotEmpty()
+        val title = when {
+            rides.size == 1 -> if (today) tr("今天${first.title}", "Today: ${first.title}") else first.title
+            today -> tr("今天骑了 ${rides.size} 次", "${rides.size} rides today")
+            else -> tr("这天骑了 ${rides.size} 次", "${rides.size} rides that day")
+        }
         val time = if (rides.size == 1) {
             "${CLOCK.format(Date(first.startedAt))}–${CLOCK.format(Date(first.endedAt))}"
         } else {
