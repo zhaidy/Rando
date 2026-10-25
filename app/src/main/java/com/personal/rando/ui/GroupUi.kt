@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -273,7 +274,7 @@ fun rideWalkieText(w: WalkieState): String =
         }
 
 /**
- * 骑行视图上的一行对讲：状态，开着时灵敏度、实时 / 整句点一下换一档，最右边开关。
+ * 骑行视图上的对讲：状态，开着时闭麦、灵敏度、实时 / 整句点一下换一档，最右边开关；开着时按钮另起一行。
  * 按钮做大一点，骑车时戴手套也点得中
  */
 @Composable
@@ -286,7 +287,7 @@ fun RideWalkieRow(
     onMute: (Boolean) -> Unit = {},
 ) {
     val pad = PaddingValues(horizontal = 12.dp, vertical = 5.dp)
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val status: @Composable RowScope.() -> Unit = {
         Box(
             Modifier.padding(end = 2.dp).size(10.dp).clip(CircleShape).background(
                 when {
@@ -306,7 +307,27 @@ fun RideWalkieRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (walkie.on) {
+    }
+    val toggle: @Composable () -> Unit = {
+        GlassButton(
+            onClick = onToggle,
+            tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Dark,
+            contentPadding = pad,
+        ) {
+            Text(if (walkie.on) tr("关对讲", "Talk off") else tr("开对讲", "Talk"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+    if (!walkie.on) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            status()
+            toggle()
+        }
+        return
+    }
+    // 开着时四个按钮占满一行，状态挤成「对…」，所以状态单独放上一行
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), content = status)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
             GlassButton(
                 onClick = { onMute(!walkie.muted) },
                 tone = if (walkie.muted) GlassTone.Tinted(RandoAmber) else GlassTone.Dark,
@@ -322,13 +343,7 @@ fun RideWalkieRow(
                 tone = GlassTone.Dark,
                 contentPadding = pad,
             ) { Text(walkie.mode.label, color = Color.White, fontSize = 15.sp) }
-        }
-        GlassButton(
-            onClick = onToggle,
-            tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Dark,
-            contentPadding = pad,
-        ) {
-            Text(if (walkie.on) tr("关对讲", "Talk off") else tr("开对讲", "Talk"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            toggle()
         }
     }
 }
