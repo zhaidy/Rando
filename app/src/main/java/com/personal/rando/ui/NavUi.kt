@@ -140,18 +140,21 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
             navigation.rerouting || progress.offRoute -> "off"
             else -> "turn:${progress.next?.pointIndex}"
         }
+        // 进度跟着 key 一起作为状态传进去：滑出去的那张要显示旧路口，不能读外面已经换成新路口的 progress
         AnimatedContent(
-            targetState = key,
+            targetState = key to navigation,
+            contentKey = { it.first },
             transitionSpec = {
                 (slideInVertically(Motion.bouncy()) { it } + fadeIn(tween(180)) + scaleIn(Motion.bouncy(), initialScale = 0.9f))
                     .togetherWith(slideOutVertically(Motion.smooth()) { -it } + fadeOut(tween(120)))
                     .using(SizeTransform(clip = false))
             },
             label = "banner",
-        ) { k ->
+        ) { (k, shown) ->
+            val progress = shown.progress
             Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
-                    k == "wait" -> NavText(navigation.waitingText)
+                    k == "wait" -> NavText(shown.waitingText)
                     k == "arrived" -> NavText(tr("已到达目的地", "You have arrived"))
                     k == "off" -> NavText(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
                     progress != null -> {

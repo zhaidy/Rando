@@ -23,7 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -230,7 +230,8 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                                 .align(Alignment.CenterHorizontally)
                                 .aspectRatio(ShareCard.WIDTH.toFloat() / ShareCard.HEIGHT)
                                 .clip(RoundedCornerShape(14.dp))
-                                .onGloballyPositioned { previewBounds = it.boundsInRoot() }
+                                // 不用 boundsInRoot：往下滚过以后它是被裁掉的那部分，上边不是图的上边，照片会落偏
+                                .onGloballyPositioned { previewBounds = Rect(it.positionInRoot(), it.size.toSize()) }
                                 // 按住图上的照片拖：换个地方钉
                                 .pointerInput(card) {
                                     val c = card ?: return@pointerInput

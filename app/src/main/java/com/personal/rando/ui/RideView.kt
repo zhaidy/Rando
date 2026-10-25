@@ -887,7 +887,11 @@ fun RideMap(
     }
     LaunchedEffect(map, teammates) {
         val s = map?.style ?: return@LaunchedEffect
-        MapLayers.showTeam(s, teammates)
+        // 断了信号的队友不会再发位置，列表不变；隔一会儿重画一次，过时的点才会变灰
+        while (true) {
+            MapLayers.showTeam(s, teammates)
+            delay(MapLayers.TEAM_REFRESH_MS)
+        }
     }
     LaunchedEffect(map, hazards) {
         val s = map?.style ?: return@LaunchedEffect

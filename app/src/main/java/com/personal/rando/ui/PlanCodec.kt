@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
 import com.personal.rando.search.Place
 import org.json.JSONArray
@@ -7,7 +8,8 @@ import org.json.JSONObject
 
 /**
  * 把规划（起点、目的地、途经点、骑一圈）存成一段文字。去看实景之类切到别的 App 时，
- * Rando 在后台可能被系统关掉，回来时靠它恢复，再重新算一遍路线
+ * Rando 在后台可能被系统关掉，回来时靠它恢复，再重新算一遍路线。
+ * 车型、避开马路 / 桥也存：再骑收藏的路线时用的是那条路线自己的，不一定是设置里的
  */
 object PlanCodec {
 
@@ -16,6 +18,9 @@ object PlanCodec {
         s.destination?.let { put("destination", place(it)) }
         put("via", JSONArray(s.via.map(::place)))
         s.loop?.let { put("loop", JSONObject().put("target", it.targetMeters).put("attempt", it.attempt)) }
+        put("profile", s.prefs.profile.name)
+        put("avoidRoads", s.prefs.avoidRoads)
+        put("avoidBridges", s.prefs.avoidBridges)
     }.toString()
 
     /** 读出来放进 [base]；读不了就原样返回 */
@@ -27,6 +32,11 @@ object PlanCodec {
             destination = json.optJSONObject("destination")?.let(::place),
             via = (0 until via.length()).map { place(via.getJSONObject(it)) },
             loop = json.optJSONObject("loop")?.let { LoopRequest(it.getInt("target"), it.optInt("attempt")) },
+            prefs = base.prefs.copy(
+                profile = BikeProfile.entries.firstOrNull { it.name == json.optString("profile") } ?: base.prefs.profile,
+                avoidRoads = json.optBoolean("avoidRoads", base.prefs.avoidRoads),
+                avoidBridges = json.optBoolean("avoidBridges", base.prefs.avoidBridges),
+            ),
         )
     } catch (_: Exception) {
         base
