@@ -269,11 +269,12 @@ fun IconTap(onClick: () -> Unit, content: @Composable () -> Unit) {
 // ───────────────────────── 路线偏好 ─────────────────────────
 
 /**
- * 路线偏好：一排玻璃胶囊。「不上马路」「不走天桥」是公园连道的开关，
- * 选中公园连道时从它旁边展开出来
+ * 路线偏好：一排玻璃胶囊。公园连道的几个开关收在它旁边的「偏好」里，
+ * 选中公园连道时展开出来，点开是个弹窗
  */
 @Composable
 fun PrefsRow(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit, modifier: Modifier = Modifier) {
+    var dialog by remember { mutableStateOf(false) }
     Row(
         modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -289,13 +290,59 @@ fun PrefsRow(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit, modifier: Modifi
                     enter = expandHorizontally(Motion.bouncy()) + fadeIn(),
                     exit = shrinkHorizontally(Motion.smooth()) + fadeOut(),
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GlassToggle("不上马路", prefs.avoidRoads) { onChange(prefs.copy(avoidRoads = !prefs.avoidRoads)) }
-                        GlassToggle("不走天桥", prefs.avoidBridges) { onChange(prefs.copy(avoidBridges = !prefs.avoidBridges)) }
-                    }
+                    PcnPrefsChip(prefs) { dialog = true }
                 }
             }
         }
+    }
+    if (dialog) PcnPrefsDialog(prefs, onSave = { dialog = false; if (it != prefs) onChange(it) }, onDismiss = { dialog = false })
+}
+
+/** 「偏好」胶囊：打开了「不上马路」「不走天桥」时直接写出来，免得忘了开着 */
+@Composable
+private fun PcnPrefsChip(prefs: RoutePrefs, onClick: () -> Unit) {
+    val avoiding = listOfNotNull("不上马路".takeIf { prefs.avoidRoads }, "不走天桥".takeIf { prefs.avoidBridges })
+    val on = avoiding.isNotEmpty()
+    GlassButton(
+        onClick = onClick,
+        tone = if (on) GlassTone.Tinted(RandoGreenDeep) else GlassTone.Light,
+        contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 9.dp, bottom = 9.dp),
+    ) {
+        Text(avoiding.joinToString("、").ifEmpty { "偏好" }, color = if (on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Icon(Icons.Default.ArrowDropDown, contentDescription = "路线偏好", tint = if (on) Color.White else InkSoft, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** 公园连道的偏好：按「好」才重新算路 */
+@Composable
+fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: () -> Unit) {
+    var edited by remember { mutableStateOf(prefs) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("公园连道偏好") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PrefSwitch("不上马路", "尽量避开马路，有人行道的走人行道", edited.avoidRoads) { edited = edited.copy(avoidRoads = it) }
+                PrefSwitch("不走天桥", "绕开人行天桥，公园连道、自行车道上的桥照走", edited.avoidBridges) { edited = edited.copy(avoidBridges = it) }
+                PrefSwitch("中午挑有树荫的路", "11 点到 4 点算路时，宁可绕一点也走树多的路", edited.shadeAtNoon) { edited = edited.copy(shadeAtNoon = it) }
+                PrefSwitch("天黑挑有路灯的路", "天黑或快黑时，少走没灯的小路", edited.litAtNight) { edited = edited.copy(litAtNight = it) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(edited) }) { Text("好") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
+private fun PrefSwitch(label: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(label, color = Ink, fontSize = 16.sp)
+            Text(detail, color = InkSoft, fontSize = 13.sp)
+        }
+        Switch(checked = on, onCheckedChange = onChange)
     }
 }
 
@@ -308,22 +355,6 @@ private fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
     ) {
         Text(label, color = text, fontSize = 15.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
-    }
-}
-
-/** 开关：选中时左边弹出一个对勾 */
-@Composable
-private fun GlassToggle(label: String, on: Boolean, onClick: () -> Unit) {
-    val text by animateColorAsState(if (on) Color.White else Ink, Motion.smooth(), label = "toggle")
-    GlassButton(
-        onClick = onClick,
-        tone = if (on) GlassTone.Tinted(RandoGreenDeep) else GlassTone.Light,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-    ) {
-        AnimatedVisibility(on, enter = expandHorizontally(Motion.bouncy()) + scaleIn(), exit = shrinkHorizontally() + fadeOut()) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.padding(end = 4.dp).size(16.dp))
-        }
-        Text(label, color = text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -1257,11 +1288,11 @@ private fun Outlook(
         climate?.summary?.let { Note(if (climate.warning != null) RandoAmber else InkSoft, "现在 $it") }
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
         wind?.let { Note(if (it.strongHeadwind) RandoAmber else InkSoft, it.summary(loop)) }
-        // 「公园连道」配置中午挑树荫、天黑挑路灯（算路时按时间自动开）
+        // 「公园连道」配置中午挑树荫、天黑挑路灯（算路时按时间自动开，偏好里可以关）
         if (prefs.profile == BikeProfile.PCN) {
             val now = remember(route) { System.currentTimeMillis() }
-            if (RideTime.shade(now)) Note(RandoGreen, "中午已尽量挑有树荫的路：树荫下约 ${Format.share(route.shadeShare())}")
-            if (RideTime.night(now)) Note(RandoGreen, "天黑了，已尽量走有路灯的路：有灯的约 ${Format.share(route.litShare())}")
+            if (prefs.shadeAtNoon && RideTime.shade(now)) Note(RandoGreen, "中午已尽量挑有树荫的路：树荫下约 ${Format.share(route.shadeShare())}")
+            if (prefs.litAtNight && RideTime.night(now)) Note(RandoGreen, "天黑了，已尽量走有路灯的路：有灯的约 ${Format.share(route.litShare())}")
         }
         val dark = remember(route) { DaylightAlerts.plan(System.currentTimeMillis(), route.durationSeconds) }
         dark?.let { Note(RandoAmber, it) }

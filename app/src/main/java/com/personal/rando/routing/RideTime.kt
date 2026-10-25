@@ -13,8 +13,8 @@ object RideTime {
     /** 天已经黑了，或者再过 [SOON_MS] 就黑 */
     fun night(now: Long): Boolean = Sun.isDark(now) || Sun.isDark(now + SOON_MS)
 
-    /** 按现在的时间打开树荫、路灯 */
-    fun RoutePrefs.at(now: Long): RoutePrefs = copy(shade = shade(now), night = night(now))
+    /** 按现在的时间打开树荫、路灯；用户关了的就不开 */
+    fun RoutePrefs.at(now: Long): RoutePrefs = copy(shade = shadeAtNoon && shade(now), night = litAtNight && night(now))
 
     private const val SOON_MS = 45 * 60_000L
 }

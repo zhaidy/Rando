@@ -148,6 +148,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             putString(KEY_PROFILE, prefs.profile.name)
             putBoolean(KEY_AVOID_ROADS, prefs.avoidRoads)
             putBoolean(KEY_AVOID_BRIDGES, prefs.avoidBridges)
+            putBoolean(KEY_SHADE_AT_NOON, prefs.shadeAtNoon)
+            putBoolean(KEY_LIT_AT_NIGHT, prefs.litAtNight)
             putString(KEY_PACE, prefs.pace.name)
         }
         _state.update { it.copy(prefs = prefs) }
@@ -172,6 +174,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             profile = BikeProfile.entries.firstOrNull { it.name == name } ?: BikeProfile.PCN,
             avoidRoads = stored.getBoolean(KEY_AVOID_ROADS, false),
             avoidBridges = stored.getBoolean(KEY_AVOID_BRIDGES, false),
+            shadeAtNoon = stored.getBoolean(KEY_SHADE_AT_NOON, true),
+            litAtNight = stored.getBoolean(KEY_LIT_AT_NIGHT, true),
             pace = Pace.entries.firstOrNull { it.name == stored.getString(KEY_PACE, null) } ?: Pace.MINE,
         )
     }
@@ -523,6 +527,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         const val KEY_PROFILE = "profile"
         const val KEY_AVOID_ROADS = "avoid_roads"
         const val KEY_AVOID_BRIDGES = "avoid_bridges"
+        const val KEY_SHADE_AT_NOON = "shade_at_noon"
+        const val KEY_LIT_AT_NIGHT = "lit_at_night"
         const val KEY_PACE = "pace"
         /** 离收藏路线的起点这么近，就从我的位置出发 */
         const val NEAR_START_METERS = 300.0

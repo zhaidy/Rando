@@ -53,6 +53,16 @@ class RandoProfilesTest {
     }
 
     @Test
+    fun `关了树荫、路灯就不挑`() {
+        val noon = 1792902600000L
+        val evening = noon + 510 * 60_000L
+        val off = RoutePrefs(shadeAtNoon = false, litAtNight = false)
+        assertFalse(with(RideTime) { off.at(noon) }.shade)
+        assertFalse(with(RideTime) { off.at(evening) }.night)
+        assertTrue(with(RideTime) { RoutePrefs().at(noon) }.shade)
+    }
+
+    @Test
     fun `树荫、路灯占多少`() {
         val route = Route(
             points = emptyList(), distanceMeters = 400, durationSeconds = 100, ascendMeters = 0,
