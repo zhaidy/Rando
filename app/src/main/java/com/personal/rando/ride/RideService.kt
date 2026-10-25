@@ -22,6 +22,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.personal.rando.R
 import com.personal.rando.group.GroupState
+import com.personal.rando.nav.NavProgress
 import com.personal.rando.rando
 import com.personal.rando.ui.Format
 import kotlinx.coroutines.Job
@@ -86,6 +87,7 @@ class RideService : Service() {
                     if (nav == null && rec == null && team == null) {
                         stopSelf()
                     } else {
+                        // 胶囊里的字跟着正文变，正文没变就不用重发
                         val text = text(nav, rec, team)
                         if (text != lastText) {
                             lastText = text
@@ -186,6 +188,13 @@ class RideService : Service() {
         }
     }
 
+    /** 状态栏小胶囊里的几个字：导航时是下一个路口，不然是骑了多远 */
+    private fun chip(nav: NavigationState?, rec: RecordingState?, team: GroupState?): String? {
+        if (nav != null) return nav.progress?.let { chip(it, nav.rerouting) }
+        return rec?.let { Format.shortDistance(it.distanceMeters.toInt()) }
+            ?: team?.takeIf { it.connected }?.let { "${it.teammates.size + 1}人" }
+    }
+
     private fun text(nav: NavigationState?, rec: RecordingState?, team: GroupState?): String {
         if (nav == null) {
             return rec?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}" }
@@ -214,7 +223,7 @@ class RideService : Service() {
         val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
-        return NotificationCompat.Builder(this, CHANNEL)
+        val builder = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(
                 when {
@@ -229,7 +238,24 @@ class RideService : Service() {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(open)
-            .build()
+            // Android 16 实时更新：状态栏左上角出个小胶囊，锁屏上是大卡片；用户在系统设置里关了就还是普通通知
+            .setRequestPromotedOngoing(true)
+            .setShortCriticalText(chip(nav, rec, team))
+        nav?.progress?.takeIf { !it.arrived }?.let { builder.setStyle(routeProgress(it)) }
+        return builder.build()
+    }
+
+    /** 导航时锁屏卡片上的进度条：骑了多少、下一个路口在哪 */
+    private fun routeProgress(progress: NavProgress): NotificationCompat.ProgressStyle {
+        val total = (progress.alongMeters + progress.remainingMeters).toInt().coerceAtLeast(1)
+        val style = NotificationCompat.ProgressStyle()
+            .setStyledByProgress(true)
+            .setProgressSegments(listOf(NotificationCompat.ProgressStyle.Segment(total)))
+            .setProgress(progress.alongMeters.toInt().coerceIn(0, total))
+        if (progress.next != null && !progress.offRoute) {
+            style.addProgressPoint(NotificationCompat.ProgressStyle.Point((progress.alongMeters + progress.distanceToNext).toInt().coerceIn(1, total)))
+        }
+        return style
     }
 
     companion object {
@@ -244,6 +270,13 @@ class RideService : Service() {
         private const val NOTIFICATION_ID = 30_000
         /** 上一个 GPS 点在这么久以内，开始时先拿来用 */
         private const val FRESH_FIX_MS = 60_000L
+
+        /** 「↰ 300米」；偏了、到了也说一声 */
+        fun chip(progress: NavProgress, rerouting: Boolean): String = when {
+            progress.arrived -> "已到达"
+            rerouting || progress.offRoute -> "已偏离"
+            else -> listOfNotNull(progress.next?.turn?.arrow, Format.shortDistance(progress.distanceToNext.toInt())).joinToString(" ")
+        }
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, RideService::class.java))

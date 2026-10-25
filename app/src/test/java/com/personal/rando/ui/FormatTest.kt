@@ -12,6 +12,12 @@ class FormatTest {
     }
 
     @Test
+    fun `胶囊里的距离不带空格`() {
+        assertEquals("850米", Format.shortDistance(850))
+        assertEquals("15.9公里", Format.shortDistance(15863))
+    }
+
+    @Test
     fun `时间向上取整到分钟`() {
         assertEquals("1 分钟", Format.duration(5))
         assertEquals("47 分钟", Format.duration(2794))
