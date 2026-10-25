@@ -128,6 +128,7 @@ import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.RouteWind
+import com.personal.rando.places.CoveredStretch
 import com.personal.rando.routing.RideTime
 import com.personal.rando.routing.shadeShare
 import com.personal.rando.routing.litShare
@@ -562,6 +563,7 @@ fun PlannerSheet(
                                 r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities,
                                 climate = state.climate,
                                 wind = state.wind,
+                                covered = state.covered,
                                 loop = state.loop != null,
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
@@ -939,6 +941,7 @@ fun RouteSummary(
     onPace: (Pace) -> Unit = {},
     climate: Climate? = null,
     wind: RouteWind? = null,
+    covered: List<CoveredStretch> = emptyList(),
     routeSaved: Boolean = false,
     onSaveRoute: () -> Unit = {},
 ) {
@@ -970,10 +973,10 @@ fun RouteSummary(
                 Notes(route, breakdown, prefs, onShowOnMap, loop)
             }
             Spacer(Modifier.height(5.dp))
-            Outlook(route, weather, amenities, onShowOnMap, climate, wind, prefs, loop)
+            Outlook(route, weather, amenities, onShowOnMap, climate, wind, prefs, loop, covered)
         } else {
             Spacer(Modifier.height(10.dp))
-            Headline(breakdown, weather, onShowOnMap, climate, wind)
+            Headline(breakdown, weather, onShowOnMap, climate, wind, covered)
         }
         DetailsToggle(expanded, onToggleDetails)
     }
@@ -1024,7 +1027,14 @@ fun paceText(pace: Pace, mySpeed: Double?): String = when {
 
 /** 收起时的一两句：要不要上马路，会不会下雨 */
 @Composable
-private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onShowOnMap: (NoteTarget) -> Unit, climate: Climate?, wind: RouteWind?) {
+private fun Headline(
+    breakdown: Map<RoadKind, Int>,
+    weather: RouteWeather?,
+    onShowOnMap: (NoteTarget) -> Unit,
+    climate: Climate?,
+    wind: RouteWind?,
+    covered: List<CoveredStretch>,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         val road = breakdown[RoadKind.ROAD] ?: 0
         when {
@@ -1033,6 +1043,7 @@ private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onSh
             else -> Note(RandoGreen, "全程不用上马路", strong = true)
         }
         weather?.takeIf { !it.dry }?.let { Note(RandoBlue, it.summary, strong = true) }
+        if (weather?.dry == false) CoveredNote(covered, onShowOnMap)
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
         wind?.takeIf { it.strongHeadwind }?.let { Note(RandoAmber, "${it.wind.name} ${it.wind.kmh.roundToInt()} km/h，全程大多顶风", strong = true) }
     }
@@ -1236,9 +1247,11 @@ private fun Outlook(
     wind: RouteWind?,
     prefs: RoutePrefs,
     loop: Boolean,
+    covered: List<CoveredStretch>,
 ) {
     Column(Modifier.animateContentSize(Motion.smooth()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         weather?.let { Note(if (it.dry) RandoGreen else RandoBlue, it.summary, strong = !it.dry) }
+        CoveredNote(covered, onShowOnMap)
         climate?.summary?.let { Note(if (climate.warning != null) RandoAmber else InkSoft, "现在 $it") }
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
         wind?.let { Note(if (it.strongHeadwind) RandoAmber else InkSoft, it.summary(loop)) }
@@ -1264,6 +1277,16 @@ private fun Outlook(
                 "终点附近有停车架 ${parking.size} 处，最近的离终点 ${Format.distance(nearest.offRouteMeters.toInt())}",
             ) { onShowOnMap(NoteTarget.AMENITIES) }
         }
+    }
+}
+
+/** 「有顶棚的路 3 段，共 420 米，下雨可以躲」 */
+@Composable
+private fun CoveredNote(covered: List<CoveredStretch>, onShowOnMap: (NoteTarget) -> Unit) {
+    if (covered.isEmpty()) return
+    val total = covered.sumOf { it.lengthMeters }.toInt()
+    Note(kindColor(COVERED_COLOR), "有顶棚的路 ${covered.size} 段，共 ${Format.distance(total)}，下雨可以躲") {
+        onShowOnMap(NoteTarget.COVERED)
     }
 }
 

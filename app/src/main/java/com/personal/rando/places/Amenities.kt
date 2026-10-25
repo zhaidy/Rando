@@ -38,6 +38,9 @@ enum class AmenityType(val label: String, val color: String, val unit: String) {
 
 data class Amenity(val type: AmenityType, val location: LatLon, val name: String?)
 
+/** 沿途查到的：补给点，和路线旁边有顶棚的路（每条是一串坐标） */
+data class AlongRoute(val amenities: List<Amenity>, val covered: List<List<LatLon>>)
+
 /** 一个补给点在路线上的位置：第几米，离路线多远 */
 data class AmenityOnRoute(val amenity: Amenity, val alongMeters: Double, val offRouteMeters: Double)
 
@@ -52,7 +55,7 @@ class AmenityClient(
         "https://overpass.kumi.systems/api/interpreter",
     ),
 ) {
-    suspend fun along(points: List<LatLon>): List<Amenity> = withContext(Dispatchers.IO) {
+    suspend fun along(points: List<LatLon>): AlongRoute = withContext(Dispatchers.IO) {
         val query = AmenityQuery.build(points)
         var error: Exception? = null
         // 公共服务器忙的时候会超时，换一个再试
@@ -61,7 +64,8 @@ class AmenityClient(
                 val request = Request.Builder().url(server).post(FormBody.Builder().add("data", query).build()).build()
                 return@withContext http.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw IOException("补给点查询 HTTP ${response.code}")
-                    AmenityQuery.parse(response.body.string())
+                    val json = response.body.string()
+                    AlongRoute(AmenityQuery.parse(json), AmenityQuery.parseCovered(json))
                 }
             } catch (e: IOException) {
                 error = e
@@ -74,6 +78,8 @@ class AmenityClient(
 object AmenityQuery {
 
     const val RADIUS_METERS = 80
+    /** 有顶棚的路：离路线这么近才算是路线本身经过的 */
+    const val COVERED_METERS = 15
     /** 终点附近这么远以内的停车架 */
     const val PARKING_RADIUS_METERS = 200
     /** 停车架最多列这么多处，最近的几处 */
@@ -98,6 +104,8 @@ object AmenityQuery {
               nwr(around:$PARKING_RADIUS_METERS,$end)[amenity=bicycle_parking];
             );
             out center tags;
+            way(around:$COVERED_METERS,$line)[highway][highway!=construction][covered~"^(yes|arcade|colonnade)$"];
+            out tags geom;
         """.trimIndent()
     }
 
@@ -114,6 +122,18 @@ object AmenityQuery {
                 else -> return@mapNotNull null
             }
             Amenity(type, at, tags["name"] ?: tags["brand"])
+        }
+    }
+
+    /** 有顶棚的路（连廊、骑楼）：带 geometry 的 way */
+    fun parseCovered(json: String): List<List<LatLon>> {
+        val elements = JSONObject(json).getJSONArray("elements")
+        return (0 until elements.length()).mapNotNull {
+            val e = elements.getJSONObject(it)
+            if (e.optJSONObject("tags")?.optString("covered").isNullOrEmpty()) return@mapNotNull null
+            val g = e.optJSONArray("geometry") ?: return@mapNotNull null
+            (0 until g.length()).map { i -> g.getJSONObject(i).let { p -> LatLon(p.getDouble("lat"), p.getDouble("lon")) } }
+                .takeIf { line -> line.size >= 2 }
         }
     }
 

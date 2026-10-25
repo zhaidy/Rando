@@ -24,6 +24,9 @@ import com.personal.rando.places.HazardStore
 import com.personal.rando.places.HazardAlerts
 import com.personal.rando.places.Hazard
 import com.personal.rando.places.onRoute
+import com.personal.rando.places.Covered
+import com.personal.rando.places.CoveredStretch
+import com.personal.rando.places.nextAhead
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.weather.WeatherClient
 import com.personal.rando.weather.Climate
@@ -45,6 +48,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class NavigationState(
     /** 当前在走的路线；骑偏重新规划后会换成新的 */
@@ -328,6 +333,22 @@ class RideSession(
         startNavigation(router.route(stops, prefs), stops, prefs, title, share = false)
     }
 
+    /** 导航中路线经过的有顶棚的路 */
+    private var covered: List<CoveredStretch> = emptyList()
+
+    /** 下雨提醒后面加一句：「，前方 300 米有顶棚可以躲雨」；导航中、前方一公里内有才说 */
+    private fun shelterAhead(): String? {
+        val along = _navigation.value?.progress?.takeIf { !it.offRoute }?.alongMeters ?: return null
+        val roof = covered.nextAhead(along)
+        val hut = _amenities.value.filter { it.amenity.type == AmenityType.SHELTER && it.alongMeters >= along }.minOfOrNull { it.alongMeters - along }
+        val (meters, what) = listOfNotNull(roof?.let { it to "有顶棚的路" }, hut?.let { it to "避雨亭" }).minByOrNull { it.first } ?: return null
+        return when {
+            meters > SHELTER_MENTION_METERS -> null
+            meters < 20 -> "，现在这段路有顶棚可以躲雨".takeIf { what == "有顶棚的路" } ?: "，旁边有避雨亭"
+            else -> "，前方 ${Format.distance(meters.toInt())} 有${what}可以躲雨"
+        }
+    }
+
     /** 导航中前方最近的饮水机还有多远 */
     private fun waterAhead(): Double? {
         val along = _navigation.value?.progress?.takeIf { !it.offRoute }?.alongMeters ?: return null
@@ -424,6 +445,7 @@ class RideSession(
         rerouteJob?.cancel()
         amenityJob?.cancel()
         _amenities.value = emptyList()
+        covered = emptyList()
         _navigation.value = null
     }
 
@@ -453,7 +475,9 @@ class RideSession(
         amenityJob?.cancel()
         amenityJob = scope.launch {
             try {
-                _amenities.value = amenityClient.along(route.points).onRoute(RouteTimeline(route))
+                val found = amenityClient.along(route.points)
+                _amenities.value = found.amenities.onRoute(RouteTimeline(route))
+                covered = withContext(Dispatchers.Default) { Covered.onRoute(route.points, found.covered) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -490,7 +514,7 @@ class RideSession(
                     val along = if (ahead.isNotEmpty()) weather.along(ahead) else null
                     _weather.value = along
                     val text = along?.takeIf { !it.dry }?.summary
-                    if (text != null && text != spokenWeather) speaker.say("注意，$text")
+                    if (text != null && text != spokenWeather) speaker.say("注意，$text${shelterAhead().orEmpty()}")
                     spokenWeather = text
                 } catch (e: CancellationException) {
                     throw e
@@ -546,6 +570,8 @@ class RideSession(
         const val REROUTE_INTERVAL_MS = 15_000L
         const val MIN_RIDE_METERS = 100.0
         const val WEATHER_INTERVAL_MS = 10 * 60_000L
+        /** 下雨时前方这么远以内有地方躲才说 */
+        const val SHELTER_MENTION_METERS = 1_000.0
         /** 准的定位在这么久以内，不准的不要 */
         const val KEEP_PRECISE_MS = 10_000L
         /** 骑到离途经点这么近就算经过了 */
