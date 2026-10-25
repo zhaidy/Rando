@@ -6,7 +6,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -88,6 +87,8 @@ import com.personal.rando.ride.Calories
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import com.personal.rando.places.HazardType
@@ -221,17 +222,25 @@ fun RideView(
                 Column(
                     Modifier
                         .animateContentSize(Motion.smooth())
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { expanded = !expanded }
-                        .padding(top = 6.dp, bottom = 10.dp),
+                        .padding(bottom = 10.dp),
                 ) {
-                    // 顶上一道小横条，提示能点开
-                    Box(
+                    // 只有顶上这一条能点开 / 收起；整块都能点的话，颠一下碰到就展开了
+                    Row(
                         Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.35f))
-                    )
+                            .fillMaxWidth()
+                            .clickable { expanded = !expanded }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                            contentDescription = null,
+                            tint = DIM,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Text(if (expanded) tr("收起", "Less") else tr("更多", "More"), color = DIM, fontSize = 13.sp)
+                    }
                     timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 6.dp)) }
                     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (navigation != null) {
@@ -457,7 +466,7 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
             else -> {
                 val next = progress.next
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(next?.turn?.arrow ?: "⚑", color = Color.White, fontSize = 64.sp)
+                    TurnIcon(next, size = 72.dp)
                     Spacer(Modifier.width(20.dp))
                     val distance = Format.distance(progress.distanceToNext.toInt())
                     val number = distance.substringBefore(' ')

@@ -567,7 +567,7 @@ fun PlannerSheet(
           }
           if (size == SheetSize.PEEK) {
             PeekLine(state, header, actions.onStart)
-          } else Column(Modifier.verticalScroll(rememberScrollState())) {
+          } else Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             if (header == SheetHeader.Empty) {
                 parked?.let { ParkedRow(it, here, actions.onParked) }
                 EmptyExtras(saved, savedRoutes, actions)
@@ -611,14 +611,22 @@ fun PlannerSheet(
                                 routeSaved = savedRoutes.any { it.same(r.stops, prefs) },
                                 onSaveRoute = actions.onSaveRoute,
                             )
-                            Spacer(Modifier.height(16.dp))
-                            PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
-                                Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            }
                         }
                     }
                 }
             }
+          }
+          // 「开始导航」钉在卡片底下，不跟着内容滚：路线说明再长也不会被挤出去
+          if (size != SheetSize.PEEK) {
+              AnimatedVisibility(
+                  visible = header != SheetHeader.Empty && state.route is RouteState.Ready,
+                  enter = fadeIn(tween(260)) + expandVertically(Motion.smooth()),
+                  exit = fadeOut(tween(120)) + shrinkVertically(Motion.smooth()),
+              ) {
+                  PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                      Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                  }
+              }
           }
         }
     }

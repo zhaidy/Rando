@@ -152,7 +152,7 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
                     k == "off" -> NavText(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
                     progress != null -> {
                         val next = progress.next
-                        Text(next?.turn?.arrow ?: "⚑", color = Color.White, fontSize = 60.sp, fontWeight = FontWeight.Bold)
+                        TurnIcon(next, size = 64.dp)
                         Spacer(Modifier.width(18.dp))
                         Column {
                             Text(
