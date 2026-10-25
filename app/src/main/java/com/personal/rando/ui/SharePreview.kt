@@ -2,6 +2,7 @@ package com.personal.rando.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.PointF
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,6 +12,23 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
@@ -70,7 +88,8 @@ import kotlinx.coroutines.launch
 /**
  * 分享图先预览：画好了弹出来看一眼，下面「存到相册」「分享」。
  * 返回的函数传进去分享的是哪几次骑行、怎么画图（参数是要不要隐藏家附近、钉哪些照片），调用就开始画、弹出预览；
- * 预览里切开关、选照片会重新画一张。骑行时拍的照片自动找出来，默认选几张（家附近拍的不选）
+ * 预览里切开关、选照片会重新画一张。骑行时拍的照片自动找出来，默认选几张（家附近拍的不选）。
+ * 时间对不上的照片（相机拍完导进来的）长按拖到图上，钉在松手处最近的那段路上；图上的照片也能拖着换地方
  */
 @Composable
 fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, photos: List<SharePhoto>) -> ShareCard.Card?) -> Unit {
@@ -91,6 +110,11 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
     var finding by remember { mutableStateOf(false) }
     var canRead by remember { mutableStateOf(false) }
     var withOriginals by remember { mutableStateOf(true) }
+    // 正在拖的照片和手指在哪（整个弹窗里的坐标）
+    var dragging by remember { mutableStateOf<SharePhoto?>(null) }
+    var dragAt by remember { mutableStateOf(Offset.Zero) }
+    var previewBounds by remember { mutableStateOf<Rect?>(null) }
+    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
 
     fun draw() {
         val m = make ?: return
@@ -139,6 +163,29 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
         draw()
     }
 
+    /** 照片拖到预览上 [at] 松手：钉在最近的那段路上，没选的顺便选上；没落在图上就不管 */
+    fun drop(p: SharePhoto, at: Offset) {
+        val c = card ?: return
+        val b = previewBounds ?: return
+        if (!b.contains(at)) return
+        val k = ShareCard.WIDTH / b.width
+        val place = c.nearest(PointF((at.x - b.left) * k, (at.y - b.top) * k)) ?: run {
+            Toast.makeText(context, tr("图上没有画出来的路，放不了", "No route drawn on the card to place it on"), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val moved = p.movedTo(place)
+        chosen = when {
+            chosen.any { it.uri == p.uri } -> chosen.map { if (it.uri == p.uri) moved else it }
+            chosen.size >= RidePhotos.MAX -> {
+                Toast.makeText(context, tr("最多选 ${RidePhotos.MAX} 张", "Up to ${RidePhotos.MAX} photos"), Toast.LENGTH_SHORT).show()
+                return
+            }
+            else -> chosen + moved
+        }
+        photos = photos.map { if (it.uri == p.uri) moved else it }
+        draw()
+    }
+
     val askPhotos = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result.values.any { it }) find() else Toast.makeText(context, tr("没有相册权限，可以点 + 自己挑", "No photo access — tap + to pick"), Toast.LENGTH_SHORT).show()
     }
@@ -169,92 +216,138 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
 
     if (open) {
         Dialog(onDismissRequest = { open = false; job?.cancel() }) {
-            GlassPanel(Modifier.fillMaxWidth()) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(14.dp)) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(ShareCard.WIDTH.toFloat() / ShareCard.HEIGHT)
-                            .clip(RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val c = card
-                        if (c == null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = RandoGreen, modifier = Modifier.size(32.dp))
-                                Spacer(Modifier.height(10.dp))
-                                Text(tr("正在画图…", "Drawing…"), color = InkSoft, fontSize = 14.sp)
+            Box(Modifier.onGloballyPositioned { overlayOrigin = it.positionInRoot() }) {
+                GlassPanel(Modifier.fillMaxWidth()) {
+                    Column(Modifier.verticalScroll(rememberScrollState()).padding(14.dp)) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(ShareCard.WIDTH.toFloat() / ShareCard.HEIGHT)
+                                .clip(RoundedCornerShape(14.dp))
+                                .onGloballyPositioned { previewBounds = it.boundsInRoot() }
+                                // 按住图上的照片拖：换个地方钉
+                                .pointerInput(card) {
+                                    val c = card ?: return@pointerInput
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val k = ShareCard.WIDTH / size.width.toFloat()
+                                        val uri = c.pinAt(PointF(down.position.x * k, down.position.y * k)) ?: return@awaitEachGesture
+                                        val p = chosen.firstOrNull { it.uri == uri } ?: return@awaitEachGesture
+                                        val origin = previewBounds?.topLeft ?: return@awaitEachGesture
+                                        val start = awaitTouchSlopOrCancellation(down.id) { change, _ -> change.consume() } ?: return@awaitEachGesture
+                                        dragging = p
+                                        dragAt = origin + start.position
+                                        val done = drag(start.id) { change ->
+                                            dragAt = origin + change.position
+                                            change.consume()
+                                        }
+                                        dragging = null
+                                        if (done) drop(p, dragAt)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val c = card
+                            if (c == null) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = RandoGreen, modifier = Modifier.size(32.dp))
+                                    Spacer(Modifier.height(10.dp))
+                                    Text(tr("正在画图…", "Drawing…"), color = InkSoft, fontSize = 14.sp)
+                                }
+                            } else {
+                                val image = remember(c) { c.bitmap.asImageBitmap() }
+                                Image(image, contentDescription = tr("分享图预览", "Share image preview"), modifier = Modifier.fillMaxWidth())
                             }
-                        } else {
-                            val image = remember(c) { c.bitmap.asImageBitmap() }
-                            Image(image, contentDescription = tr("分享图预览", "Share image preview"), modifier = Modifier.fillMaxWidth())
                         }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    PhotoRow(
-                        photos = photos,
-                        chosen = chosen,
-                        finding = finding,
-                        canRead = canRead,
-                        onToggle = ::toggle,
-                        onAsk = { askPhotos.launch(SharePhotos.permissions) },
-                        onPick = { pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(privacyLabel, Modifier.weight(1f), color = Ink, fontSize = 15.sp)
-                        Switch(
-                            checked = hide,
-                            onCheckedChange = { hide = it; draw() },
-                            colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                        Spacer(Modifier.height(10.dp))
+                        PhotoRow(
+                            photos = photos,
+                            chosen = chosen,
+                            finding = finding,
+                            canRead = canRead,
+                            onToggle = ::toggle,
+                            onAsk = { askPhotos.launch(SharePhotos.permissions) },
+                            onPick = { pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onLift = { p, at -> dragging = p; dragAt = at },
+                            onMove = { dragAt = it },
+                            onDrop = { ok ->
+                                val p = dragging
+                                dragging = null
+                                if (ok && p != null) drop(p, dragAt)
+                            },
                         )
-                    }
-                    if (chosen.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(tr("照片原图一起发", "Also send the photos"), color = Ink, fontSize = 15.sp)
-                                Text(tr("分享图排第一张；照片里的位置信息会去掉", "Card first; location data is removed from photos"), color = InkSoft, fontSize = 12.sp)
-                            }
+                            Text(privacyLabel, Modifier.weight(1f), color = Ink, fontSize = 15.sp)
                             Switch(
-                                checked = withOriginals,
-                                onCheckedChange = { withOriginals = it },
+                                checked = hide,
+                                onCheckedChange = { hide = it; draw() },
                                 colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
                             )
                         }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val c = card
-                        GlassButton(
-                            onClick = {
-                                if (c == null || saved) return@GlassButton
-                                val needsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
-                                    ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-                                if (needsPermission) askStorage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else save(c)
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            if (saved) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                            }
-                            Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        GlassButton(
-                            onClick = {
-                                if (c != null) scope.launch {
-                                    runCatching { ShareCard.send(context, c, if (withOriginals) chosen.sortedBy { it.takenAt ?: Long.MAX_VALUE } else emptyList()) }
-                                        .onFailure { e -> if (e !is CancellationException) Toast.makeText(context, tr("分享不了，可能手机存储空间不够", "Couldn't share, phone storage may be full"), Toast.LENGTH_SHORT).show() }
+                        if (chosen.isNotEmpty()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(tr("照片原图一起发", "Also send the photos"), color = Ink, fontSize = 15.sp)
+                                    Text(tr("分享图排第一张；照片里的位置信息会去掉", "Card first; location data is removed from photos"), color = InkSoft, fontSize = 12.sp)
                                 }
-                            },
-                            modifier = Modifier.weight(1f),
-                            tone = GlassTone.Tinted(if (c == null) Color(0xFF9FB8A8) else RandoGreen),
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(tr("分享", "Share"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Switch(
+                                    checked = withOriginals,
+                                    onCheckedChange = { withOriginals = it },
+                                    colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val c = card
+                            GlassButton(
+                                onClick = {
+                                    if (c == null || saved) return@GlassButton
+                                    val needsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                                    if (needsPermission) askStorage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else save(c)
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                if (saved) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            GlassButton(
+                                onClick = {
+                                    if (c != null) scope.launch {
+                                        runCatching { ShareCard.send(context, c, if (withOriginals) chosen.sortedBy { it.takenAt ?: Long.MAX_VALUE } else emptyList()) }
+                                            .onFailure { e -> if (e !is CancellationException) Toast.makeText(context, tr("分享不了，可能手机存储空间不够", "Couldn't share, phone storage may be full"), Toast.LENGTH_SHORT).show() }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                tone = GlassTone.Tinted(if (c == null) Color(0xFF9FB8A8) else RandoGreen),
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("分享", "Share"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
+                }
+                // 拖着的照片跟着手指走
+                dragging?.let { p ->
+                    val image = remember(p) { p.thumb.asImageBitmap() }
+                    val half = with(LocalDensity.current) { 32.dp.toPx() }
+                    Image(
+                        image,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .offset { IntOffset((dragAt.x - overlayOrigin.x - half).roundToInt(), (dragAt.y - overlayOrigin.y - half * 2.5f).roundToInt()) }
+                            .size(64.dp)
+                            .shadow(8.dp, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(3.dp, Color.White, RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
                 }
             }
         }
@@ -273,7 +366,10 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
     }
 }
 
-/** 预览里的一排照片：点一下选上 / 取消，最后一格从相册再挑；没给相册权限时可以点着去给 */
+/**
+ * 预览里的一排照片：点一下选上 / 取消，最后一格从相册再挑；没给相册权限时可以点着去给。
+ * 长按拖出来放到图上：[onLift] 拿起来，[onMove] 手指挪到哪（弹窗里的坐标），[onDrop] 松手（false 是被打断了）
+ */
 @Composable
 private fun PhotoRow(
     photos: List<SharePhoto>,
@@ -283,6 +379,9 @@ private fun PhotoRow(
     onToggle: (SharePhoto) -> Unit,
     onAsk: () -> Unit,
     onPick: () -> Unit,
+    onLift: (SharePhoto, Offset) -> Unit,
+    onMove: (Offset) -> Unit,
+    onDrop: (Boolean) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -292,7 +391,7 @@ private fun PhotoRow(
                 finding -> tr("正在找照片…", "Looking for photos…")
                 !canRead -> null
                 photos.isEmpty() -> tr("骑行时没拍照片", "No photos during the ride")
-                unplaced > 0 -> tr("$unplaced 张不是骑行时拍的，不放在图上", "$unplaced not taken on the ride, not on the card")
+                unplaced > 0 -> tr("$unplaced 张对不上时间，长按拖到图上", "$unplaced not matched — long-press, drag onto the map")
                 else -> tr("找到 ${photos.size} 张 · 选了 ${chosen.size} 张", "${photos.size} found · ${chosen.size} chosen")
             }
             if (status != null) Text(status, color = InkSoft, fontSize = 12.sp)
@@ -307,8 +406,21 @@ private fun PhotoRow(
             photos.forEach { p ->
                 val on = chosen.any { it.uri == p.uri }
                 val image = remember(p) { p.thumb.asImageBitmap() }
+                var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                 Box(
                     Modifier
+                        .onGloballyPositioned { coords = it }
+                        .pointerInput(p) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { at -> coords?.let { onLift(p, it.localToRoot(at)) } },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    coords?.let { onMove(it.localToRoot(change.position)) }
+                                },
+                                onDragEnd = { onDrop(true) },
+                                onDragCancel = { onDrop(false) },
+                            )
+                        }
                         .size(56.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .border(2.5.dp, if (on) RandoGreen else Color.Transparent, RoundedCornerShape(10.dp))
