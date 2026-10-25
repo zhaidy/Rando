@@ -13,7 +13,6 @@ import com.personal.rando.routing.BRouterClient
 import com.personal.rando.places.PcnData
 import com.personal.rando.places.PcnLoop
 import com.personal.rando.routing.RoadCorrectionStore
-import com.personal.rando.ride.AutoStart
 import com.personal.rando.ride.RideSession
 import com.personal.rando.ride.SettingsStore
 import com.personal.rando.group.GroupRide
@@ -32,8 +31,6 @@ class RandoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Lang.apply(settings.settings.value.language)
-        // 骑车自动开始记录：进程起来时按设置登记一下活动识别
-        AutoStart.apply(this, settings.settings.value.autoStart)
     }
 
     /** 跟着进程走的协程；导航、记录在界面关掉后也要继续 */
@@ -76,7 +73,7 @@ class RandoApp : Application() {
     /** 车停在哪儿 */
     val parking: ParkingStore by lazy { ParkingStore(this) }
 
-    /** 体重、自动开始记录 */
+    /** 体重、播报声音等设置 */
     val settings: SettingsStore by lazy { SettingsStore(this) }
 
     val savedRoutes: SavedRouteStore by lazy { SavedRouteStore(this) }

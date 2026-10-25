@@ -6,10 +6,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <!-- 骑车自动开始记录：认出在骑车；「始终允许」定位时在后台直接开始，不然弹通知问 -->
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 导航时的前台服务：锁屏、切到别的 App 后继续收 GPS、继续播报 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -98,18 +94,6 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-
-        <!-- 骑车自动开始记录：活动识别的结果、开机后重新登记 -->
-        <receiver
-            android:name=".ride.AutoStartReceiver"
-            android:exported="false" />
-        <receiver
-            android:name=".ride.BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
 
         <!-- 桌面小组件：本周骑行 -->
         <receiver
