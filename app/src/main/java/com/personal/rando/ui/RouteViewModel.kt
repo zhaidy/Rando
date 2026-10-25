@@ -292,8 +292,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     /** 语音「去某个地方」：收藏的地方优先，没有就搜，取第一个结果；算好路直接开始导航 */
     fun goTo(name: String, onFailed: (String) -> Unit) {
         savedPlaces.places.value.firstOrNull { it.name == name }?.let {
-            startWhenReady = true
-            chooseSaved(it)
+            arriveAt(Place(it.label, "", it.location))
             return
         }
         viewModelScope.launch {
@@ -308,9 +307,15 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 onFailed(tr("没找到$name", "Couldn't find ${SavedPlace.label(name)}"))
                 return@launch
             }
-            startWhenReady = true
-            choosePlace(place)
+            arriveAt(place)
         }
+    }
+
+    /** 语音说的地方一定是目的地：正在选家、起点、途经点的都先取消，不然会放错位置、一直等着自动开始 */
+    private fun arriveAt(place: Place) {
+        _state.update { it.copy(pickingHome = false, pickingStart = false, pickingVia = false) }
+        startWhenReady = true
+        choosePlace(place)
     }
 
     /** 语音「骑一圈」「骑某条收藏的路线」：算好直接开始 */

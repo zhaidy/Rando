@@ -567,7 +567,19 @@ class RideSession(
         val here = _location.value
         val nav = _navigation.value ?: return listOfNotNull(here)
         val points = nav.route.points
-        val from = here?.let { h -> points.indices.minByOrNull { Geo.distance(points[it], h) } } ?: 0
+        // 对上了路线就按已经骑了多远来切；绕圈、原路返回时离得最近的点可能在终点或者去程上
+        val along = nav.progress?.takeIf { !it.offRoute }?.alongMeters
+        val from = if (along != null) {
+            var acc = 0.0
+            var i = 0
+            while (i < points.size - 1 && acc + Geo.distance(points[i], points[i + 1]) <= along) {
+                acc += Geo.distance(points[i], points[i + 1])
+                i++
+            }
+            i
+        } else {
+            here?.let { h -> points.indices.minByOrNull { Geo.distance(points[it], h) } } ?: 0
+        }
         return points.subList(from, points.size)
     }
 

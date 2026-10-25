@@ -43,9 +43,9 @@ object VoiceChoice {
      */
     fun best(all: List<VoiceOption>): VoiceOption? = choices(all).firstOrNull { !it.network }
 
-    /** 选了 [wanted] 而且还在就用它，不然自动挑 */
+    /** 选了 [wanted] 而且还在、也是现在语言的就用它，不然自动挑（换了语言后旧的声音不能再用） */
     fun pick(all: List<VoiceOption>, wanted: String?): VoiceOption? =
-        wanted?.let { w -> all.firstOrNull { it.name == w && !it.notInstalled } } ?: best(all)
+        wanted?.let { w -> choices(all).firstOrNull { it.name == w } } ?: best(all)
 
     /** 「很高音质 · 要联网」 */
     fun describe(v: VoiceOption): String = listOfNotNull(

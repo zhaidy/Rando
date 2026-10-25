@@ -38,6 +38,12 @@ class VoiceChoiceTest {
     }
 
     @Test
+    fun `选过的声音不是现在的语言就自动挑`() {
+        val all = listOf(v("cmn", quality = 400), v("en", lang = "en", country = "SG", quality = 500))
+        assertEquals("cmn", VoiceChoice.pick(all, "en")?.name)
+    }
+
+    @Test
     fun `没有中文声音就不挑`() {
         assertNull(VoiceChoice.best(listOf(v("en", lang = "en", country = "US"))))
     }

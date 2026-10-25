@@ -58,6 +58,7 @@ class VoicePrompter {
     fun reset() {
         announced.clear()
         saidOffRoute = false
+        saidArrived = false
     }
 
     /** 「Turn left」放句中变成「turn left」 */

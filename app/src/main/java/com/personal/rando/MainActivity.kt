@@ -68,7 +68,8 @@ class MainActivity : ComponentActivity() {
         Lang.apply(rando.settings.settings.value.language, resources.configuration.locales[0])
         // 更新后已经回到应用了，“已更新，点这里打开”的通知就没用了
         UpdateNotifications.cancelUpdated(this)
-        handle(intent)
+        // 重建（转屏、进程被杀后回来）时不再处理一遍，免得又开始一段记录
+        if (savedInstanceState == null) handle(intent)
         setContent {
             val theme = rando.settings.settings.collectAsState().value.theme
             val dark = when (theme) {
@@ -144,6 +145,8 @@ class MainActivity : ComponentActivity() {
 private fun ComponentActivity.handle(intent: Intent?) {
     if (intent?.action != RideWidget.ACTION_START) return
     intent.action = null
+    // 从最近任务里重新打开时系统会把当初的「开始记录」再送一遍
+    if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
     val located = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         .any { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
     if (located) rando.session.startRecording()

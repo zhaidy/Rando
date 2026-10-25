@@ -134,11 +134,14 @@ class GroupRide(
     }
 
     fun join(code: String, name: String) {
+        // 开着对讲换队伍：leave 会关掉直连，换好后接着开
+        val wasLocal = local.running
         leave()
         myName = name
         _state.value = GroupState(code)
         watchNetwork()
         connect(code)
+        if (wasLocal) startLocal()
     }
 
     fun leave() {

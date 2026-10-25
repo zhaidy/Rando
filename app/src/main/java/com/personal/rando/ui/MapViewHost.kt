@@ -37,6 +37,9 @@ fun rememberMapView(textureMode: Boolean = false): MapView {
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
+            // 页面关掉时 Activity 还在前台：先补上 onPause / onStop，不然定位、网络监听一直开着
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
             mapView.onDestroy()
         }
     }

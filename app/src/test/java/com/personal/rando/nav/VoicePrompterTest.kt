@@ -75,6 +75,9 @@ class VoicePrompterTest {
         val p = VoicePrompter()
         assertEquals("已到达目的地", p.next(progress(0.0, next = null, arrived = true)))
         assertNull(p.next(progress(0.0, next = null, arrived = true)))
+        // 换了一条新路线，到了还要再说
+        p.reset()
+        assertEquals("已到达目的地", p.next(progress(0.0, next = null, arrived = true)))
     }
 
     @Test
