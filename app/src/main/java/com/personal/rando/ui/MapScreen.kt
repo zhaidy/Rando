@@ -484,8 +484,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val viewPrefs = remember { context.getSharedPreferences("planner", Context.MODE_PRIVATE) }
     var rideView by rememberSaveable { mutableStateOf(false) }
     val riding = navigating || recording != null
-    LaunchedEffect(riding) {
-        if (riding && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
+    // 进队也会开始记录，但这时多半还在集合点看队友、分享路线，不跳进去；队里开始导航照样进
+    val autoRideView = navigating || (recording != null && groupState == null)
+    LaunchedEffect(autoRideView) {
+        if (autoRideView && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
     }
     val openRideView = { show: Boolean ->
         rideView = show
