@@ -133,6 +133,10 @@ class GroupTest {
         assertEquals("直连 2 人", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, direct = 2)))
         assertEquals("小红 在说话…", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, talking = setOf("小红"))))
         assertEquals("在听 ▁··· · 手机 · 直连 1 人", com.personal.rando.ui.walkieText(WalkieState(on = true, micBars = 1, direct = 1)))
+        // 闭麦：还听得到队友，有人说话时照样显示谁在说
+        assertEquals("闭麦了", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, muted = true, direct = 1)))
+        assertEquals("闭麦了：你听得到队友，队友听不到你 · 直连 1 人", com.personal.rando.ui.walkieText(WalkieState(on = true, muted = true, direct = 1)))
+        assertEquals("小红 在说话…", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, muted = true, talking = setOf("小红"))))
     }
 
     @Test

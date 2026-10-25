@@ -200,15 +200,25 @@ class RtcLink(
         }
         val holder = arrayOfNulls<Peer>(1)
         val pc = f.createPeerConnection(config, Observer(id) { holder[0] }) ?: return null
-        return Peer(id, pc).also {
-            holder[0] = it
-            peers[id] = it
+        return Peer(id, pc).also { p ->
+            holder[0] = p
+            peers[id] = p
+            // 信令转到一半丢了（服务器正好断线重连）：这条连接既不会通也不会报失败，一直卡着，
+            // 对方再打招呼也会被当成「在连了」不理。到时候还没通就当打不通，重新来
+            p.setupJob = scope.launch {
+                delay(SETUP_TIMEOUT_MS)
+                if (peers[id] === p && !p.isOpen()) {
+                    Log.i(TAG, "setup timed out with $id")
+                    failed(id)
+                }
+            }
         }
     }
 
     private fun close(id: String) {
         val p = peers.remove(id) ?: return
         p.disconnectJob?.cancel()
+        p.setupJob?.cancel()
         synchronized(lock) {
             open = open.filter { it !== p.channel }
             p.channel?.let { c ->
@@ -264,6 +274,8 @@ class RtcLink(
     private inner class Peer(val id: String, val pc: PeerConnection) {
         var channel: DataChannel? = null
         var disconnectJob: Job? = null
+        /** 打通前的计时，见 [newPeer] */
+        var setupJob: Job? = null
         private var remote = false
         private val pendingIce = mutableListOf<IceCandidate>()
 
@@ -278,6 +290,7 @@ class RtcLink(
                         if (runCatching { c.state() }.getOrNull() == DataChannel.State.OPEN) {
                             Log.i(TAG, "connected to $id")
                             failures.remove(id)
+                            setupJob?.cancel()
                         }
                         publish()
                     }
@@ -290,6 +303,8 @@ class RtcLink(
                 }
             })
         }
+
+        fun isOpen(): Boolean = runCatching { channel?.state() }.getOrNull() == DataChannel.State.OPEN
 
         /** 对方的地址在 offer、answer 设好之前到了先攒着 */
         fun addIce(c: IceCandidate) {
@@ -383,6 +398,8 @@ class RtcLink(
         private const val RETRY_MS = 3_000L
         private const val MAX_RETRY_MS = 60_000L
         private const val DISCONNECT_GRACE_MS = 8_000L
+        /** 开始打以后这么久还没通就重来 */
+        private const val SETUP_TIMEOUT_MS = 15_000L
 
         /** 服务器的 /ice 拿不到时用 */
         val DEFAULT_ICE = listOf(IceSpec(listOf("stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302")))

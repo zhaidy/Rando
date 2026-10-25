@@ -150,6 +150,7 @@ fun RideView(
     onToggleTalk: () -> Unit = {},
     onTalkLevel: (VoxLevel) -> Unit = {},
     onTalkMode: (WalkieMode) -> Unit = {},
+    onTalkMute: (Boolean) -> Unit = {},
     /** 在现在的位置标一处路况 */
     onReport: (HazardType) -> Unit = {},
     /** 体重：算消耗了多少千卡 */
@@ -227,7 +228,7 @@ fun RideView(
                     Extras(weather, briefly(climate?.warning), amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                     teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                     walkie?.let {
-                        RideWalkieRow(it, onToggleTalk, onTalkLevel, onTalkMode, Modifier.fillMaxWidth().padding(start = 22.dp, end = 14.dp).padding(top = 6.dp))
+                        RideWalkieRow(it, onToggleTalk, onTalkLevel, onTalkMode, Modifier.fillMaxWidth().padding(start = 22.dp, end = 14.dp).padding(top = 6.dp), onTalkMute)
                     }
                     listening?.let {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
