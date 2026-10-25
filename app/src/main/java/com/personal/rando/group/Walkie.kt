@@ -63,7 +63,7 @@ data class WalkieState(
     val problem: String? = null,
     /** 正在试：说一句回放给自己听 */
     val testing: Boolean = false,
-    /** 蓝牙、Wi-Fi 直连上的队友有几个 */
+    /** 直连上的队友有几个（蓝牙、Wi-Fi 或者 WebRTC） */
     val direct: Int = 0,
 )
 
@@ -296,7 +296,7 @@ class Walkie(
     }
 
     /**
-     * 一句话：实时的边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段；
+     * 一句话：实时的边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（64 毫秒）就发一小段；
      * 整句的压好攒着，说完一起发（只有一段，seq 0，end）
      */
     private inner class Sender(private val mode: WalkieMode) {
@@ -559,8 +559,8 @@ class Walkie(
         const val READ_FAILURES = 50
         const val KEY_LEVEL = "level"
         const val KEY_MODE = "mode"
-        /** 攒两帧 AAC（约 0.13 秒）发一次 */
-        const val CHUNK_FRAMES = 2
+        /** 一帧 AAC（64 毫秒）发一次：直连是 UDP，小包多发不吃亏，少攒一帧就少等一帧 */
+        const val CHUNK_FRAMES = 1
         /** 先攒 0.2 秒再放 */
         const val PREBUFFER_SAMPLES = Vox.SAMPLE_RATE / 5
         /** 音轨里排着超过 0.6 秒没放的就丢掉新来的，追上来 */

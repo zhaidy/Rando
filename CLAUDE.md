@@ -14,6 +14,8 @@
   - 新加坡的 PCN 在 OSM 里是本地自行车路线，BRouter 的 WayTags 里是 `route_bicycle_lcn=yes`；路的分类见 `RoadKind`
   - 改配置后先用 curl 上传试一下：语法错了服务器会在返回的 `error` 里指出行号；条件要加括号，否则会被悄悄忽略（每段 CostPerKm 都是 1000）
 - 地点搜索：Photon（`photon.komoot.io`），限定在新加坡范围
+- 对讲直连：WebRTC（`io.github.webrtc-sdk:android`），只用数据通道传自己压好的 AAC，见 `RtcLink`；信令走一起骑服务器的房间（`{"t":"rtc"}`），STUN / TURN 地址从服务器的 `/ice` 拿
+  - TURN 要在 Cloudflare 后台建一个 TURN key，Worker 配 Secrets `TURN_KEY_ID`、`TURN_KEY_API_TOKEN`；没配只有 STUN，两边都在运营商内网时打不通，退回走服务器
 
 ## Pull request 流程
 

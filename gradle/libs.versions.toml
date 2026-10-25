@@ -16,8 +16,10 @@ junit = "4.13.2"
 json = "20260814"
 playServicesLocation = "21.4.0"
 playServicesNearby = "19.3.0"
+webrtc = "150.7871.01"
 
 [libraries]
+webrtc = { module = "io.github.webrtc-sdk:android", version.ref = "webrtc" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

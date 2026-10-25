@@ -19,7 +19,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -97,19 +100,35 @@ class GroupRide(
         (GroupProtocol.parse(text, System.currentTimeMillis()) as? GroupEvent.Voice)?.let { _voices.tryEmit(it) }
     }
 
-    /** 直连上的队友 id */
-    val localPeers: StateFlow<Set<String>> = local.peers
+    /** 跟队友手机 WebRTC 直连，开着对讲时才开；也只用来传对讲，信令借服务器的房间转 */
+    private val rtc = RtcLink(
+        context, scope, "$serverUrl/ice", http,
+        signal = { to, data -> socket?.send(GroupProtocol.rtc(to, data)) },
+    ) { from, text ->
+        // 只认对方自己的声音
+        (GroupProtocol.parse(text, System.currentTimeMillis()) as? GroupEvent.Voice)?.takeIf { it.id == from }?.let { _voices.tryEmit(it) }
+    }
+
+    /** 直连上的队友 id（蓝牙、Wi-Fi 直连或者 WebRTC 直连） */
+    val localPeers: StateFlow<Set<String>> = combine(local.peers, rtc.connected) { a, b -> a + b }
+        .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     fun hasLocalPermissions(): Boolean = local.hasPermissions()
 
-    /** 开对讲时开直连；没有「附近的设备」权限就只走服务器 */
+    /** 开对讲时开直连；没有「附近的设备」权限就只走服务器和 WebRTC */
     fun startLocal() {
         val s = _state.value ?: return
+        val team = s.teammates.map { it.id }.toSet()
         local.start(s.code, myId, myName)
-        local.setTeam(s.teammates.map { it.id }.toSet())
+        local.setTeam(team)
+        rtc.setTeam(team)
+        rtc.start(myId)
     }
 
-    fun stopLocal() = local.stop()
+    fun stopLocal() {
+        local.stop()
+        rtc.stop()
+    }
 
     private var socket: WebSocket? = null
     private var reconnectJob: Job? = null
@@ -155,6 +174,7 @@ class GroupRide(
         _offer.value = null
         _state.value = null
         local.stop()
+        rtc.stop()
     }
 
     /** 开始导航时把路线分享给队友；不在队伍里就不发 */
@@ -220,10 +240,12 @@ class GroupRide(
     }
 
     /**
-     * 服务器、直连两条路都发：收的人谁先到用谁，重复的丢掉；直连连上、断开都不用切换，说到一半也不断
+     * 服务器、蓝牙 / Wi-Fi 直连、WebRTC 直连几条路都发：收的人谁先到用谁，重复的丢掉；
+     * 直连连上、断开都不用切换，说到一半也不断。服务器那条一直发：直连断了要几秒才发现，这几秒靠它
      */
     fun sendVoice(stream: Int, seq: Int, end: Boolean, base64: String): Boolean {
-        val direct = local.send(GroupProtocol.localVoice(myId, myName, stream, seq, end, base64))
+        val text = GroupProtocol.localVoice(myId, myName, stream, seq, end, base64)
+        val direct = local.send(text) or rtc.send(text)
         // 网络卡住时发不出去的会在 OkHttp 里排队，通了以后一下子全到，队友听到的是好几秒前的话，
         // 后面也一直慢那么多：排着的超过一秒就先不发这段（最后一段照发，队友那边好收尾）
         val ws = socket
@@ -267,6 +289,8 @@ class GroupRide(
                     _state.update { it?.copy(connected = true) }
                     myRoute?.let { webSocket.send(GroupProtocol.route(it)) }
                     mySos?.let { webSocket.send(GroupProtocol.sos(it)) }
+                    // 断线的时候可能有人开了对讲，没打通的再打（已经打通的不受服务器断线影响）
+                    rtc.hello()
                 }
             }
 
@@ -365,9 +389,14 @@ class GroupRide(
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.mate.id } + event.mate)
             }
             is GroupEvent.Voice -> _voices.tryEmit(event)
+            is GroupEvent.Rtc -> rtc.onSignal(event.id, event.data)
         }
         if (event is GroupEvent.Roster || event is GroupEvent.Joined || event is GroupEvent.Left) {
-            _state.value?.let { s -> local.setTeam(s.teammates.map { it.id }.toSet()) }
+            _state.value?.let { s ->
+                val team = s.teammates.map { it.id }.toSet()
+                local.setTeam(team)
+                rtc.setTeam(team)
+            }
         }
     }
 

@@ -91,6 +91,8 @@ dependencies {
     implementation(libs.play.services.location)
     // 对讲：离得近的队友用蓝牙、Wi-Fi 直连
     implementation(libs.play.services.nearby)
+    // 对讲跟队友手机直连（只用数据通道）
+    implementation(libs.webrtc)
     // 液态玻璃：面板折射、模糊后面的地图
     implementation(libs.haze)
     implementation(libs.haze.glass)

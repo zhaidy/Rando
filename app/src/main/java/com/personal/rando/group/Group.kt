@@ -80,6 +80,8 @@ sealed interface GroupEvent {
         val data: String,
     ) : GroupEvent
     data class Route(val route: SharedRoute) : GroupEvent
+    /** WebRTC 直连的信令（[RtcLink]）：[id] 是谁发的 */
+    data class Rtc(val id: String, val data: JSONObject) : GroupEvent
     data class RouteCleared(val id: String) : GroupEvent
     data class Sos(val alert: SosAlert) : GroupEvent
     data class SosCleared(val id: String) : GroupEvent
@@ -109,6 +111,10 @@ object GroupProtocol {
     /** 直连发给队友的语音：没有服务器帮忙填，自己带上 id 和名字（跟服务器转发的一样） */
     fun localVoice(id: String, name: String, stream: Int, seq: Int, end: Boolean, base64: String): String =
         JSONObject(voice(stream, seq, end, base64)).put("id", id).put("name", name).toString()
+
+    /** WebRTC 直连的信令：[to] 是 null 就发给队里所有人 */
+    fun rtc(to: String?, data: JSONObject): String =
+        JSONObject().put("t", "rtc").apply { if (to != null) put("to", to) }.put("data", data).toString()
 
     fun route(r: SharedRoute): String = JSONObject().apply {
         put("t", "route")
@@ -168,6 +174,7 @@ object GroupProtocol {
                     )
                 )
             }
+            "rtc" -> GroupEvent.Rtc(o.getString("id"), o.getJSONObject("data"))
             "route_clear" -> GroupEvent.RouteCleared(o.getString("id"))
             "sos" -> GroupEvent.Sos(
                 SosAlert(o.getString("id"), o.optString("name", MATE), LatLon(o.getDouble("lat"), o.getDouble("lon")), o.optLong("ts")),
