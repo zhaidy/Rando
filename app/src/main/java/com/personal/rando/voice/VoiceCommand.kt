@@ -1,6 +1,7 @@
 package com.personal.rando.voice
 
 import com.personal.rando.places.HazardType
+import com.personal.rando.places.SavedPlace
 
 /** 听懂的一句话 */
 sealed interface VoiceCommand {
@@ -36,19 +37,20 @@ object VoiceParser {
         val text = raw.trim().trimEnd('。', '！', '!', '？', '?', '.').replace(" ", "")
         if (text.isEmpty()) return VoiceCommand.Unknown(raw)
 
-        if (Regex("(结束|停止|退出|取消|不要)(导航|骑行)?$|^别导航").containsMatchIn(text)) return VoiceCommand.StopNavigation
+        if (Regex("(结束|停止|退出|取消|不要)(导航|骑行)?$|^别导航|(关闭|关掉|关了)导航").containsMatchIn(text)) return VoiceCommand.StopNavigation
         if (Regex("还有多远|还要多久|多久到|还剩多少|还有多少|多远到").containsMatchIn(text)) return VoiceCommand.Remaining
         if (Regex("天气|下雨|会不会下|热不热|空气").containsMatchIn(text)) return VoiceCommand.Weather
         if (Regex("(坐|搭)(地铁|MRT|捷运|车)回家", RegexOption.IGNORE_CASE).containsMatchIn(text)) return VoiceCommand.MrtHome
+
+        // 先认对讲：「对讲不通」不是封路
+        if ("对讲" in text) {
+            return VoiceCommand.Walkie(on = !Regex("关|停|闭|不要|别|不用|不想").containsMatchIn(text))
+        }
 
         when {
             "封路" in text || "不通" in text || "封了" in text -> return VoiceCommand.Report(HazardType.CLOSED)
             "施工" in text || "修路" in text -> return VoiceCommand.Report(HazardType.CONSTRUCTION)
             Regex("路面|坑|不平|颠|烂路|积水").containsMatchIn(text) -> return VoiceCommand.Report(HazardType.BAD_SURFACE)
-        }
-
-        if ("对讲" in text) {
-            return VoiceCommand.Walkie(on = !Regex("关|停|闭").containsMatchIn(text))
         }
 
         Regex("骑?一圈(.*?)(公里|千米|km|K)?$", RegexOption.IGNORE_CASE).find(text)?.let { m ->
@@ -63,6 +65,12 @@ object VoiceParser {
         }
         if (text.startsWith("导航")) return VoiceCommand.GoTo(text.removePrefix("导航"))
         if (text == "回家") return VoiceCommand.GoTo("家")
+
+        // 「骑二十公里」没说一圈也是骑一圈
+        Regex("^骑(.+?)(公里|千米|km|K)$", RegexOption.IGNORE_CASE).find(text)?.let { m ->
+            val km = number(m.groupValues[1])
+            if (km != null && km in 1..200) return VoiceCommand.Loop(km)
+        }
 
         Regex("^(骑|走)(.+?)(那条|那条路|那圈|路线)?$").find(text)?.let { m ->
             return VoiceCommand.Route(m.groupValues[2])
@@ -103,9 +111,19 @@ object VoiceParser {
             if (km != null && km in 1..200) return VoiceCommand.Loop(km)
         }
 
-        if (has("^((navigate|take me|bring me|go|head|ride|directions)( back)? )?home$")) return VoiceCommand.GoTo("家")
+        if (has("^((navigate|take me|bring me|go|head|ride|directions)( back)? )?home$")) return VoiceCommand.GoTo(SavedPlace.HOME)
         Regex("^(?:navigate|navigation|take me|bring me|go|head|directions)(?: to)? (.+)$", RegexOption.IGNORE_CASE)
-            .find(original)?.let { return VoiceCommand.GoTo(it.groupValues[1].removePrefix("the ")) }
+            .find(original)?.let { m ->
+                val place = m.groupValues[1].replace(Regex("^(?i)(the|my) "), "")
+                // 收藏的家、公司存的是中文名
+                return VoiceCommand.GoTo(
+                    when (place.lowercase()) {
+                        "home", "place", "house" -> SavedPlace.HOME
+                        "work", "office", "workplace" -> SavedPlace.WORK
+                        else -> place
+                    }
+                )
+            }
 
         Regex("^ride (?:the |my )?(.+?)(?: route| loop| one)?$", RegexOption.IGNORE_CASE)
             .find(original)?.let { return VoiceCommand.Route(it.groupValues[1]) }

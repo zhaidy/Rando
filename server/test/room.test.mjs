@@ -178,6 +178,32 @@ test("可能摔车了告诉队友，后来加入的也能收到，我没事就�
   for (const x of [a, b, c, d]) x.ws.close();
 });
 
+test("App 被杀了没说我没事：重新连上就撤掉存着的求助；roster 带服务器时间", async () => {
+  const a = join("TEST08", "aaaaaaaa-30", "阿明");
+  await a.opened;
+  await a.next("roster");
+  a.send({ t: "sos", lat: 1.3, lon: 103.8 });
+  a.send({ t: "pos", lat: 1.3, lon: 103.8 });
+  const b = join("TEST08", "bbbbbbbb-31", "小红");
+  await b.opened;
+  const roster = await b.next("roster");
+  assert.ok(Number.isFinite(roster.now));
+  assert.ok(roster.now >= roster.members[0].ts);
+  await b.next("sos");
+
+  // 进程没了：连上以后不再发求助
+  a.ws.close();
+  await b.next("leave");
+  const a2 = join("TEST08", "aaaaaaaa-30", "阿明");
+  await a2.opened;
+  await a2.next("roster");
+  const c = join("TEST08", "cccccccc-32", "小李");
+  await c.opened;
+  await c.next("roster");
+  await assert.rejects(c.next("sos"));
+  for (const x of [a2, b, c]) x.ws.close();
+});
+
 test("标的路况转给队友", async () => {
   const a = join("TEST04", "aaaaaaaa-12", "阿明");
   const b = join("TEST04", "bbbbbbbb-13", "小红");

@@ -103,4 +103,56 @@ class NavigatorTest {
         val along = nav.alongOf(LatLon(1.300 + 2 * step + 0.0001, 103.800 + 1.5 * step))
         assertEquals(3.5 * metersPerStep, along, 3.0)
     }
+
+    @Test
+    fun `进断头路掉头出来：去程不会跳到回程上`() {
+        // 往东一段，往北进一条断头路，掉头回来再往东
+        val spur = Route(
+            points = listOf(
+                LatLon(1.300, 103.800),
+                LatLon(1.300, 103.800 + step),
+                LatLon(1.300 + step, 103.800 + step),
+                LatLon(1.300, 103.800 + step),
+                LatLon(1.300, 103.800 + 2 * step),
+            ),
+            distanceMeters = 445,
+            durationSeconds = 400,
+            ascendMeters = 0,
+            segments = emptyList(),
+            maneuvers = listOf(
+                Maneuver(pointIndex = 1, turn = Turn.LEFT),
+                Maneuver(pointIndex = 2, turn = Turn.U_TURN_LEFT),
+                Maneuver(pointIndex = 3, turn = Turn.LEFT),
+            ),
+        )
+        val nav = Navigator(spur)
+        nav.update(LatLon(1.300, 103.800 + step / 2))
+        // 断头路上偏一点点：还在去程，下一个是掉头
+        val progress = nav.update(LatLon(1.300 + step / 3, 103.800 + step + 0.00002))
+        assertEquals(Turn.U_TURN_LEFT, progress.next?.turn)
+        assertEquals(metersPerStep * (1 + 1.0 / 3), progress.alongMeters, 3.0)
+    }
+
+    @Test
+    fun `环线起步时飘一下不会跳到终点算到达`() {
+        // 绕一圈回到起点旁边 30 米
+        val loop = Route(
+            points = listOf(
+                LatLon(1.300, 103.800),
+                LatLon(1.300 + step, 103.800),
+                LatLon(1.300 + step, 103.800 + step),
+                LatLon(1.300, 103.800 + step),
+                LatLon(1.300, 103.800 + 0.0006),
+            ),
+            distanceMeters = 400,
+            durationSeconds = 400,
+            ascendMeters = 0,
+            segments = emptyList(),
+        )
+        val nav = Navigator(loop)
+        nav.update(LatLon(1.300, 103.800))
+        // 离起点那段 50 米、离终点那段 15 米
+        val progress = nav.update(LatLon(1.3000, 103.8005))
+        assertFalse(progress.arrived)
+    }
 }
