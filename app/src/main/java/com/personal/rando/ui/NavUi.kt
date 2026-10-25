@@ -191,7 +191,20 @@ data class SegmentInfo(
     val location: LatLon,
     val points: List<LatLon>,
     val detail: String?,
+    /** 是一段路时是什么路；路口、补给点是 null */
+    val kind: RoadKind? = null,
 )
+
+/**
+ * 这段路能标成「其实是马路」/ 撤销：自行车道、公园连道、小路可以标；
+ * 标过的已经按马路算了，再点是撤销。[marked]：是不是标过
+ */
+fun SegmentInfo.markLabel(marked: Boolean): String? = when {
+    points.size < 2 || kind == null -> null
+    marked && kind == RoadKind.ROAD -> "不是马路"
+    kind in setOf(RoadKind.PCN, RoadKind.CYCLEWAY, RoadKind.PATH) -> "其实是马路"
+    else -> null
+}
 
 /** 卡片上能点的提示，点了在地图上一处处看 */
 /** [AMENITIES] 的几处不在路线数据里，由界面用查到的补给点来填 */
@@ -208,7 +221,7 @@ fun Route.segmentAt(tap: LatLon, toleranceMeters: Double): SegmentInfo? {
             if (d > toleranceMeters || (best != null && d >= best.first)) continue
             val snapped = LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
             best = d to SegmentInfo(
-                piece.kind.label, piece.kind.color, lengthOf(piece.points), snapped, piece.points, detailFor(piece.kind, snapped),
+                piece.kind.label, piece.kind.color, lengthOf(piece.points), snapped, piece.points, detailFor(piece.kind, snapped), piece.kind,
             )
         }
     }
@@ -251,7 +264,7 @@ private fun Route.piecesWithin(kind: RoadKind, skipEnds: Boolean): List<SegmentI
         val nearEnds = along < com.personal.rando.routing.END_PUSH_METERS ||
             along + length > total - com.personal.rando.routing.END_PUSH_METERS
         if (p.kind == kind && !(skipEnds && nearEnds)) {
-            result += SegmentInfo(kind.label, kind.color, length, p.points[p.points.size / 2], p.points, null)
+            result += SegmentInfo(kind.label, kind.color, length, p.points[p.points.size / 2], p.points, null, kind)
         }
         along += length
     }
@@ -296,6 +309,9 @@ fun SegmentCard(
     onStreetView: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 「其实是马路」「不是马路」；null 不显示 */
+    markLabel: String? = null,
+    onMark: () -> Unit = {},
 ) {
     GlassPanel(modifier.fillMaxWidth(), shape = GlassShapes.Card) {
         Column(Modifier.padding(start = 18.dp, end = 8.dp, top = 14.dp, bottom = 14.dp)) {
@@ -324,6 +340,11 @@ fun SegmentCard(
                     }
                 }
                 Spacer(Modifier.weight(1f))
+                if (markLabel != null) {
+                    GlassButton(onClick = onMark, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(markLabel, color = Ink, fontSize = 15.sp)
+                    }
+                }
                 PrimaryButton(onClick = onStreetView, color = RandoGreen) {
                     Text("看实景", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 }

@@ -22,6 +22,8 @@ class BRouterClient(
     private val baseUrl: String = "https://brouter.de/brouter",
     /** 要绕开的点（标了施工、封路的地方） */
     private val avoid: () -> List<LatLon> = { emptyList() },
+    /** 标过「其实是马路」的地方 */
+    private val corrections: () -> List<RoadCorrection> = { emptyList() },
 ) {
 
     suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
@@ -30,20 +32,22 @@ class BRouterClient(
     suspend fun route(stops: List<LatLon>, prefs: RoutePrefs): Route = withContext(Dispatchers.IO) {
         val watts = prefs.pace.watts
         val nogos = Nogos.near(stops, avoid())
+        val marked = corrections()
+        val polylines = RoadCorrections.polylines(stops, marked, prefs.avoidRoads)
         val route = run {
-            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos))
+            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos, polylines))
             // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
             val cached = uploaded[custom]
             if (cached != null) {
                 try {
-                    return@run fetch(url(stops, cached, watts, nogos))
+                    return@run fetch(url(stops, cached, watts, nogos, polylines))
                 } catch (_: IOException) {
                     uploaded.remove(custom)
                 }
             }
-            fetch(url(stops, upload(custom), watts, nogos))
+            fetch(url(stops, upload(custom), watts, nogos, polylines))
         }
-        route.copy(durationSeconds = prefs.duration(route))
+        RoadCorrections.apply(route, marked).let { it.copy(durationSeconds = prefs.duration(it)) }
     }
 
     private fun fetch(url: String): Route =
@@ -76,7 +80,7 @@ class BRouterClient(
     }
 
     /** [watts]：骑手平均功率，只影响预计时间，不影响走哪条路；null 用配置里的默认（100 瓦） */
-    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null, nogos: List<LatLon> = emptyList()): String =
+    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null, nogos: List<LatLon> = emptyList(), polylines: String? = null): String =
         baseUrl.toHttpUrl().newBuilder()
             .addQueryParameter("lonlats", stops.joinToString("|", transform = ::coord))
             .addQueryParameter("profile", profileName)
@@ -90,6 +94,7 @@ class BRouterClient(
                     addQueryParameter("nogos", nogos.joinToString("|") { String.format(Locale.US, "%.6f,%.6f,%d", it.lon, it.lat, Nogos.RADIUS_METERS) })
                 }
             }
+            .apply { if (polylines != null) addQueryParameter("polylines", polylines) }
             .build()
             .toString()
 
