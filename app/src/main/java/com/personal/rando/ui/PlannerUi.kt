@@ -1,5 +1,8 @@
 package com.personal.rando.ui
 
+import com.personal.rando.ui.glass.NeuButton
+import com.personal.rando.ui.glass.neuInset
+import androidx.compose.foundation.layout.RowScope
 import com.personal.rando.ui.glass.LocalHazeState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.fillMaxSize
@@ -209,7 +212,7 @@ fun SearchBar(
                     onValueChange = onQuery,
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink, fontSize = 17.sp),
-                    cursorBrush = SolidColor(RandoGreen),
+                    cursorBrush = SolidColor(RandoAccent),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -282,30 +285,42 @@ fun IconTap(onClick: () -> Unit, content: @Composable () -> Unit) {
 // ───────────────────────── 路线偏好 ─────────────────────────
 
 /**
- * 路线偏好：一排玻璃胶囊。公园连道的几个开关收在它旁边的「偏好」里，
+ * 路线偏好：车型是一个下拉的玻璃胶囊（不用左右滑），公园连道的几个开关收在它旁边的「偏好」里，
  * 选中公园连道时展开出来，点开是个弹窗
  */
 @Composable
 fun PrefsRow(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit, modifier: Modifier = Modifier) {
     var dialog by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     Row(
-        modifier.horizontalScroll(rememberScrollState()),
+        modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BikeProfile.entries.forEach { profile ->
-            GlassChip(profile.label, selected = profile == prefs.profile) {
-                if (profile != prefs.profile) onChange(prefs.copy(profile = profile))
+        Box {
+            GlassButton(onClick = { menu = true }, contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 9.dp, bottom = 9.dp)) {
+                Text(prefs.profile.label, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Default.ArrowDropDown, contentDescription = tr("车型", "Bike type"), tint = InkSoft, modifier = Modifier.size(20.dp))
             }
-            if (profile == BikeProfile.PCN) {
-                AnimatedVisibility(
-                    visible = prefs.profile == BikeProfile.PCN,
-                    enter = expandHorizontally(Motion.bouncy()) + fadeIn(),
-                    exit = shrinkHorizontally(Motion.smooth()) + fadeOut(),
-                ) {
-                    PcnPrefsChip(prefs) { dialog = true }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = GlassShapes.Card, containerColor = DialogColor) {
+                BikeProfile.entries.forEach { profile ->
+                    DropdownMenuItem(
+                        text = { Text(profile.label, color = Ink, fontWeight = if (profile == prefs.profile) FontWeight.SemiBold else FontWeight.Normal) },
+                        trailingIcon = { if (profile == prefs.profile) Icon(Icons.Default.Check, contentDescription = null, tint = AccentInk) },
+                        onClick = {
+                            menu = false
+                            if (profile != prefs.profile) onChange(prefs.copy(profile = profile))
+                        },
+                    )
                 }
             }
+        }
+        AnimatedVisibility(
+            visible = prefs.profile == BikeProfile.PCN,
+            enter = expandHorizontally(Motion.bouncy()) + fadeIn(),
+            exit = shrinkHorizontally(Motion.smooth()) + fadeOut(),
+        ) {
+            PcnPrefsChip(prefs) { dialog = true }
         }
     }
     if (dialog) PcnPrefsDialog(prefs, onSave = { dialog = false; if (it != prefs) onChange(it) }, onDismiss = { dialog = false })
@@ -318,10 +333,10 @@ private fun PcnPrefsChip(prefs: RoutePrefs, onClick: () -> Unit) {
     val on = avoiding.isNotEmpty()
     GlassButton(
         onClick = onClick,
-        tone = if (on) GlassTone.Tinted(RandoGreenDeep) else GlassTone.Light,
+        tone = if (on) GlassTone.Tinted(RandoAccent) else GlassTone.Light,
         contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 9.dp, bottom = 9.dp),
     ) {
-        Text(avoiding.joinToString(tr("、", ", ")).ifEmpty { tr("偏好", "Preferences") }, color = if (on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(avoiding.joinToString(tr("、", ", ")).ifEmpty { tr("偏好", "Preferences") }, color = if (on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Icon(Icons.Default.ArrowDropDown, contentDescription = tr("路线偏好", "Route preferences"), tint = if (on) Color.White else InkSoft, modifier = Modifier.size(20.dp))
     }
 }
@@ -364,7 +379,7 @@ private fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val text by animateColorAsState(if (selected) Color.White else Ink, Motion.smooth(), label = "chip")
     GlassButton(
         onClick = onClick,
-        tone = if (selected) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
+        tone = if (selected) GlassTone.Tinted(RandoAccent) else GlassTone.Light,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
     ) {
         Text(label, color = text, fontSize = 15.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
@@ -623,7 +638,7 @@ fun PlannerSheet(
             }
         }
     }
-    GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(Motion.smooth())) {
+    GlassPanel(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(Motion.smooth()), tone = GlassTone.Solid) {
         Column(
             Modifier
                 .nestedScroll(sheetScroll)
@@ -730,7 +745,7 @@ fun PlannerSheet(
                   enter = fadeIn(tween(260)) + expandVertically(Motion.smooth()),
                   exit = fadeOut(tween(120)) + shrinkVertically(Motion.smooth()),
               ) {
-                  PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                  PrimaryButton(onClick = actions.onStart, color = RandoAccent, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                       Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                   }
               }
@@ -778,7 +793,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
         }
         Text(text, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (route != null) {
-            PrimaryButton(onClick = onStart, color = RandoGreen) {
+            PrimaryButton(onClick = onStart, color = RandoAccent) {
                 Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -801,17 +816,18 @@ private fun ParkedRow(bike: ParkedBike, here: LatLon?, onClick: () -> Unit) {
     Row(
         Modifier
             .padding(top = 12.dp)
-            .clip(GlassShapes.Pill)
-            .liquidGlass(GlassShapes.Pill)
+            .fillMaxWidth()
+            .liquidGlass(GlassShapes.Tile)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("P", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(RandoBlue).padding(horizontal = 6.dp, vertical = 1.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(tr("我的车", "My bike"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        Text(" · " + parkedText(bike, here, System.currentTimeMillis()), color = InkSoft, fontSize = 14.sp, maxLines = 1)
+        Text("P", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(RandoBlue).padding(horizontal = 8.dp, vertical = 2.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(tr("我的车", "My bike"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(" · " + parkedText(bike, here, System.currentTimeMillis()), Modifier.weight(1f), color = InkSoft, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = InkSoft, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -861,23 +877,28 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) } },
     )
 }
 
 /** 收藏的路线：点一下再骑，长按删掉 */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> Unit, onRemove: (SavedRoute) -> Unit) {
     var removing by remember { mutableStateOf<SavedRoute?>(null) }
-    Row(
-        Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
+    // 放不下就换行，不用左右滑
+    FlowRow(
+        Modifier.padding(top = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
-        Text(tr("我的路线", "My routes"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Row(Modifier.padding(end = 2.dp).heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoRed.onGlass(), modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(tr("我的路线", "My routes"), color = RandoRed.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
         routes.forEach { r ->
             Row(
                 Modifier
@@ -932,18 +953,28 @@ fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -
 /** 不知道去哪儿：选个距离骑一圈回来 */
 @Composable
 private fun LoopRow(onLoop: (Int) -> Unit) {
-    Row(
-        Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
-        Text(tr("骑一圈", "Loop"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        LOOP_KMS.forEach { km ->
-            GlassButton(onClick = { onLoop(km) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
-                Text(tr("$km 公里", "$km km"), color = Ink, fontSize = 15.sp)
+    Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoAmber.onGlass(), modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(tr("骑一圈", "Loop"), color = RandoAmber.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(10.dp))
+        // 五个距离一样宽，排在一条凹槽里
+        Row(Modifier.weight(1f).neuInset(GlassShapes.Tile).padding(4.dp)) {
+            LOOP_KMS.forEach { km ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onLoop(km) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$km", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
+        Spacer(Modifier.width(8.dp))
+        Text(tr("公里", "km"), color = InkSoft, fontSize = 13.sp)
     }
 }
 
@@ -965,7 +996,7 @@ private fun ViaLines(via: List<Place>, picking: Boolean, onAdd: () -> Unit, onRe
         }
         if (!picking && via.size < MAX_VIA) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Add, contentDescription = null, tint = AccentInk, modifier = Modifier.size(16.dp))
                 LinkText(tr("加途经点", "Add stop"), onAdd)
             }
         }
@@ -1000,38 +1031,48 @@ private fun StarButton(on: Boolean, onClick: () -> Unit) {
 private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit, onMrtHome: () -> Unit) {
     // 「坐 MRT 回家」跟在「家」后面（没收藏家时放最前面，点了会提示先收藏），一行里滑不到最后也看得见
     val homeFirst = saved.sortedByDescending { it.name == SavedPlace.HOME }
-    Row(
-        Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (homeFirst.firstOrNull()?.name != SavedPlace.HOME) MrtHomeChip(onMrtHome)
+    // 一行四个方块，多了换行，不用左右滑
+    val tiles = buildList<@Composable RowScope.() -> Unit> {
+        if (homeFirst.firstOrNull()?.name != SavedPlace.HOME) add { MrtHomeTile(onMrtHome) }
         homeFirst.forEach { place ->
-            GlassButton(onClick = { onChoose(place) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
-                Icon(
-                    if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star,
-                    contentDescription = null,
-                    tint = RandoAmber,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(place.name, color = Ink, fontSize = 15.sp)
+            add {
+                PlaceTile(place.name, if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star, if (place.name == SavedPlace.HOME) AccentInk else RandoYellow) { onChoose(place) }
             }
-            if (place.name == SavedPlace.HOME) MrtHomeChip(onMrtHome)
+            if (place.name == SavedPlace.HOME) add { MrtHomeTile(onMrtHome) }
+        }
+    }
+    Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        tiles.chunked(PLACES_PER_ROW).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { it() }
+                repeat(PLACES_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+private const val PLACES_PER_ROW = 4
+
+/** 收藏的地方：凸起的小方块，上面图标下面名字 */
+@Composable
+private fun RowScope.PlaceTile(name: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, onClick: () -> Unit) {
+    NeuButton(onClick = onClick, modifier = Modifier.weight(1f).height(64.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            Text(name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
         }
     }
 }
 
 @Composable
-private fun MrtHomeChip(onClick: () -> Unit) {
-    GlassButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
-        Text(tr("坐 MRT 回家", "MRT home"), color = Ink, fontSize = 15.sp)
-    }
+private fun RowScope.MrtHomeTile(onClick: () -> Unit) {
+    PlaceTile(tr("坐MRT回家", "MRT home"), RandoIcons.Train, RandoRed.onGlass(), onClick)
 }
 
 @Composable
 private fun StartLine(start: Place?, pickingStart: Boolean, onPickStart: () -> Unit, onUseMyLocation: () -> Unit) {
     Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(if (start == null) RandoBlue else RandoGreen))
+        Box(Modifier.size(8.dp).clip(CircleShape).background(if (start == null) RandoBlue else RandoAccent))
         Spacer(Modifier.width(8.dp))
         Text(
             start?.name.let { n -> if (n == null) tr("从我的位置出发", "From my location") else tr("从${n}出发", "From $n") },
@@ -1058,7 +1099,7 @@ private fun LinkText(text: String, onClick: () -> Unit) {
             .clip(GlassShapes.Pill)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
-        color = RandoGreen.onGlass(),
+        color = AccentInk,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
     )
@@ -1082,7 +1123,7 @@ private fun Waiting(text: String) {
                     .graphicsLayer { translationY = -lift * 6.dp.toPx() }
                     .size(7.dp)
                     .clip(CircleShape)
-                    .background(RandoGreen.copy(alpha = 0.5f + lift * 0.5f))
+                    .background(RandoAccent.copy(alpha = 0.5f + lift * 0.5f))
             )
         }
         Spacer(Modifier.width(8.dp))
@@ -1173,7 +1214,7 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
             Pace.entries.forEach { pace ->
                 DropdownMenuItem(
                     text = { Text(paceText(pace, prefs.mySpeed).removePrefix(tr("按", "at ")).replaceFirstChar(Char::uppercase)) },
-                    leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass()) },
+                    leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = AccentInk) },
                     onClick = {
                         open = false
                         if (pace != prefs.pace) onPace(pace)
@@ -1228,11 +1269,11 @@ private fun DetailsToggle(expanded: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (expanded) tr("收起", "Less") else tr("详情：爬升、过马路、天气、补给", "Details: climbs, crossings, weather, supplies"), color = RandoGreen.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (expanded) tr("收起", "Less") else tr("详情：爬升、过马路、天气、补给", "Details: climbs, crossings, weather, supplies"), color = AccentInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Icon(
             Icons.Default.KeyboardArrowDown,
             contentDescription = null,
-            tint = RandoGreen.onGlass(),
+            tint = AccentInk,
             modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn },
         )
     }
@@ -1532,7 +1573,7 @@ fun FinishedCard(
             record?.let { Text(it, color = RandoGreen.onGlass(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
         }
         if (canReturn) {
-            GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+            GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
                 Text(tr("原路返回", "Ride back"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -1590,7 +1631,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
                 val progress = state.progress
                 when {
                     progress != null -> {
-                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = RandoGreen)
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = RandoAccent)
                         Text(tr("正在下载 ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}", "Downloading ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}"), color = Ink, fontSize = 15.sp)
                     }
                     state.downloadedAt != null -> Text(
@@ -1607,7 +1648,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
             when {
                 state.progress != null -> TextButton(onClick = onCancel) { Text(tr("取消下载", "Cancel download"), color = RandoRed.onGlass()) }
                 state.downloadedAt != null -> TextButton(onClick = onDownload) { Text(tr("更新", "Update")) }
-                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) }
+                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = AccentInk, fontWeight = FontWeight.SemiBold) }
             }
         },
         dismissButton = {
@@ -1779,7 +1820,7 @@ fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
                 Text(tr("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", "Only folded foldable bikes (up to 114×64×36 cm) are allowed on the MRT; regular bikes aren't. Avoid peak hours."), color = InkSoft, fontSize = 13.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("算了", "Never mind")) } },
     )
 }

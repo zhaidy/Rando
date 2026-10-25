@@ -357,7 +357,7 @@ fun SharedRouteDialog(route: SharedRoute, navigating: Boolean, onFollow: () -> U
                 if (navigating) Text(tr("跟着骑会换掉你现在的导航", "Following replaces your current navigation"), color = InkSoft, fontSize = 14.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onFollow) { Text(tr("跟着骑", "Follow"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onFollow) { Text(tr("跟着骑", "Follow"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDecline) { Text(tr("不用", "No thanks"), color = InkSoft) } },
     )
 }
@@ -433,7 +433,7 @@ fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
             Button(
                 onClick = onOk,
                 modifier = Modifier.fillMaxWidth().height(96.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = RandoGreen),
+                colors = ButtonDefaults.buttonColors(containerColor = RandoAccent),
             ) { Text(tr("我没事", "I'm OK"), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold) }
         }
     }
@@ -451,7 +451,7 @@ fun SosDialog(alert: SosAlert, me: LatLon?, onGo: () -> Unit, onDismiss: () -> U
             val far = me?.let { tr("离你 ${Format.distance(Geo.distance(it, alert.location).toInt())}。", "${Format.distance(Geo.distance(it, alert.location).toInt())} away. ") }.orEmpty()
             Text(tr("${far}TA 的手机检测到可能摔车，还没有回应。", "${far}Their phone detected a possible crash and they haven't responded."), color = Ink, fontSize = 16.sp)
         },
-        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航过去", "Navigate there"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航过去", "Navigate there"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("知道了", "OK"), color = InkSoft) } },
     )
 }
@@ -471,7 +471,7 @@ fun HazardDialog(hazard: Hazard, onDelete: () -> Unit, onDismiss: () -> Unit) {
             val effect = if (hazard.type.avoid) tr("算路时会绕开这里，30 天后自动失效。", "Routes avoid this spot; it expires after 30 days.") else tr("骑到附近会提醒你减速。", "You'll be told to slow down when you ride nearby.")
             Text(tr("$who，$whenText。$effect", "$who $whenText. $effect"), color = Ink, fontSize = 16.sp)
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("好", "OK"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("好", "OK"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDelete) { Text(tr("已经好了，删掉", "Cleared, remove it"), color = RandoRed.onGlass()) } },
     )
 }

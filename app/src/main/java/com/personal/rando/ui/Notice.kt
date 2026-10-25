@@ -70,7 +70,7 @@ fun NoticeHost(host: SnackbarHostState, modifier: Modifier = Modifier) {
                     fontSize = 15.sp,
                 )
                 data.visuals.actionLabel?.let { label ->
-                    GlassButton(onClick = data::performAction, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+                    GlassButton(onClick = data::performAction, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                         Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }

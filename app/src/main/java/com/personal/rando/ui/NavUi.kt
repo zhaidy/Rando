@@ -127,7 +127,7 @@ private fun rollUp(): ContentTransform = ContentTransform(
 
 /** 导航时顶部的绿玻璃：箭头、离路口多远、怎么走；换路口时箭头从下面滑上来 */
 @Composable
-fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: GlassTone = GlassTone.Tinted(RandoGreen)) {
+fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: GlassTone = GlassTone.Tinted(RandoAccent)) {
     val progress = navigation.progress
     GlassPanel(modifier, shape = GlassShapes.Card, tone = tone) {
         val key = when {
@@ -358,7 +358,7 @@ fun SegmentCard(
                         Text(markLabel, color = Ink, fontSize = 15.sp)
                     }
                 }
-                PrimaryButton(onClick = onStreetView, color = RandoGreen) {
+                PrimaryButton(onClick = onStreetView, color = RandoAccent) {
                     Text(tr("看实景", "Street view"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))

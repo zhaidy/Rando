@@ -1110,7 +1110,7 @@ private fun FinishDialog(
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoGreen)) { Text(tr("继续骑", "Keep riding")) }
+                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoAccent)) { Text(tr("继续骑", "Keep riding")) }
                 Row {
                     if (recording && navigating) TextButton(onClick = onStopNavigation) { Text(tr("只停导航", "Stop navigation only"), color = Ink) }
                     TextButton(onClick = onFinish) { Text(tr("结束", "End"), color = RandoRed.onGlass(), fontWeight = FontWeight.SemiBold) }

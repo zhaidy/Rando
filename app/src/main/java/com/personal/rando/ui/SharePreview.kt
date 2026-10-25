@@ -250,7 +250,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                             val c = card
                             if (c == null) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(color = RandoGreen, modifier = Modifier.size(32.dp))
+                                    CircularProgressIndicator(color = RandoAccent, modifier = Modifier.size(32.dp))
                                     Spacer(Modifier.height(10.dp))
                                     Text(tr("正在画图…", "Drawing…"), color = InkSoft, fontSize = 14.sp)
                                 }
@@ -282,7 +282,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                             Switch(
                                 checked = hide,
                                 onCheckedChange = { hide = it; draw() },
-                                colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                                colors = SwitchDefaults.colors(checkedTrackColor = RandoAccent),
                             )
                         }
                         if (chosen.isNotEmpty()) {
@@ -294,7 +294,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                                 Switch(
                                     checked = withOriginals,
                                     onCheckedChange = { withOriginals = it },
-                                    colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                                    colors = SwitchDefaults.colors(checkedTrackColor = RandoAccent),
                                 )
                             }
                         }
@@ -311,7 +311,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                                 modifier = Modifier.weight(1f),
                             ) {
                                 if (saved) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = AccentInk, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
                                 }
                                 Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -324,7 +324,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                tone = GlassTone.Tinted(if (c == null) Color(0xFF9FB8A8) else RandoGreen),
+                                tone = GlassTone.Tinted(if (c == null) Color(0xFF9FB8A8) else RandoAccent),
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
@@ -398,7 +398,7 @@ private fun PhotoRow(
             else Text(
                 tr("自动找骑行时拍的", "Find ride photos"),
                 Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onAsk).padding(horizontal = 6.dp, vertical = 4.dp),
-                color = RandoGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = AccentInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -423,13 +423,13 @@ private fun PhotoRow(
                         }
                         .size(56.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .border(2.5.dp, if (on) RandoGreen else Color.Transparent, RoundedCornerShape(10.dp))
+                        .border(2.5.dp, if (on) RandoAccent else Color.Transparent, RoundedCornerShape(10.dp))
                         .clickable { onToggle(p) },
                 ) {
                     Image(image, contentDescription = if (on) tr("已选的照片", "Chosen photo") else tr("没选的照片", "Photo, not chosen"), modifier = Modifier.fillMaxSize().alpha(if (on) 1f else 0.55f), contentScale = ContentScale.Crop)
                     if (on) {
                         Box(
-                            Modifier.align(Alignment.TopEnd).padding(3.dp).size(18.dp).clip(CircleShape).background(RandoGreen),
+                            Modifier.align(Alignment.TopEnd).padding(3.dp).size(18.dp).clip(CircleShape).background(RandoAccent),
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp)) }
                     }

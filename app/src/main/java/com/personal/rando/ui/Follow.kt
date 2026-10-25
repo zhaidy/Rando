@@ -98,7 +98,7 @@ fun RecenterButton(follow: Follow, modifier: Modifier = Modifier, dark: Boolean 
         exit = scaleOut() + fadeOut(),
     ) {
         GlassIconButton(onClick = follow::recenter, tone = if (dark) GlassTone.Dark else GlassTone.Light) {
-            Icon(Icons.Default.LocationOn, contentDescription = tr("回到我的位置", "Back to my location"), tint = if (dark) Color.White else RandoGreen)
+            Icon(Icons.Default.LocationOn, contentDescription = tr("回到我的位置", "Back to my location"), tint = if (dark) Color.White else AccentInk)
         }
     }
 }
