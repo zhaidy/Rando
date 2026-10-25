@@ -471,8 +471,19 @@ class MusicState(private val music: Music, private val context: android.content.
     fun previous() = music.previous()
     fun grant() { runCatching { context.startActivity(Music.settingsIntent()) } }
 
-    internal fun refresh() { now = runCatching { music.now() }.getOrNull() }
+    /** 只知道「有声音」时连着几秒都有才算，提示音「嘀」一下不会冒出音乐条 */
+    private var heard = 0
+
+    internal fun refresh() {
+        val got = runCatching { music.now() }.getOrNull()
+        heard = if (got != null && got.title == null) heard + 1 else 0
+        now = got?.takeIf { it.title != null || heard >= HEARD_SECONDS }
+    }
     private fun refreshSoon() { now = now?.copy(playing = !(now?.playing ?: false)) }
+
+    private companion object {
+        const val HEARD_SECONDS = 3
+    }
 }
 
 @Composable
