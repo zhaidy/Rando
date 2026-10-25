@@ -29,8 +29,8 @@ class BRouterClient(
 
     suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
 
-    /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点 */
-    suspend fun route(stops: List<LatLon>, asked: RoutePrefs): Route = withContext(Dispatchers.IO) {
+    /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点；[alternative] 是第几条备选（0 是最好的那条） */
+    suspend fun route(stops: List<LatLon>, asked: RoutePrefs, alternative: Int = 0): Route = withContext(Dispatchers.IO) {
         // 中午挑树荫、天黑挑路灯：按现在的时间，规划和导航中重新算路都一样
         val prefs = with(RideTime) { asked.at(clock()) }
         val watts = prefs.pace.watts
@@ -38,17 +38,17 @@ class BRouterClient(
         val marked = corrections()
         val polylines = RoadCorrections.polylines(stops, marked, prefs.avoidRoads)
         val route = run {
-            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos, polylines))
+            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos, polylines, alternative))
             // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
             val cached = uploaded[custom]
             if (cached != null) {
                 try {
-                    return@run fetch(url(stops, cached, watts, nogos, polylines))
+                    return@run fetch(url(stops, cached, watts, nogos, polylines, alternative))
                 } catch (_: IOException) {
                     uploaded.remove(custom)
                 }
             }
-            fetch(url(stops, upload(custom), watts, nogos, polylines))
+            fetch(url(stops, upload(custom), watts, nogos, polylines, alternative))
         }
         RoadCorrections.apply(route, marked).let { it.copy(durationSeconds = prefs.duration(it)) }
     }
@@ -83,11 +83,11 @@ class BRouterClient(
     }
 
     /** [watts]：骑手平均功率，只影响预计时间，不影响走哪条路；null 用配置里的默认（100 瓦） */
-    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null, nogos: List<LatLon> = emptyList(), polylines: String? = null): String =
+    fun url(stops: List<LatLon>, profileName: String, watts: Int? = null, nogos: List<LatLon> = emptyList(), polylines: String? = null, alternative: Int = 0): String =
         baseUrl.toHttpUrl().newBuilder()
             .addQueryParameter("lonlats", stops.joinToString("|", transform = ::coord))
             .addQueryParameter("profile", profileName)
-            .addQueryParameter("alternativeidx", "0")
+            .addQueryParameter("alternativeidx", alternative.toString())
             .addQueryParameter("format", "geojson")
             // 带上路口转向提示（voicehints），导航播报要用
             .addQueryParameter("timode", "2")

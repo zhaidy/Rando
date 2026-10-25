@@ -1,5 +1,6 @@
 package com.personal.rando.screenshots
 
+import com.personal.rando.routing.RouteOption
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -151,6 +152,21 @@ class UiScreenshotTest {
     @Test fun plannerEmpty() = shot("1_planner_empty") { Planner() }
 
     @Test fun plannerRoute() = shot("2_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+
+    @Test fun plannerChoices() = shot("2f_planner_choices") {
+        val options = listOf(
+            RouteOption(route, RoutePrefs(), best = listOf(com.personal.rando.routing.Measure.ROAD)),
+            RouteOption(
+                route.copy(distanceMeters = route.distanceMeters - 900, durationSeconds = route.durationSeconds - 300),
+                RoutePrefs(profile = com.personal.rando.routing.BikeProfile.ROAD),
+                best = listOf(com.personal.rando.routing.Measure.TIME, com.personal.rando.routing.Measure.DISTANCE),
+                better = mapOf(com.personal.rando.routing.Measure.TIME to 300, com.personal.rando.routing.Measure.DISTANCE to 900),
+                worse = mapOf(com.personal.rando.routing.Measure.ROAD to 1400),
+            ),
+            RouteOption(route, RoutePrefs(), better = mapOf(com.personal.rando.routing.Measure.CROSSINGS to 3)),
+        )
+        Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList(), options))
+    }
 
     /** 卡片中间往下划收起，再往上划展开，不用非得拖顶上的拖动条 */
     @Test fun plannerSwipeAnywhere() {

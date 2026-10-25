@@ -11,6 +11,8 @@ import com.personal.rando.rando
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
+import com.personal.rando.routing.RouteOption
+import com.personal.rando.routing.RouteOptions
 import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.weather.RouteWind
 import com.personal.rando.places.Covered
@@ -64,8 +66,19 @@ sealed interface RouteState {
     /** 起点用「我的位置」，但还没定位到 */
     data object WaitingForLocation : RouteState
     data object Loading : RouteState
-    /** [stops]：依次经过的点，起点、途经点、终点 */
-    data class Ready(val route: Route, val stops: List<LatLon>) : RouteState
+    /**
+     * [stops]：依次经过的点，起点、途经点、终点。[options] 是几条可选的路线（只有一条时是空的），
+     * [route] 是选中的第 [chosen] 条
+     */
+    data class Ready(
+        val route: Route,
+        val stops: List<LatLon>,
+        val options: List<RouteOption> = emptyList(),
+        val chosen: Int = 0,
+    ) : RouteState {
+        /** 选中的那条是按什么偏好算的；null 就是按现在的偏好 */
+        val chosenPrefs: RoutePrefs? get() = options.getOrNull(chosen)?.prefs
+    }
     data class Failed(val message: String) : RouteState
 }
 
@@ -299,10 +312,11 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     fun saveRoute(name: String) {
         val s = _state.value
         val ready = s.route as? RouteState.Ready ?: return
+        val prefs = ready.chosenPrefs ?: s.prefs
         savedRoutes.save(
             SavedRoute(
-                name = name, stops = ready.stops, profile = s.prefs.profile, avoidRoads = s.prefs.avoidRoads,
-                avoidBridges = s.prefs.avoidBridges, meters = ready.route.distanceMeters, savedAt = System.currentTimeMillis(),
+                name = name, stops = ready.stops, profile = prefs.profile, avoidRoads = prefs.avoidRoads,
+                avoidBridges = prefs.avoidBridges, meters = ready.route.distanceMeters, savedAt = System.currentTimeMillis(),
             )
         )
     }
@@ -356,7 +370,19 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val ready = s.route as? RouteState.Ready ?: return
         _state.update { it.copy(results = emptyList(), query = "") }
         val title = s.destination?.name ?: s.loop?.let { "骑一圈 ${it.targetMeters / 1000} 公里" } ?: "路线"
-        session.startNavigation(ready.route, ready.stops, s.prefs, title)
+        session.startNavigation(ready.route, ready.stops, ready.chosenPrefs ?: s.prefs, title)
+    }
+
+    /** 换成第 [index] 条可选的路线；天气、补给点按这条重新查 */
+    fun chooseOption(index: Int) {
+        val ready = _state.value.route as? RouteState.Ready ?: return
+        val option = ready.options.getOrNull(index) ?: return
+        if (index == ready.chosen) return
+        routeJob?.cancel()
+        _state.update {
+            it.copy(route = ready.copy(route = option.route, chosen = index), weather = null, amenities = emptyList(), wind = null, covered = emptyList())
+        }
+        routeJob = viewModelScope.launch { loadExtras(option.route) }
     }
 
     fun retry() = planRoute()
@@ -414,22 +440,35 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         }
         _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList(), wind = null, covered = emptyList()) }
         routeJob = viewModelScope.launch {
+            // 去某个地方时另外算几条不同的，先把按偏好算的那条显示出来，其余的算好再给选
+            val stops = listOf(from) + s.via.map { it.location } + (s.destination?.location ?: from)
+            val others = if (s.loop != null) emptyList() else RouteOptions.variants(s.prefs).drop(1).map { v ->
+                async { quietly { router.route(stops, v.prefs, v.alternative) }?.let { it to v.prefs } }
+            }
             val next = try {
                 if (s.loop != null) {
                     planLoop(from, s.loop, s.prefs)
                 } else {
-                    val stops = listOf(from) + s.via.map { it.location } + s.destination!!.location
                     RouteState.Ready(router.route(stops, s.prefs), stops)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                others.forEach { it.cancel() }
                 RouteState.Failed(e.message ?: "算路失败")
             }
             _state.update { it.copy(route = next) }
             if (startWhenReady) {
                 startWhenReady = false
                 if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say("算路失败，${next.message}")
+            }
+            if (next is RouteState.Ready && others.isNotEmpty()) launch {
+                val found = others.awaitAll().filterNotNull()
+                val options = withContext(Dispatchers.Default) { RouteOptions.pick(listOf(next.route to s.prefs) + found) }
+                if (options.size > 1) _state.update { st ->
+                    val ready = st.route as? RouteState.Ready
+                    if (ready?.route === next.route) st.copy(route = ready.copy(options = options)) else st
+                }
             }
             if (next is RouteState.Ready) loadExtras(next.route)
         }
