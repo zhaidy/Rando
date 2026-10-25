@@ -481,7 +481,11 @@ private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
     Column(modifier) {
         RideMessage("自由骑行")
         Text(
-            recording?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · 爬升 ${it.ascendMeters.toInt()} 米" } ?: "记录中",
+            recording?.let {
+                "已骑 ${Format.distance(it.distanceMeters.toInt())} · 爬升 ${it.ascendMeters.toInt()} 米" +
+                    // 停下来不算时间，告诉人一声
+                    if (it.movingSeconds > 0 && it.currentSpeed == 0.0) " · 已自动暂停" else ""
+            } ?: "记录中",
             color = DIM,
             fontSize = 18.sp,
         )

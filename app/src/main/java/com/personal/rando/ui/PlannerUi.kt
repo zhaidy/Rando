@@ -104,6 +104,7 @@ import com.personal.rando.places.ParkedBike
 import androidx.compose.ui.graphics.asImageBitmap
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
+import androidx.compose.material3.Switch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -1405,10 +1406,18 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
-/** 设置：体重（算卡路里） */
+/** 设置：体重（算卡路里）、骑车自动开始记录 */
 @Composable
-fun SettingsDialog(settings: Settings, onSave: (Settings) -> Unit, onDismiss: () -> Unit) {
+fun SettingsDialog(
+    settings: Settings,
+    onSave: (Settings) -> Unit,
+    onDismiss: () -> Unit,
+    /** 定位已经是「始终允许」 */
+    backgroundLocation: Boolean = false,
+    onAskBackgroundLocation: () -> Unit = {},
+) {
     var weight by remember { mutableStateOf(settings.weightKg.toInt().toString()) }
+    var autoStart by remember { mutableStateOf(settings.autoStart) }
     val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1425,10 +1434,21 @@ fun SettingsDialog(settings: Settings, onSave: (Settings) -> Unit, onDismiss: ()
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("骑车时自动开始记录", color = Ink, fontSize = 16.sp)
+                        Text("停下来 10 分钟没动自动结束保存", color = InkSoft, fontSize = 13.sp)
+                    }
+                    Switch(checked = autoStart, onCheckedChange = { autoStart = it })
+                }
+                if (autoStart && !backgroundLocation) {
+                    Text("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", color = InkSoft, fontSize = 13.sp)
+                    LinkText("去设成始终允许", onAskBackgroundLocation)
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble())) }) { Text("保存") }
+            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart)) }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
