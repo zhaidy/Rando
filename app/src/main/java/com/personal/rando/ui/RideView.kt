@@ -137,7 +137,7 @@ fun RideView(
     recording: RecordingState?,
     onMap: () -> Unit,
     onStop: () -> Unit,
-    /** 前方天气；不下雨就不显示 */
+    /** 前方天气；不下雨就不显示，下雨也只亮一会儿 */
     weather: RouteWeather? = null,
     /** 导航路线两旁的补给点 */
     amenities: List<AmenityOnRoute> = emptyList(),
@@ -225,7 +225,7 @@ fun RideView(
                     if (timeline != null && progress != null && !progress.arrived) {
                         RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
                     }
-                    Extras(weather, briefly(climate?.warning), amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
+                    Extras(briefly(weather?.takeIf { !it.dry }?.summary), briefly(climate?.warning), amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                     teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                     walkie?.let {
                         RideWalkieRow(it, onToggleTalk, onTalkLevel, onTalkMode, Modifier.fillMaxWidth().padding(start = 22.dp, end = 14.dp).padding(top = 6.dp), onTalkMute)
@@ -711,12 +711,12 @@ private fun BigStat(value: String, label: String, modifier: Modifier, highlight:
     }
 }
 
-/** 天气提醒一整趟都不变，开头念过了，屏幕上只亮一会儿；变了再亮 */
+/** 天气提醒、下雨都念过了，屏幕上只亮一会儿；变了再亮 */
 @Composable
-private fun briefly(warning: String?): String? {
+private fun briefly(text: String?): String? {
     var shown by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(warning) {
-        shown = warning
+    LaunchedEffect(text) {
+        shown = text
         delay(WARNING_SHOWN_MS)
         shown = null
     }
@@ -727,12 +727,11 @@ private const val WARNING_SHOWN_MS = 30_000L
 
 /** 前方最近的补给（五公里内，最多三种）和要下的雨 */
 @Composable
-private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<AmenityOnRoute>, along: Double, modifier: Modifier) {
+private fun Extras(rain: String?, warning: String?, amenities: List<AmenityOnRoute>, along: Double, modifier: Modifier) {
     val next = amenities.nextOfEach(along).entries
         .filter { it.value <= AMENITY_SHOWN_METERS }
         .sortedBy { it.value }
         .take(3)
-    val rain = weather?.takeIf { !it.dry }?.summary
     if (next.isEmpty() && rain == null && warning == null) return
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (next.isNotEmpty()) {
