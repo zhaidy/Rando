@@ -190,9 +190,22 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val speed = MySpeed.of(session.rides.list().map { it.distanceMeters to it.movingSeconds })
         if (speed == _state.value.prefs.mySpeed) return
         _state.update { it.copy(prefs = it.prefs.copy(mySpeed = speed)) }
-        // 路线已经在了，按新的速度重新算一下预计时间
-        // 只有「按我的速度」时预计时间才跟着变；其他档位不用重算一遍、把选好的备选冲掉
-        if (_state.value.route != RouteState.Idle && _state.value.prefs.pace == Pace.MINE) planRoute()
+        // 路线已经在了，按新的速度改一下预计时间（就是距离除以速度）；不重新算路，不然选好的备选会被冲掉。
+        // 只有「按我的速度」时预计时间才跟着变
+        if (_state.value.prefs.pace != Pace.MINE) return
+        when (val r = _state.value.route) {
+            is RouteState.Ready -> {
+                val options = RouteOptions.rescore(r.options.map { o ->
+                    val prefs = o.prefs.copy(mySpeed = speed)
+                    o.copy(route = o.route.copy(durationSeconds = prefs.duration(o.route)), prefs = prefs)
+                })
+                val route = options.getOrNull(r.chosen)?.route
+                    ?: r.route.copy(durationSeconds = _state.value.prefs.duration(r.route))
+                _state.update { it.copy(route = r.copy(route = route, options = options)) }
+            }
+            RouteState.Loading -> planRoute()
+            else -> Unit
+        }
     }
 
     private fun loadPrefs(): RoutePrefs {
@@ -301,13 +314,17 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         }
     private var startWhenReadyAfter = 0
 
+    private var goToJob: Job? = null
+
     /** 语音「去某个地方」：收藏的地方优先，没有就搜，取第一个结果；算好路直接开始导航 */
     fun goTo(name: String, onFailed: (String) -> Unit) {
+        // 说了「去 A」又改口「去 B」：A 的搜索晚回来也不能把 B 顶掉
+        goToJob?.cancel()
         savedPlaces.places.value.firstOrNull { it.name == name }?.let {
             arriveAt(Place(it.label, "", it.location))
             return
         }
-        viewModelScope.launch {
+        goToJob = viewModelScope.launch {
             val place = try {
                 places.search(name, _state.value.start?.location ?: myLocation).firstOrNull()
             } catch (e: CancellationException) {
@@ -333,6 +350,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     /** 语音「骑一圈」「骑某条收藏的路线」：算好直接开始 */
     fun startLoop(km: Int) {
+        // 和 arriveAt 一样：骑着说的，从现在的位置开始绕，不是从之前规划的起点
+        _state.update { it.copy(pickingHome = false, pickingStart = false, pickingVia = false, start = null) }
         startWhenReady = true
         chooseLoop(km)
     }
@@ -398,6 +417,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun clearRoute() {
         startWhenReady = false
+        goToJob?.cancel()
         routeJob?.cancel()
         _state.update { it.copy(destination = null, via = emptyList(), loop = null, pickingVia = false, route = RouteState.Idle) }
     }

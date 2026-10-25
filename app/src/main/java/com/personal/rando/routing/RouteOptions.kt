@@ -71,6 +71,16 @@ object RouteOptions {
             if (kept.size == MAX) break
         }
         if (kept.size == 1) return listOf(RouteOption(main, routes.first().second))
+        return score(kept)
+    }
+
+    /** 预计时间变了（我的平均速度变了）：几条还是这几条、顺序不变，重新比一下谁好在哪 */
+    fun rescore(options: List<RouteOption>): List<RouteOption> =
+        if (options.size < 2) options
+        else score(options.map { it.route to it.prefs }).zip(options) { new, old -> new.copy(alternative = old.alternative) }
+
+    private fun score(kept: List<Pair<Route, RoutePrefs>>): List<RouteOption> {
+        val main = kept.first().first
         return kept.map { (route, prefs) ->
             RouteOption(
                 route = route,

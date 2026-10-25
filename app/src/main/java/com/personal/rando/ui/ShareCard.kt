@@ -90,7 +90,7 @@ object ShareCard {
     suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card =
         render(context, "rando-${ride.id}", tr("分享骑行", "Share ride"), listOf(ride), hide, photos) { map, tracks, pins -> draw(map, tracks.first(), ride, record, pins) }
 
-    /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
+    /** 同一天骑的几次：轨迹画在一张图上，数据加起来；以前哪天的不写「今天」 */
     suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card? {
         if (rides.isEmpty()) return null
         return render(context, "rando-day-${rides.first().id}", if (RideStats.today(rides, System.currentTimeMillis()).isNotEmpty()) tr("分享今天的骑行", "Share today's rides") else tr("分享这天的骑行", "Share this day's rides"), rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins) }

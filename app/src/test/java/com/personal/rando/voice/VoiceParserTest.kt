@@ -23,6 +23,7 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Loop(20), p("骑一圈二十公里"))
         assertEquals(VoiceCommand.Loop(25), p("一圈 25 公里"))
         assertEquals(VoiceCommand.Loop(10), p("骑一圈十公里"))
+        assertEquals(VoiceCommand.Loop(20), p("骑一圈二十公里吧"))
         assertEquals(VoiceCommand.Route("东海岸一圈"), p("骑东海岸一圈"))
         assertEquals(VoiceCommand.Route("上班"), p("骑上班那条"))
         assertEquals(VoiceCommand.Loop(20), p("骑二十公里"))
@@ -53,6 +54,7 @@ class VoiceParserTest {
     @Test
     fun `听不懂的`() {
         assertEquals(VoiceCommand.Unknown("今天吃什么"), p("今天吃什么"))
+        assertEquals(VoiceCommand.Unknown("导航"), p("导航"))
     }
 
     @Test

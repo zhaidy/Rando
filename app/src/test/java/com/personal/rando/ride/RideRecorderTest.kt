@@ -113,4 +113,14 @@ class RideRecorderTest {
         // 没有 GPS 速度，骑出精度圈了也收
         assertTrue(r.add(fix(3, 6, accuracy = 20f)))
     }
+
+    @Test
+    fun `停久了 GPS 还说停着，飘出精度圈也不算`() {
+        val r = RideRecorder(0)
+        r.add(fix(0, 0, accuracy = 8f))
+        // 停了 10 秒后跳了 11 米：两点算出来才 1.1 米/秒
+        assertFalse(r.add(fix(1, 10, accuracy = 8f).copy(speed = 0.1f)))
+        assertEquals(0.0, r.state().distanceMeters, 0.0)
+        assertEquals(0L, r.state().movingSeconds)
+    }
 }

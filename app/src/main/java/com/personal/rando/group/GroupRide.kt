@@ -394,7 +394,7 @@ class GroupRide(
             is GroupEvent.Left -> {
                 _state.update { s -> s?.copy(teammates = s.teammates.filterNot { it.id == event.id }) }
                 if (_offer.value?.id == event.id) _offer.value = null
-                _sos.update { list -> list.filterNot { it.id == event.id } }
+                // 求助不撤：好好离队的会先发 sos_clear；这是断线，摔了车手机没信号的时候正要看
             }
             is GroupEvent.Sos -> if (event.alert.id != myId) {
                 _sos.update { list -> list.filterNot { it.id == event.alert.id } + event.alert }

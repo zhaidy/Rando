@@ -81,7 +81,9 @@ object RideHeat {
     fun trimStill(track: List<LatLon>): List<LatLon> {
         val start = firstMoving(track)
         if (start < 0) return emptyList()
-        val end = track.size - 1 - firstMoving(track.asReversed())
+        // 倒着按 100 米一截切得和正着不一样，可能一截都不够直：那结尾就不剪
+        val back = firstMoving(track.asReversed()).coerceAtLeast(0)
+        val end = track.size - 1 - back
         return if (end > start) track.subList(start, end + 1) else emptyList()
     }
 

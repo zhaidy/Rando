@@ -814,7 +814,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val text = when {
             route != null -> {
-                val road = route.breakdown()[RoadKind.ROAD] ?: 0
+                val road = route.roadOnTheWay()
                 "${Format.distance(route.distanceMeters)} · ${Format.duration(route.durationSeconds)} · " +
                     if (road > 0) tr("${Format.distance(road)} 马路", "${Format.distance(road)} on roads") else tr("不上马路", "no roads")
             }

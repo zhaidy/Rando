@@ -50,7 +50,7 @@ class RideRecorder(private val startedAt: Long) {
         if (speed > MAX_SPEED) return false
         // GPS 芯片按多普勒算的速度比两点距离除时间稳得多，有就用它
         val gpsSpeed = fix.speed?.toDouble()?.coerceAtMost(MAX_SPEED)
-        if (d < MIN_STEP_METERS || still(fix, gpsSpeed, d, speed)) {
+        if (d < MIN_STEP_METERS || still(fix, gpsSpeed, d)) {
             // 原地没动；没有 GPS 速度时，停太久就当速度归零
             currentSpeed = gpsSpeed ?: if (seconds > 5) 0.0 else currentSpeed
             return false
@@ -58,7 +58,7 @@ class RideRecorder(private val startedAt: Long) {
         distance += d
         currentSpeed = gpsSpeed ?: speed
         // 中间断了很久（比如隧道里没信号）就不算进骑行时间
-        if (speed >= MOVING_SPEED && seconds <= MAX_GAP_SECONDS) moving += Math.round(seconds)
+        if ((gpsSpeed ?: speed) >= MOVING_SPEED && seconds <= MAX_GAP_SECONDS) moving += Math.round(seconds)
         maxSpeed = maxOf(maxSpeed, gpsSpeed ?: speed)
         fix.altitude?.let { alt ->
             val ref = altitudeRef
@@ -79,13 +79,13 @@ class RideRecorder(private val startedAt: Long) {
     /**
      * 人没动、是 GPS 在飘：在楼里、车棚下精度十几二十米，点会在几十米里来回跳。
      * GPS 自己的速度说在走就信它；不然位移没跳出两个点的精度圈不算，
-     * GPS 说停着、两点算出来却快得像在骑也不算
+     * GPS 说停着也不算（不看两点算出来的速度：停得越久离上一个收下的点时间越长，算出来越慢，飘远一点就混进去了）
      */
-    private fun still(fix: Fix, gpsSpeed: Double?, d: Double, speed: Double): Boolean {
+    private fun still(fix: Fix, gpsSpeed: Double?, d: Double): Boolean {
         if (gpsSpeed != null && gpsSpeed >= MOVING_SPEED) return false
+        if (gpsSpeed != null && gpsSpeed < STILL_SPEED) return true
         val noise = maxOf(fix.accuracy ?: 0f, lastAccuracy ?: 0f)
-        if (d < noise) return true
-        return gpsSpeed != null && gpsSpeed < STILL_SPEED && speed > JUMP_SPEED
+        return d < noise
     }
 
     fun state() = RecordingState(
@@ -119,8 +119,6 @@ class RideRecorder(private val startedAt: Long) {
         const val MAX_GAP_SECONDS = 30.0
         /** GPS 速度低于它就是停着 */
         const val STILL_SPEED = 0.5
-        /** 停着的时候两点算出来比这快，是飘点 */
-        const val JUMP_SPEED = 4.0
         const val CLIMB_STEP_METERS = 5.0
     }
 }

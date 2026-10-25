@@ -53,7 +53,7 @@ object VoiceParser {
             Regex("路面|坑|不平|颠|烂路|积水").containsMatchIn(text) -> return VoiceCommand.Report(HazardType.BAD_SURFACE)
         }
 
-        Regex("骑?一圈(.*?)(公里|千米|km|K)?$", RegexOption.IGNORE_CASE).find(text)?.let { m ->
+        Regex("骑?一圈(.*?)(公里|千米|km|K)?(吧|左右)?$", RegexOption.IGNORE_CASE).find(text)?.let { m ->
             val km = number(m.groupValues[1])
             if (km != null && km in 1..200) return VoiceCommand.Loop(km)
         }
@@ -63,7 +63,7 @@ object VoiceParser {
             val place = m.groupValues[3]
             return VoiceCommand.GoTo(if (verb == "回" && place == "家") "家" else place)
         }
-        if (text.startsWith("导航")) return VoiceCommand.GoTo(text.removePrefix("导航"))
+        if (text.startsWith("导航") && text.length > 2) return VoiceCommand.GoTo(text.removePrefix("导航"))
         if (text == "回家") return VoiceCommand.GoTo("家")
 
         // 「骑二十公里」没说一圈也是骑一圈
