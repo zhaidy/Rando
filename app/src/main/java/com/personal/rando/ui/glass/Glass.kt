@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.personal.rando.ui.LocalPalette
+import com.personal.rando.ui.Palette
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -62,23 +64,24 @@ object Motion {
     fun <T> smooth() = spring<T>(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow)
 }
 
-/** 玻璃上再压一层颜色：白玻璃磨一点砂，文字才不会被后面的地图字干扰；带色的要实一些 */
-private fun GlassTone.fill(): Color = when (this) {
-    GlassTone.Light -> Color.White.copy(alpha = 0.50f)
+/** 玻璃上再压一层颜色：白玻璃磨一点砂，文字才不会被后面的地图字干扰；带色的要实一些。夜里默认那种是深色玻璃 */
+private fun GlassTone.fill(palette: Palette): Color = when (this) {
+    GlassTone.Light -> palette.glass
     GlassTone.Dark -> Color(0xFF0E1110).copy(alpha = 0.50f)
     is GlassTone.Tinted -> color.copy(alpha = 0.86f)
 }
 
 /** 没有可取的背景（比如对话框、截图测试）时，用更实的磨砂色代替 */
-private fun GlassTone.fallback(): Color = when (this) {
-    GlassTone.Light -> Color(0xFFF7FAF8).copy(alpha = 0.92f)
+private fun GlassTone.fallback(palette: Palette): Color = when (this) {
+    GlassTone.Light -> palette.glassFallback
     GlassTone.Dark -> Color(0xFF15191A).copy(alpha = 0.92f)
     is GlassTone.Tinted -> color.copy(alpha = 0.94f)
 }
 
-private fun GlassTone.rim(): Brush {
-    val strong = if (this == GlassTone.Dark) 0.30f else 0.85f
-    val soft = if (this == GlassTone.Dark) 0.06f else 0.12f
+private fun GlassTone.rim(palette: Palette): Brush {
+    val darkGlass = this == GlassTone.Dark || (this == GlassTone.Light && palette.dark)
+    val strong = if (darkGlass) 0.30f else 0.85f
+    val soft = if (darkGlass) 0.06f else 0.12f
     return Brush.linearGradient(
         listOf(Color.White.copy(alpha = strong), Color.White.copy(alpha = soft), Color.White.copy(alpha = strong * 0.55f))
     )
@@ -92,7 +95,8 @@ fun Modifier.liquidGlass(
     interactionSource: InteractionSource? = null,
 ): Modifier {
     val haze = LocalHazeState.current
-    val fill = tone.fill()
+    val palette = LocalPalette.current
+    val fill = tone.fill(palette)
     val style = remember(shape, fill) {
         GlassStyle.regular.then {
             shape(shape)
@@ -105,12 +109,12 @@ fun Modifier.liquidGlass(
             .hazeGlass(HazeInput.Sources(haze), style, interactionSource = interactionSource)
             .background(fill, shape)
     } else {
-        Modifier.background(tone.fallback(), shape)
+        Modifier.background(tone.fallback(palette), shape)
     }
     return this
         .then(material)
         .clip(shape)
-        .border(1.dp, tone.rim(), shape)
+        .border(1.dp, tone.rim(palette), shape)
 }
 
 /** 按下时缩一点，松手弹回来 */

@@ -89,6 +89,31 @@ class OfflineMaps(context: Context) {
         }
     }
 
+    /**
+     * 夜间模式的深色样式：瓦片、字体、图标和白天那套是同一份，已经存下了，
+     * 只差样式文件本身；存一个只有 0 级的小区域把它带上，没网时夜里也能打开地图
+     */
+    private fun saveDarkStyle() {
+        val b = PlaceSearch.SINGAPORE_BBOX.split(",").map { it.toDouble() }
+        val bounds = LatLngBounds.Builder().include(LatLng(b[1], b[0])).include(LatLng(b[3], b[2])).build()
+        val definition = OfflineTilePyramidRegionDefinition(MapLayers.DARK_STYLE_URL, bounds, 0.0, 0.0, app.resources.displayMetrics.density)
+        val metadata = JSONObject().put("name", DARK_NAME).toString().toByteArray()
+        manager.createOfflineRegion(definition, metadata, object : OfflineManager.CreateOfflineRegionCallback {
+            override fun onCreate(offlineRegion: OfflineRegion) {
+                offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
+                    override fun onStatusChanged(status: OfflineRegionStatus) {
+                        if (status.isComplete) offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                    }
+                    override fun onError(error: OfflineRegionError) = Unit
+                    override fun mapboxTileCountLimitExceeded(limit: Long) = Unit
+                })
+                offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+            }
+
+            override fun onError(error: String) = Unit
+        })
+    }
+
     fun cancel() {
         region?.setDownloadState(OfflineRegion.STATE_INACTIVE)
         delete()
@@ -102,6 +127,7 @@ class OfflineMaps(context: Context) {
             if (status.isComplete) {
                 r.setDownloadState(OfflineRegion.STATE_INACTIVE)
                 _state.value = OfflineMapState(downloadedAt = savedAt(r), bytes = status.completedResourceSize)
+                saveDarkStyle()
             } else {
                 _state.update { it.copy(progress = status.completedResourceCount.toFloat() / total, bytes = status.completedResourceSize) }
             }
@@ -122,7 +148,7 @@ class OfflineMaps(context: Context) {
     private fun deleteThen(then: () -> Unit) {
         manager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
             override fun onList(offlineRegions: Array<OfflineRegion>?) {
-                val old = offlineRegions?.filter { name(it) == NAME }.orEmpty()
+                val old = offlineRegions?.filter { name(it) == NAME || name(it) == DARK_NAME }.orEmpty()
                 if (old.isEmpty()) return then()
                 var left = old.size
                 old.forEach { r ->
@@ -149,6 +175,7 @@ class OfflineMaps(context: Context) {
 
     private companion object {
         const val NAME = "singapore"
+        const val DARK_NAME = "singapore-dark"
         /** OpenFreeMap 的矢量瓦片最大 14 级，再放大是把 14 级的放大画 */
         const val MAX_ZOOM = 14.0
     }

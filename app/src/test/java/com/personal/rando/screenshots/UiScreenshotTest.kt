@@ -110,8 +110,8 @@ class UiScreenshotTest {
         SavedPlace("East Coast Park", LatLon(1.30, 103.91)),
     )
 
-    private fun shot(name: String, content: @Composable BoxScope.() -> Unit) {
-        compose.setContent { OverMap(content = content) }
+    private fun shot(name: String, dark: Boolean = false, content: @Composable BoxScope.() -> Unit) {
+        compose.setContent { OverMap(dark = dark, content = content) }
         compose.mainClock.advanceTimeBy(2_000)
         compose.onRoot().captureRoboImage("build/screenshots/$name.png")
     }
@@ -271,6 +271,28 @@ class UiScreenshotTest {
     @Test fun plannerRouteEnglish() {
         com.personal.rando.i18n.Lang.apply(com.personal.rando.i18n.Language.EN)
         shot("16_en_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+    }
+
+    // 夜间模式：深色玻璃、浅色字
+    @Test fun plannerEmptyDark() = shot("15_dark_planner_empty", dark = true) { Planner() }
+
+    @Test fun plannerRouteDark() = shot("15b_dark_planner_route", dark = true) { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+
+    @Test fun groupDark() = shot("15c_dark_group", dark = true) {
+        Planner(
+            recording = RecordingState(startedAt = 0, distanceMeters = 5320.0, movingSeconds = 1234, currentSpeed = 5.2),
+            group = GroupState("K7PX3M", connected = true, teammates = listOf(Teammate("a", "小红"), Teammate("b", "阿明"))),
+        )
+    }
+
+    @Test fun rideListDark() = shot("15d_dark_ride_list", dark = true) { RideList(rides, {}, {}, {}, now) }
+
+    @Test fun noticeDark() = shot("15e_dark_notice", dark = true) {
+        Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList()))
+        val host = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+        val notices = com.personal.rando.ui.rememberNotices(host)
+        androidx.compose.runtime.LaunchedEffect(Unit) { notices.show("记下了，这里按马路算", long = true) }
+        com.personal.rando.ui.NoticeHost(host)
     }
 
     @Test fun crash() {

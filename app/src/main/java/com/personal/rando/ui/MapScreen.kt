@@ -275,6 +275,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     val mapView = rememberMapView(textureMode = true)
+    // 跟着系统深色模式换地图样式；系统切换时 Activity 会重建，这里读一次就行
+    val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     // 规划页上下两摞挡住了哪里，镜头框路线、框某一段时避开
     var plannerInsets by remember { mutableStateOf(PlannerInsets()) }
     // 地图转了多少度（0 是正北朝上）
@@ -292,7 +294,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 if (home) notices.show(tr("家的位置设好了", "Home is set"))
                 true
             }
-            m.setStyle(MapLayers.STYLE_URL) { s ->
+            m.setStyle(styleUrl) { s ->
                 MapLayers.install(s)
                 style = s
             }
@@ -685,7 +687,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 Icon(
                                     NorthIcon,
                                     contentDescription = tr("转回正北", "Face north"),
-                                    tint = RandoRed,
+                                    tint = RandoRed.onGlass(),
                                     modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = -bearing },
                                 )
                             }
@@ -939,7 +941,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
             shape = GlassShapes.Sheet,
-            containerColor = Color(0xF7F7FAF8),
+            containerColor = DialogColor,
             title = { Text(tr("退出这个队伍？", "Leave the team?")) },
             text = {
                 Text(
@@ -952,7 +954,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 TextButton(onClick = {
                     confirmLeave = false
                     leaveGroup()
-                }) { Text(tr("退出", "Leave"), color = RandoRed, fontWeight = FontWeight.SemiBold) }
+                }) { Text(tr("退出", "Leave"), color = RandoRed.onGlass(), fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(tr("取消", "Cancel"), color = Ink) } },
         )
@@ -1067,7 +1069,7 @@ private fun FinishDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(if (recording) tr("结束这次骑行？", "End this ride?") else tr("结束导航？", "End navigation?")) },
         text = {
             Text(
@@ -1084,7 +1086,7 @@ private fun FinishDialog(
                 Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoGreen)) { Text(tr("继续骑", "Keep riding")) }
                 Row {
                     if (recording && navigating) TextButton(onClick = onStopNavigation) { Text(tr("只停导航", "Stop navigation only"), color = Ink) }
-                    TextButton(onClick = onFinish) { Text(tr("结束", "End"), color = RandoRed, fontWeight = FontWeight.SemiBold) }
+                    TextButton(onClick = onFinish) { Text(tr("结束", "End"), color = RandoRed.onGlass(), fontWeight = FontWeight.SemiBold) }
                 }
             }
         },
@@ -1099,7 +1101,7 @@ private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismis
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("收藏这个地方", "Save this place")) },
         text = {
             Column {

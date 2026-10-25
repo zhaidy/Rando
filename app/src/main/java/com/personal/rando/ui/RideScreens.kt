@@ -212,11 +212,12 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                 )
-                GlassButton(onClick = onReview, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                // 在绿色卡片上：白底按钮，白天夜里都一样
+                GlassButton(onClick = onReview, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                     Text(tr("回顾", "Review"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
-                GlassButton(onClick = onRiddenMap, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                GlassButton(onClick = onRiddenMap, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                     Text(tr("骑过的路", "Ridden roads"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -287,7 +288,7 @@ private fun RideRow(ride: Ride, index: Int, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .pressScale(interaction, pressed = 0.97f)
                 .clip(GlassShapes.Card)
-                .background(Color.White.copy(alpha = 0.55f))
+                .background(CardColor)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
@@ -330,7 +331,7 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
         AlertDialog(
             onDismissRequest = { asking = false },
             shape = GlassShapes.Sheet,
-            containerColor = Color(0xF7F7FAF8),
+            containerColor = DialogColor,
             title = { Text(tr("分享哪些？", "Share what?")) },
             text = {
                 Text(
@@ -344,7 +345,7 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
                 TextButton(onClick = {
                     asking = false
                     preview { hide -> ShareCard.dayCard(context, day, hide) }
-                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = RandoGreen) }
+                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = RandoGreen.onGlass()) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -379,7 +380,7 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             shape = GlassShapes.Sheet,
-            containerColor = Color(0xF7F7FAF8),
+            containerColor = DialogColor,
             title = { Text(tr("删除这条记录？", "Delete this ride?")) },
             text = { Text(tr("删掉就找不回来了。", "This can't be undone.")) },
             confirmButton = {
@@ -389,7 +390,7 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
                         store.delete(id)
                         onBack()
                     }
-                }) { Text(tr("删除", "Delete"), color = RandoRed) }
+                }) { Text(tr("删除", "Delete"), color = RandoRed.onGlass()) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("取消", "Cancel")) } },
         )
@@ -413,7 +414,7 @@ fun RideDetail(
 ) {
     val haze = rememberHazeState()
     CompositionLocalProvider(LocalHazeState provides haze) {
-        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+        Box(Modifier.fillMaxSize().background(BackdropColor)) {
             map(Modifier.fillMaxSize().hazeSource(haze))
             Row(
                 Modifier
@@ -436,7 +437,7 @@ fun RideDetail(
                 Spacer(Modifier.width(10.dp))
                 GlassIconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = tr("分享", "Share"), tint = Ink) }
                 Spacer(Modifier.width(10.dp))
-                GlassIconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = tr("删除", "Delete"), tint = RandoRed) }
+                GlassIconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = tr("删除", "Delete"), tint = RandoRed.onGlass()) }
             }
             GlassPanel(
                 Modifier
@@ -446,7 +447,7 @@ fun RideDetail(
                     .padding(12.dp),
             ) {
                 Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    record?.let { Text(it, color = RandoGreen, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                    record?.let { Text(it, color = RandoGreen.onGlass(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                     Row {
                         DetailStat(Format.distance(ride.distanceMeters.toInt()), tr("距离", "Distance"), Modifier.weight(1f))
                         DetailStat(Format.clock(ride.movingSeconds), tr("骑行时间", "Ride time"), Modifier.weight(1f))
@@ -480,12 +481,13 @@ private fun DetailStat(value: String, label: String, modifier: Modifier) {
 @Composable
 private fun TrackMap(ride: Ride, modifier: Modifier) {
     val mapView = rememberMapView(textureMode = true)
+    val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     val density = LocalDensity.current
     var style by remember { mutableStateOf<Style?>(null) }
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             m.uiSettings.isRotateGesturesEnabled = false
-            m.setStyle(MapLayers.STYLE_URL) { s ->
+            m.setStyle(styleUrl) { s ->
                 MapLayers.install(s)
                 style = s
                 val track = ride.points.map { it.location }
@@ -540,7 +542,7 @@ fun RiddenMap(
 ) {
     val haze = rememberHazeState()
     CompositionLocalProvider(LocalHazeState provides haze) {
-        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+        Box(Modifier.fillMaxSize().background(BackdropColor)) {
             map(Modifier.fillMaxSize().hazeSource(haze))
             Row(
                 Modifier
@@ -625,7 +627,7 @@ private fun LoopsCard(pcn: PcnProgress, modifier: Modifier) {
                         Text(p.loop.label, Modifier.weight(1f), color = Ink, fontSize = 14.sp)
                         Text("${Format.share(p.share)} · " + tr("共 ${Format.distance(p.totalMeters.toInt())}", "of ${Format.distance(p.totalMeters.toInt())}"), color = InkSoft, fontSize = 13.sp)
                     }
-                    Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(5.dp).clip(GlassShapes.Pill).background(Color(0x22000000))) {
+                    Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(5.dp).clip(GlassShapes.Pill).background(InkSoft.copy(alpha = 0.2f))) {
                         Box(
                             Modifier
                                 .fillMaxWidth(p.share.toFloat().coerceIn(0f, 1f))
@@ -643,6 +645,7 @@ private fun LoopsCard(pcn: PcnProgress, modifier: Modifier) {
 @Composable
 private fun RiddenTracks(rides: List<Ride>, mode: RiddenMode, pcn: PcnProgress?, modifier: Modifier) {
     val mapView = rememberMapView(textureMode = true)
+    val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     val density = LocalDensity.current
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -651,7 +654,7 @@ private fun RiddenTracks(rides: List<Ride>, mode: RiddenMode, pcn: PcnProgress?,
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             m.uiSettings.isRotateGesturesEnabled = false
-            m.setStyle(MapLayers.STYLE_URL) { s ->
+            m.setStyle(styleUrl) { s ->
                 map = m
                 style = s
             }
@@ -805,7 +808,7 @@ private fun ReviewFacts(r: Review) {
         Modifier
             .fillMaxWidth()
             .clip(GlassShapes.Card)
-            .background(Color.White.copy(alpha = 0.55f))
+            .background(CardColor)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -831,7 +834,7 @@ private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> U
         Modifier
             .fillMaxWidth()
             .clip(GlassShapes.Card)
-            .background(Color.White.copy(alpha = 0.55f))
+            .background(CardColor)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -840,7 +843,7 @@ private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> U
             Text(label, color = InkSoft, fontSize = 13.sp)
             Text("${DATE.format(Date(ride.startedAt))} ${ride.title}", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
-        Text(value, color = RandoGreenDeep, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = RandoGreenDeep.onGlass(), fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 

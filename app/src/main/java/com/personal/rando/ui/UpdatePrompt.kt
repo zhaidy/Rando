@@ -67,7 +67,7 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     AlertDialog(
         onDismissRequest = { if (!updating) update = null },
         shape = com.personal.rando.ui.glass.GlassShapes.Sheet,
-        containerColor = androidx.compose.ui.graphics.Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("发现新版本 build ${info.build}", "New version available: build ${info.build}")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

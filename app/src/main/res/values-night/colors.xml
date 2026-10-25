@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间和深色地图底色接近，启动时不闪白 -->
+    <color name="rando_background">#1A1E1D</color>
+</resources>
