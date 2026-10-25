@@ -125,6 +125,7 @@ fun GroupPill(
     onToggleTalk: () -> Unit = {},
     onLevel: (VoxLevel) -> Unit = {},
     onMode: (WalkieMode) -> Unit = {},
+    onTest: () -> Unit = {},
 ) {
     Column(
         modifier
@@ -137,26 +138,11 @@ fun GroupPill(
             Text(
                 walkieText(walkie),
                 Modifier.weight(1f),
-                color = Color.White,
+                color = if (walkie.problem != null) Color(0xFFFFD08A) else Color.White,
                 fontSize = 13.sp,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (walkie.on) {
-                // 点一下换：实时 ↔ 整句
-                GlassButton(
-                    onClick = { onMode(WalkieMode.entries[(walkie.mode.ordinal + 1) % WalkieMode.entries.size]) },
-                    tone = GlassTone.Light,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text(walkie.mode.label, color = Ink, fontSize = 13.sp) }
-                Spacer(Modifier.width(6.dp))
-                GlassButton(
-                    onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
-                    tone = GlassTone.Light,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text(walkie.level.label, color = Ink, fontSize = 13.sp) }
-                Spacer(Modifier.width(6.dp))
-            }
             GlassButton(
                 onClick = onToggleTalk,
                 tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
@@ -165,18 +151,44 @@ fun GroupPill(
                 Text(if (walkie.on) "对讲开着" else "开对讲", color = if (walkie.on) Color.White else Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        if (walkie.on) {
+            // 开着对讲时另起一行：实时 / 整句、灵敏度、试一下
+            Row(Modifier.padding(top = 4.dp, end = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                GlassButton(
+                    onClick = { onMode(WalkieMode.entries[(walkie.mode.ordinal + 1) % WalkieMode.entries.size]) },
+                    tone = GlassTone.Light,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text(walkie.mode.label, color = Ink, fontSize = 13.sp) }
+                GlassButton(
+                    onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
+                    tone = GlassTone.Light,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("灵敏度：${walkie.level.label}", color = Ink, fontSize = 13.sp) }
+                GlassButton(
+                    onClick = onTest,
+                    tone = if (walkie.testing) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("试一下", color = if (walkie.testing) Color.White else Ink, fontSize = 13.sp) }
+            }
+        }
     }
 }
 
 /** 对讲现在怎样：一句话 */
 fun walkieText(w: WalkieState): String = when {
-    !w.on -> "声控对讲：直接说话，不用按键"
+    w.problem != null -> "对讲出问题了：${w.problem}"
     w.talking.isNotEmpty() && w.sending -> "${w.talking.joinToString("、")} 和你都在说"
     w.talking.isNotEmpty() -> "${w.talking.joinToString("、")} 在说话…"
+    !w.on -> "对讲没开：点「开对讲」队友才听得到你"
+    w.testing && w.sending -> "在录，说完会放给你自己听"
+    w.testing -> "试一下：说一句话，会放给你自己听"
     w.sending && w.mode == WalkieMode.CLIP -> "在录，说完停一下就发出去"
     w.sending -> "队友正在听你说"
-    else -> "在听 · ${w.device ?: "手机"}"
+    else -> "在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}"
 }
+
+/** 麦克风音量：▁▃▅▇ 亮几格 */
+private fun micBars(n: Int): String = "▁▃▅▇".mapIndexed { i, c -> if (i < n) c else '·' }.joinToString("")
 
 @Composable
 private fun GroupHeader(state: GroupState, onShare: () -> Unit, onLeave: () -> Unit) {

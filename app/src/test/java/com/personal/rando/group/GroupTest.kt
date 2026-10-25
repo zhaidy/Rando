@@ -114,4 +114,14 @@ class GroupTest {
         assertEquals(GroupEvent.Sos(SosAlert("a", "阿明", LatLon(1.3, 103.8), 5)), GroupProtocol.parse(json.toString(), 0))
         assertEquals(GroupEvent.SosCleared("a"), GroupProtocol.parse("""{"t":"sos_clear","id":"a"}""", 0))
     }
+
+    @Test
+    fun `对讲状态那一行`() {
+        assertEquals("对讲没开：点「开对讲」队友才听得到你", com.personal.rando.ui.walkieText(WalkieState()))
+        // 没开对讲也听得到队友
+        assertEquals("小红 在说话…", com.personal.rando.ui.walkieText(WalkieState(talking = setOf("小红"))))
+        assertEquals("在听 ▁▃·· · 蓝牙耳机 AirPods", com.personal.rando.ui.walkieText(WalkieState(on = true, device = "蓝牙耳机 AirPods", micBars = 2)))
+        assertEquals("试一下：说一句话，会放给你自己听", com.personal.rando.ui.walkieText(WalkieState(on = true, testing = true)))
+        assertEquals("对讲出问题了：麦克风打不开", com.personal.rando.ui.walkieText(WalkieState(problem = "麦克风打不开")))
+    }
 }
