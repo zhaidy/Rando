@@ -149,15 +149,36 @@ class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
     fun decode(frames: List<ByteArray>): ShortArray {
         val pcm = ArrayList<ShortArray>()
         for (frame in frames) {
-            val i = codec.dequeueInputBuffer(TIMEOUT_US)
+            // 输入缓冲满了：先把解好的拿走腾地方，再等一下；不要把这一帧丢掉（一下解一整句时会丢一大半）
+            var i = codec.dequeueInputBuffer(TIMEOUT_US)
+            var tries = 0
+            while (i < 0 && tries++ < MAX_TRIES) {
+                drain(pcm, 0)
+                i = codec.dequeueInputBuffer(TIMEOUT_US)
+            }
             if (i >= 0) {
                 codec.getInputBuffer(i)!!.apply { clear(); put(frame) }
                 codec.queueInputBuffer(i, 0, frame.size, timeUs, 0)
                 timeUs += 64_000
             }
-            drain(pcm)
+            drain(pcm, 0)
         }
-        drain(pcm)
+        drain(pcm, 0)
+        return join(pcm)
+    }
+
+    /** 说完了：把解码器里还没吐出来的都倒出来；之后这个解码器就不能再用了 */
+    fun finish(): ShortArray {
+        val pcm = ArrayList<ShortArray>()
+        val i = codec.dequeueInputBuffer(TIMEOUT_US * 10)
+        if (i >= 0) {
+            codec.queueInputBuffer(i, 0, 0, timeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            drain(pcm, TIMEOUT_US * 10)
+        }
+        return join(pcm)
+    }
+
+    private fun join(pcm: List<ShortArray>): ShortArray {
         val all = ShortArray(pcm.sumOf { it.size })
         var at = 0
         for (p in pcm) {
@@ -170,9 +191,10 @@ class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
     /** 有的解码器把单声道解成双声道，那就两路取平均 */
     private var channels = 1
 
-    private fun drain(out: MutableList<ShortArray>) {
+    /** 拿走解好的；[timeoutUs] 大于 0 时一直等到解码器说完了（或者等不到新的） */
+    private fun drain(out: MutableList<ShortArray>, timeoutUs: Long) {
         while (true) {
-            val o = codec.dequeueOutputBuffer(info, 0)
+            val o = codec.dequeueOutputBuffer(info, timeoutUs)
             if (o == MediaCodec.INFO_TRY_AGAIN_LATER) return
             if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 channels = codec.outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -188,6 +210,7 @@ class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
                 out += if (channels == 2) ShortArray(shorts.size / 2) { ((shorts[it * 2] + shorts[it * 2 + 1]) / 2).toShort() } else shorts
             }
             codec.releaseOutputBuffer(o, false)
+            if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return
         }
     }
 
@@ -198,5 +221,7 @@ class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
 
     private companion object {
         const val TIMEOUT_US = 10_000L
+        /** 输入缓冲一直满着，最多等这么多次（0.2 秒） */
+        const val MAX_TRIES = 20
     }
 }

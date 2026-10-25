@@ -30,6 +30,13 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
 
+    <!-- Android 11+ 要声明才看得到手机上的语音识别服务（谷歌语音输入），不然语音指令用不了 -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".RandoApp"
         android:icon="@mipmap/ic_launcher"
