@@ -311,7 +311,7 @@ class Walkie(
             Log.i(TAG, "self test: ${raw.size} reads, $samples samples, ${frames.size} aac frames, ${decoded.size} decoded, loudest $loudest dB")
             val problem = when {
                 loudest < QUIET_DB -> "麦克风几乎没收到声音：看看是不是被别的 App 占用了，或者麦克风被手、壳挡住了"
-                !codecOk -> "这台手机的声音编码出错了（${frames.size} 帧解出 ${decoded.size * 100 / samples.coerceAtLeast(1)}%），放的是原声，队友可能听不到"
+                !codecOk -> "这台手机解不开压缩的声音（${frames.size} 帧解出 ${decoded.size * 100 / samples.coerceAtLeast(1)}%），放的是原声，可能听不到队友"
                 callVolume() == 0 -> "通话音量是 0：说话的时候按音量加大键"
                 else -> null
             }
