@@ -446,8 +446,13 @@ class Walkie(
                         playing = true
                     }
                     if (playing) {
-                        // 在放的时候写，缓冲满了会等着放出去一些再写，一句长话也不会丢
-                        for (chunk in waiting) written += track.write(chunk, 0, chunk.size).coerceAtLeast(0)
+                        // 在放的时候写，缓冲满了会等着放出去一些再写，一句长话也不会丢。
+                        // 网络卡了一下、攒着的一下子全到：音轨里排着的超过 MAX_LAG_SAMPLES 就丢掉这段，
+                        // 不然这句话后面每个字都慢那么多
+                        for (chunk in waiting) {
+                            if (written - played(track) > MAX_LAG_SAMPLES) continue
+                            written += track.write(chunk, 0, chunk.size).coerceAtLeast(0)
+                        }
                         waiting.clear()
                     }
                     if (voice.end) break
@@ -484,9 +489,12 @@ class Walkie(
     private suspend fun drain(track: AudioTrack, written: Long) {
         runCatching { track.stop() }
         val limit = System.currentTimeMillis() + written * 1000 / Vox.SAMPLE_RATE + 1_000
-        while (System.currentTimeMillis() < limit && (track.playbackHeadPosition.toLong() and 0xFFFFFFFFL) < written) delay(50)
+        while (System.currentTimeMillis() < limit && played(track) < written) delay(50)
         delay(TAIL_MS)
     }
+
+    /** 已经放出去的采样数 */
+    private fun played(track: AudioTrack): Long = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
 
     private fun newTrack(): AudioTrack {
         val min = AudioTrack.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -506,11 +514,12 @@ class Walkie(
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .build()
             )
-            .setBufferSizeInBytes(maxOf(min, Vox.SAMPLE_RATE * 2)) // 一秒的缓冲
+            // Android 12 起能设攒够 0.2 秒就开始放，缓冲给一秒；之前的版本要等缓冲写满才开始放，
+            // 一秒的缓冲就是多等一秒，所以只给 0.2 秒
+            .setBufferSizeInBytes(maxOf(min, if (Build.VERSION.SDK_INT >= 31) Vox.SAMPLE_RATE * 2 else PREBUFFER_SAMPLES * 2))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
             .also { track ->
-                // 攒够 0.2 秒就开始放，不用等一秒的缓冲写满
                 if (Build.VERSION.SDK_INT >= 31) runCatching { track.startThresholdInFrames = PREBUFFER_SAMPLES }
             }
     }
@@ -554,6 +563,8 @@ class Walkie(
         const val CHUNK_FRAMES = 2
         /** 先攒 0.2 秒再放 */
         const val PREBUFFER_SAMPLES = Vox.SAMPLE_RATE / 5
+        /** 音轨里排着超过 0.6 秒没放的就丢掉新来的，追上来 */
+        const val MAX_LAG_SAMPLES = Vox.SAMPLE_RATE * 3 / 5
         /** 一秒半没收到这个人的声音就当他说完了（网络断了、最后一段丢了） */
         const val SILENCE_MS = 1_500L
         const val TAIL_MS = 200L
