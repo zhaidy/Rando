@@ -38,13 +38,18 @@ object Calories {
     fun of(ride: Ride, weightKg: Double) = of(ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, weightKg)
 }
 
-/** 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路、界面语言 */
+/**
+ * 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路、界面语言；
+ * 地图用不用卫星图、画不画公园连道网络（这两个在地图右边的「图层」里切换）
+ */
 data class Settings(
     val weightKg: Double = DEFAULT_WEIGHT,
     val autoStart: Boolean = false,
     val voice: String? = null,
     val showRidden: Boolean = true,
     val language: Language = Language.SYSTEM,
+    val satellite: Boolean = false,
+    val showPcn: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_WEIGHT = 65.0
@@ -60,6 +65,8 @@ class SettingsStore(context: Context) {
             voice = prefs.getString(KEY_VOICE, null),
             showRidden = prefs.getBoolean(KEY_SHOW_RIDDEN, true),
             language = prefs.getString(KEY_LANGUAGE, null)?.let { n -> Language.entries.firstOrNull { it.name == n } } ?: Language.SYSTEM,
+            satellite = prefs.getBoolean(KEY_SATELLITE, false),
+            showPcn = prefs.getBoolean(KEY_SHOW_PCN, true),
         )
     )
     val settings: StateFlow<Settings> = _settings
@@ -72,6 +79,8 @@ class SettingsStore(context: Context) {
             putString(KEY_VOICE, s.voice)
             putBoolean(KEY_SHOW_RIDDEN, s.showRidden)
             putString(KEY_LANGUAGE, s.language.name)
+            putBoolean(KEY_SATELLITE, s.satellite)
+            putBoolean(KEY_SHOW_PCN, s.showPcn)
         }
     }
 
@@ -81,5 +90,7 @@ class SettingsStore(context: Context) {
         const val KEY_VOICE = "voice"
         const val KEY_SHOW_RIDDEN = "show_ridden"
         const val KEY_LANGUAGE = "language"
+        const val KEY_SATELLITE = "satellite"
+        const val KEY_SHOW_PCN = "show_pcn"
     }
 }

@@ -85,6 +85,9 @@ val BackdropColor: Color
 @ReadOnlyComposable
 fun Color.onGlass(): Color = if (LocalPalette.current.dark) lerp(this, Color.White, 0.45f) else this
 
+/** 压在卫星图上的玻璃：照片又花又暗，默认那种玻璃要实一些，字才看得清 */
+fun Palette.overImagery(): Palette = copy(glass = glass.copy(alpha = if (dark) 0.86f else 0.84f))
+
 /** 跟着系统的深色模式走 */
 @Composable
 fun RandoTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {

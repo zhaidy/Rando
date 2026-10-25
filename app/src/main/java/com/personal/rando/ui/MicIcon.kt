@@ -70,3 +70,16 @@ val NorthIcon: ImageVector by lazy {
         )
         .build()
 }
+
+/** 两层叠着（Material 的 layers）：地图图层 */
+val LayersIcon: ImageVector by lazy {
+    ImageVector.Builder("Layers", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            PathParser().parsePathString(
+                "M11.99,18.54l-7.37,-5.73L3,14.07l9,7 9,-7 -1.63,-1.27 -7.38,5.74z" +
+                    "M12,16l7.36,-5.73L21,9l-9,-7 -9,7 1.63,1.27L12,16z",
+            ).toNodes(),
+            fill = SolidColor(Color.Black),
+        )
+        .build()
+}

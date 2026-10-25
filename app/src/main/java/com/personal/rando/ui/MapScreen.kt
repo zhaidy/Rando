@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
@@ -279,6 +280,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     // 规划页上下两摞挡住了哪里，镜头框路线、框某一段时避开
     var plannerInsets by remember { mutableStateOf(PlannerInsets()) }
+    // 比例尺：地图中心每 1 dp 多少米，镜头一动就更新
+    var metersPerDp by remember { mutableStateOf(0.0) }
     // 地图转了多少度（0 是正北朝上）
     var bearing by remember { mutableFloatStateOf(0f) }
 
@@ -287,7 +290,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             m.cameraPosition = CameraPosition.Builder().target(SINGAPORE).zoom(11.0).build()
             // 规划时可以两指转地图对着前方看；转了以后右边出现指北针，点一下转回正北
             m.uiSettings.isCompassEnabled = false
-            m.addOnCameraMoveListener { bearing = m.cameraPosition.bearing.toFloat() }
+            m.addOnCameraMoveListener {
+                bearing = m.cameraPosition.bearing.toFloat()
+                metersPerDp = metersPerDp(m, density.density)
+            }
             m.addOnMapLongClickListener { latLng ->
                 val home = vm.state.value.pickingHome
                 vm.onMapLongPress(LatLon(latLng.latitude, latLng.longitude))
@@ -297,6 +303,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             m.setStyle(styleUrl) { s ->
                 MapLayers.install(s)
                 style = s
+                metersPerDp = metersPerDp(m, density.density)
             }
             map = m
         }
@@ -442,6 +449,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         vm.followShared(offer) { notices.show(tr("跟着骑失败：$it", "Follow failed: $it"), action = tr("重试", "Retry")) { followShared(offer) } }
     }
 
+    // 卫星图、公园连道网络：右边「图层」里切换
+    LaunchedEffect(style, settings.satellite) {
+        style?.let { MapLayers.showSatellite(it, settings.satellite) }
+    }
+    LaunchedEffect(style, settings.showPcn) {
+        val s = style ?: return@LaunchedEffect
+        MapLayers.showPcnNetwork(s, if (settings.showPcn) context.rando.pcn.flatMap { it.lines } else emptyList())
+    }
+
     // 以前骑过的路垫在底下；存了、删了记录就重画，设置里可以关
     val rideChanges by vm.session.rides.changes.collectAsStateWithLifecycle()
     LaunchedEffect(style, settings.showRidden, rideChanges) {
@@ -575,6 +591,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var saving by remember { mutableStateOf<Place?>(null) }
     val focusManager = LocalFocusManager.current
 
+    // 卫星图上的玻璃要实一些，字才看得清
+    val palette = LocalPalette.current
+    CompositionLocalProvider(LocalPalette provides if (settings.satellite) palette.overImagery() else palette) {
     Box(Modifier.fillMaxSize()) {
         // 地图是液态玻璃取景的来源，所以用 TextureView（SurfaceView 取不到画面）
         AndroidView(
@@ -674,38 +693,46 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         if (state.pickingStart || state.pickingVia || state.pickingHome) BackHandler { vm.cancelPicking() }
                     },
                     bottom = {
-                        val rotated = bearing in 1f..359f
-                        AnimatedVisibility(
-                            rotated,
-                            modifier = Modifier.align(Alignment.End),
-                            enter = fadeIn() + scaleIn(Motion.bouncy()),
-                            exit = fadeOut() + scaleOut(),
-                        ) {
-                            GlassIconButton(onClick = {
-                                map?.let { m -> m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(m.cameraPosition).bearing(0.0).build())) }
-                            }) {
-                                Icon(
-                                    NorthIcon,
-                                    contentDescription = tr("转回正北", "Face north"),
-                                    tint = RandoRed.onGlass(),
-                                    modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = -bearing },
+                        // 竖条左边空着的地方放比例尺，不多占高度
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                            ScaleBar(metersPerDp)
+                            Spacer(Modifier.weight(1f))
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                val rotated = bearing in 1f..359f
+                                AnimatedVisibility(
+                                    rotated,
+                                    modifier = Modifier.align(Alignment.End),
+                                    enter = fadeIn() + scaleIn(Motion.bouncy()),
+                                    exit = fadeOut() + scaleOut(),
+                                ) {
+                                    GlassIconButton(onClick = {
+                                        map?.let { m -> m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(m.cameraPosition).bearing(0.0).build())) }
+                                    }) {
+                                        Icon(
+                                            NorthIcon,
+                                            contentDescription = tr("转回正北", "Face north"),
+                                            tint = RandoRed.onGlass(),
+                                            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = -bearing },
+                                        )
+                                    }
+                                }
+                                SideRail(
+                                    showLocation = hasLocation,
+                                    showRecord = recording == null,
+                                    onRides = onOpenRides,
+                                    onRecord = {
+                                        askNotifications()
+                                        vm.session.startRecording()
+                                    },
+                                    onLocate = { map?.let(::flyToMyLocation) },
+                                    onGroup = { groupDialog = true }.takeIf { groupState == null },
+                                    modifier = Modifier.align(Alignment.End),
+                                    onVoice = listen,
+                                    listening = voiceState is VoiceState.Listening,
+                                    layers = { LayersButton(settings, settingsStore::update) },
                                 )
                             }
                         }
-                        SideRail(
-                            showLocation = hasLocation,
-                            showRecord = recording == null,
-                            onRides = onOpenRides,
-                            onRecord = {
-                                askNotifications()
-                                vm.session.startRecording()
-                            },
-                            onLocate = { map?.let(::flyToMyLocation) },
-                            onGroup = { groupDialog = true }.takeIf { groupState == null },
-                            modifier = Modifier.align(Alignment.End),
-                            onVoice = listen,
-                            listening = voiceState is VoiceState.Listening,
-                        )
                         AnimatedVisibility(
                             groupState != null,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
@@ -828,6 +855,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 )
             }
         }
+    }
     }
     parked?.takeIf { parkedDialog }?.let { bike ->
         ParkedDialog(
@@ -1155,6 +1183,10 @@ private fun LocationUpdates(enabled: Boolean, onFix: (Fix) -> Unit) {
         onDispose { manager.removeUpdates(listener) }
     }
 }
+
+/** 地图中心每 1 dp 代表多少米（比例尺用） */
+private fun metersPerDp(map: MapLibreMap, density: Float): Double =
+    map.projection.getMetersPerPixelAtLatitude(map.cameraPosition.target?.latitude ?: SINGAPORE.latitude) * density
 
 private fun flyToMyLocation(map: MapLibreMap) {
     val component = map.locationComponent
