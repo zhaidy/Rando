@@ -176,6 +176,7 @@ fun GroupPill(
     onLevel: (VoxLevel) -> Unit = {},
     onMode: (WalkieMode) -> Unit = {},
     onTest: () -> Unit = {},
+    onMute: (Boolean) -> Unit = {},
 ) {
     val dark = LocalPalette.current.dark
     // 浅紫色的卡片，和地图、底部卡片分得开
@@ -220,8 +221,9 @@ fun GroupPill(
             Text(if (walkie.on) tr("对讲开着", "Talk on") else tr("开对讲", "Talk"), color = if (walkie.on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
         if (walkie.on) {
-            // 开着对讲时另起一行：实时 / 整句、灵敏度、试一下
+            // 开着对讲时另起一行：闭麦、实时 / 整句、灵敏度、试一下
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GroupKey(if (walkie.muted) tr("开麦", "Unmute") else tr("闭麦", "Mute"), if (walkie.muted) RandoAmber else chip, Modifier.weight(1f), if (walkie.muted) Color.White else Ink) { onMute(!walkie.muted) }
                 GroupKey(walkie.mode.label, chip, Modifier.weight(1f)) { onMode(WalkieMode.entries[(walkie.mode.ordinal + 1) % WalkieMode.entries.size]) }
                 GroupKey(tr("灵敏度：${walkie.level.label}", "Sensitivity: ${walkie.level.label}"), chip, Modifier.weight(1f)) { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) }
                 GroupKey(tr("试一下", "Test"), if (walkie.testing) RandoGreen else chip, Modifier.weight(1f), if (walkie.testing) Color.White else Ink, onTest)
@@ -246,6 +248,7 @@ fun walkieText(w: WalkieState): String = when {
     w.talking.isNotEmpty() && w.sending -> tr("${w.talking.joinToString("、")} 和你都在说", "You and ${w.talking.joinToString(", ")} are talking")
     w.talking.isNotEmpty() -> tr("${w.talking.joinToString("、")} 在说话…", "${w.talking.joinToString(", ")} ${if (w.talking.size == 1) "is" else "are"} talking…")
     !w.on -> tr("对讲没开：点「开对讲」队友才听得到你", "Talk is off: tap Talk so your team can hear you")
+    w.muted && !w.testing -> tr("闭麦了：你听得到队友，队友听不到你", "Muted: you can hear your team, they can't hear you") + directText(w)
     w.testing && w.sending -> tr("在录 3 秒：说一句话，录完放给你自己听", "Recording 3 s: say something and it plays back to you")
     w.testing -> tr("试一下：说一句话，会放给你自己听", "Test: say something and it plays back to you")
     w.sending && w.mode == WalkieMode.CLIP -> tr("在录，说完停一下就发出去", "Recording; pause when done and it sends")
@@ -264,6 +267,7 @@ fun rideWalkieText(w: WalkieState): String =
     walkieText(w).takeIf { w.problem != null || w.talking.isNotEmpty() || w.sending || w.testing }
         ?: when {
             !w.on -> tr("对讲没开", "Talk off")
+            w.muted -> tr("闭麦了", "Muted")
             w.direct > 0 -> tr("直连 ${w.direct} 人", "${riders(w.direct)} direct")
             else -> tr("对讲开着", "Talk on")
         }
@@ -279,6 +283,7 @@ fun RideWalkieRow(
     onLevel: (VoxLevel) -> Unit,
     onMode: (WalkieMode) -> Unit,
     modifier: Modifier = Modifier,
+    onMute: (Boolean) -> Unit = {},
 ) {
     val pad = PaddingValues(horizontal = 12.dp, vertical = 5.dp)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -287,6 +292,7 @@ fun RideWalkieRow(
                 when {
                     walkie.problem != null -> Color(0xFFFFB74D)
                     walkie.sending || walkie.talking.isNotEmpty() -> Color(0xFF7CFFB2)
+                    walkie.muted -> Color(0xFFFFB74D)
                     walkie.on -> Color(0xFFB388FF)
                     else -> Color(0xFF8A8A8A)
                 }
@@ -301,6 +307,11 @@ fun RideWalkieRow(
             overflow = TextOverflow.Ellipsis,
         )
         if (walkie.on) {
+            GlassButton(
+                onClick = { onMute(!walkie.muted) },
+                tone = if (walkie.muted) GlassTone.Tinted(RandoAmber) else GlassTone.Dark,
+                contentPadding = pad,
+            ) { Text(if (walkie.muted) tr("开麦", "Unmute") else tr("闭麦", "Mute"), color = Color.White, fontSize = 15.sp) }
             GlassButton(
                 onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
                 tone = GlassTone.Dark,

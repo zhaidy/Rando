@@ -649,6 +649,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onToggleTalk = toggleTalk,
                         onTalkLevel = walkie::setLevel,
                         onTalkMode = walkie::setMode,
+                        onTalkMute = walkie::setMuted,
                         onVoice = listen,
                         onMrt = mrtHome,
                         listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { tr("请说…", "Speak now…") } },
@@ -770,6 +771,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                     onLevel = walkie::setLevel,
                                     onMode = walkie::setMode,
                                     onTest = walkie::test,
+                                    onMute = walkie::setMuted,
                                 )
                             }
                         }

@@ -65,6 +65,8 @@ data class WalkieState(
     val testing: Boolean = false,
     /** 直连上的队友有几个（蓝牙、Wi-Fi 或者 WebRTC） */
     val direct: Int = 0,
+    /** 闭麦：还开着对讲、听得到队友，但自己的声音不发出去；关对讲后就不闭了 */
+    val muted: Boolean = false,
 )
 
 /**
@@ -127,7 +129,7 @@ class Walkie(
         players.clear()
         route.stop()
         group.stopLocal()
-        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false) }
+        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false, muted = false) }
     }
 
     /**
@@ -143,6 +145,12 @@ class Walkie(
     fun setMode(mode: WalkieMode) {
         prefs.edit { putString(KEY_MODE, mode.name) }
         _state.update { it.copy(mode = mode) }
+    }
+
+    /** 闭麦、开麦；说到一半闭麦，这句话就停在这里 */
+    fun setMuted(muted: Boolean) {
+        if (!_state.value.on) return
+        _state.update { it.copy(muted = muted) }
     }
 
     fun setLevel(level: VoxLevel) {
@@ -173,7 +181,7 @@ class Walkie(
             if (AcousticEchoCanceler.isAvailable()) runCatching { AcousticEchoCanceler.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null,
         )
         val downsampler = Downsampler(Rnnoise.SAMPLE_RATE / Vox.SAMPLE_RATE, Rnnoise.SAMPLE_RATE)
-        val vox = Vox(_state.value.level)
+        var vox = Vox(_state.value.level)
         var sender: Sender? = null
         var lastBars = -1
         var framesSinceBars = 0
@@ -234,6 +242,16 @@ class Walkie(
                 }
                 // 试一下时不发；放自己的声音时也不听，免得喇叭里的声音又被录进去发给队友
                 if (test != null || selfPlaying) continue
+                // 闭麦：正在发的这句收尾（整句的不发了），声控从头听，开麦后不会接着半句话发
+                if (_state.value.muted) {
+                    if (sender != null) {
+                        sender?.finish(keep = false)
+                        sender = null
+                        _state.update { it.copy(sending = false) }
+                    }
+                    if (vox.isTalking) vox = Vox(_state.value.level)
+                    continue
+                }
                 for (event in vox.feed(frame.copyOf(n))) {
                     when (event) {
                         is Vox.Event.Start -> {
