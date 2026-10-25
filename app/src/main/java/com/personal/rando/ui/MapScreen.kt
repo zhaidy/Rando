@@ -22,6 +22,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.speech.RecognizerIntent
 import android.widget.Toast
 import android.location.LocationListener
 import android.location.LocationManager
@@ -317,7 +318,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     }
     // 语音指令：听懂了就在这里做
     val session = vm.session
+    // 识别服务都用不了时弹系统的语音输入框
+    val voiceDialog = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val candidates = if (result.resultCode == android.app.Activity.RESULT_OK) {
+            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+        } else {
+            null
+        }
+        voice.dialogResult(candidates)
+    }
     DisposableEffect(voice) {
+        voice.dialog = { intent -> runCatching { voiceDialog.launch(intent) }.isSuccess }
         voice.handler = { cmd ->
             when (cmd) {
                 is VoiceCommand.GoTo -> {
@@ -354,7 +365,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 is VoiceCommand.Unknown -> session.say(if (cmd.text.isBlank()) "没听清，再说一次" else "没听懂：${cmd.text}")
             }
         }
-        onDispose { voice.handler = null }
+        onDispose {
+            voice.handler = null
+            voice.dialog = null
+        }
     }
     val voicePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) voice.listen() else Toast.makeText(context, "没有麦克风权限，用不了语音指令", Toast.LENGTH_SHORT).show()

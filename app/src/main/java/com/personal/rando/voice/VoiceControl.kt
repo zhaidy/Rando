@@ -1,6 +1,7 @@
 package com.personal.rando.voice
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.speech.RecognitionListener
+import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.content.ContextCompat
@@ -26,13 +28,15 @@ sealed interface VoiceState {
 
 /**
  * 语音指令：点麦克风按钮或者按耳机上的键，「嘀」一声后说话，听完交给 [handler] 去做。
- * 用手机自带的语音识别（有离线包就离线认）；开着对讲时先停一下对讲的麦克风，听完再开
+ * 用手机自带的语音识别（有离线包就离线认）；开着对讲时先停一下对讲的麦克风，听完再开。
+ * 默认的识别服务一直忙、连不上时，换手机上装的别的识别服务（谷歌 App 的优先），都不行再弹系统的语音输入框
  */
 class VoiceControl(context: Context, private val walkie: Walkie) {
 
     private val app = context.applicationContext
     private var recognizer: SpeechRecognizer? = null
     private var resumeWalkie = false
+    private val main = Handler(Looper.getMainLooper())
 
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state
@@ -42,6 +46,9 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
 
     /** 没听清、没装语音识别时说一声 */
     var say: (String) -> Unit = {}
+
+    /** 弹系统的语音输入框（识别服务都用不了时）；界面打开时设上，弹出来了返回 true，结果交给 [dialogResult] */
+    var dialog: ((Intent) -> Boolean)? = null
 
     val available: Boolean get() = SpeechRecognizer.isRecognitionAvailable(app)
 
@@ -63,7 +70,8 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
             return
         }
         _state.value = VoiceState.Listening()
-        retried = false
+        services = order(installedServices()) { it.packageName }
+        attempt = 0
         offline = true
         if (walkie.state.value.on) {
             resumeWalkie = true
@@ -74,23 +82,53 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         }
     }
 
-    /** 这一次有没有重试过；先离线认，认不了（没有中文离线包）再联网认一次 */
-    private var retried = false
+    /** 轮着试的识别服务（null 是系统默认的）、现在试到第几个；先离线认，认不了（没有中文离线包）再联网认 */
+    private var services: List<ComponentName?> = listOf(null)
+    private var attempt = 0
     private var offline = true
 
+    private fun installedServices(): List<ComponentName> =
+        runCatching {
+            app.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+                .map { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
+        }.getOrDefault(emptyList())
+
     private fun start() {
+        val service = services[attempt]
+        Log.i(TAG, "listening with ${service ?: "default"} (offline=$offline)")
         // 每次都新建一个：同一个识别器用过一次、出过错以后，有的手机会一直报忙
-        recognizer?.destroy()
-        val r = SpeechRecognizer.createSpeechRecognizer(app).also { recognizer = it }
+        val r = SpeechRecognizer.createSpeechRecognizer(app, service).also { recognizer = it }
         r.setRecognitionListener(listener)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+        val intent = recognizeIntent()
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, offline)
-            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         beep()
         r.startListening(intent)
+    }
+
+    private fun recognizeIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+        .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+
+    /**
+     * 换个方式再认一次。旧的识别器先销毁，等一会再建新的：
+     * 销毁了马上新建，识别服务那边上一次还没收完，新的一来就报忙
+     */
+    private fun restart() {
+        recognizer?.destroy()
+        recognizer = null
+        main.postDelayed({ if (_state.value is VoiceState.Listening) start() }, RESTART_DELAY_MS)
+    }
+
+    /** 系统的语音输入框认完了：[candidates] 是听到的几个候选，没认出来、取消了是 null */
+    fun dialogResult(candidates: List<String>?) {
+        if (_state.value !is VoiceState.Listening) return
+        if (candidates.isNullOrEmpty()) {
+            done()
+            return
+        }
+        handle(candidates)
     }
 
     fun cancel() {
@@ -98,8 +136,17 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         done()
     }
 
+    private fun handle(candidates: List<String>) {
+        done()
+        // 几个候选里取第一个听得懂的
+        val command = candidates.map(VoiceParser::parse).firstOrNull { it !is VoiceCommand.Unknown }
+            ?: VoiceCommand.Unknown(candidates.firstOrNull().orEmpty())
+        handler?.invoke(command) ?: say("打开 Rando 再说")
+    }
+
     private fun done() {
         _state.value = VoiceState.Idle
+        main.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
         if (resumeWalkie) {
@@ -115,24 +162,29 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         }
 
         override fun onResults(results: Bundle) {
-            val candidates = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-            done()
-            // 几个候选里取第一个听得懂的
-            val command = candidates.map(VoiceParser::parse).firstOrNull { it !is VoiceCommand.Unknown }
-                ?: VoiceCommand.Unknown(candidates.firstOrNull().orEmpty())
-            handler?.invoke(command) ?: say("打开 Rando 再说")
+            handle(results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty())
         }
 
         override fun onError(error: Int) {
-            Log.w(TAG, "recognizer error $error (offline=$offline, retried=$retried)")
+            Log.w(TAG, "recognizer error $error (service=${services[attempt] ?: "default"}, offline=$offline)")
             if (_state.value !is VoiceState.Listening) return
-            if (!retried && retryable(error)) {
-                // 没有中文离线包：换联网认；识别器忙、断开了：换一个新的再来一次
-                retried = true
-                if (error in LANGUAGE_ERRORS) offline = false
-                Handler(Looper.getMainLooper()).postDelayed({ if (_state.value is VoiceState.Listening) start() }, 300)
+            if (error in LANGUAGE_ERRORS && offline) {
+                // 没有中文离线包：同一个服务换联网认
+                offline = false
+                restart()
                 return
             }
+            if (retryable(error) && attempt + 1 < services.size) {
+                // 这个识别服务忙、断开了：换下一个
+                attempt++
+                offline = true
+                restart()
+                return
+            }
+            recognizer?.destroy()
+            recognizer = null
+            // 识别服务都用不了：弹系统的语音输入框，对讲等它认完再开
+            if (retryable(error) && dialog?.invoke(recognizeIntent()) == true) return
             done()
             errorText(error)?.let(say)
         }
@@ -155,12 +207,22 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
 
     companion object {
         private const val TAG = "VoiceControl"
+        private const val RESTART_DELAY_MS = 800L
+        private const val GOOGLE_APP = "com.google.android.googlequicksearchbox"
+        private const val MAX_SERVICES = 4
         // Android 12 以后才有的错误码；直接写数字，老系统上也能比
         private const val ERROR_SERVER_DISCONNECTED = 11
         private const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
         private const val ERROR_LANGUAGE_UNAVAILABLE = 13
         private const val ERROR_CANNOT_CHECK_SUPPORT = 14
         private val LANGUAGE_ERRORS = setOf(ERROR_LANGUAGE_NOT_SUPPORTED, ERROR_LANGUAGE_UNAVAILABLE, ERROR_CANNOT_CHECK_SUPPORT)
+
+        /**
+         * 轮着试的识别服务：先用系统默认的（null），再试手机上装的，谷歌 App 的排前面
+         * （有的手机默认的是厂商自己的、或者只认离线的谷歌语音服务，第三方 App 一用就一直报忙）
+         */
+        fun <T : Any> order(installed: List<T>, packageName: (T) -> String): List<T?> =
+            (listOf<T?>(null) + installed.sortedBy { if (packageName(it) == GOOGLE_APP) 0 else 1 }).take(MAX_SERVICES)
 
         /** 换个方式再来一次可能就好了的错 */
         fun retryable(error: Int): Boolean = error in LANGUAGE_ERRORS || error in setOf(
@@ -176,7 +238,8 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
             in LANGUAGE_ERRORS -> "语音识别不支持中文，在系统设置里给语音识别下载中文语音包"
             SpeechRecognizer.ERROR_AUDIO -> "语音识别打不开麦克风，可能被别的 App 占用了"
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "语音识别没有麦克风权限：在系统设置里给谷歌 App 打开麦克风权限"
-            SpeechRecognizer.ERROR_RECOGNIZER_BUSY, ERROR_SERVER_DISCONNECTED -> "语音识别正忙，过一会再试"
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正忙，过一会再试；一直忙的话重启一下手机"
+            ERROR_SERVER_DISCONNECTED -> "语音识别断开了，在系统设置里把默认语音识别换成谷歌试试"
             SpeechRecognizer.ERROR_CLIENT -> "连不上手机的语音识别，在系统设置里把默认语音识别换成谷歌试试"
             else -> "语音识别出错了，错误码 $error"
         }
