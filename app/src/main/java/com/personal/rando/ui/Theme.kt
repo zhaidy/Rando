@@ -18,10 +18,20 @@ val RandoOrange = Color(0xFFE0672B)
 val RandoAmber = Color(0xFFC98A1B)
 val RandoRed = Color(0xFFC0392B)
 
-/** 主色：青色。按钮、选中的胶囊、链接都用它；绿色只留给「不上马路」「不会下雨」这种好消息 */
+/** 主色。按钮、选中的胶囊、链接都用它；绿色只留给「不上马路」「不会下雨」这种好消息 */
 val RandoAccent = Color(0xFF0899AB)
-/** 主色渐变的亮端，主按钮从它渐变到 [RandoAccent] */
+/** 主色偏亮的一档：渐变的亮端、深色背景上的细线 */
 val RandoAccentBright = Color(0xFF2FD3E2)
+/** 主色当字用（白天）：比 [RandoAccent] 深，白底上才看得清 */
+val AccentDeep = Color(0xFF087E8D)
+/** 更深一档：浅色底块上的字 */
+val AccentDeeper = Color(0xFF06606B)
+/** 主色当字用（夜里、骑行视图的黑底上） */
+val AccentGlow = Color(0xFF5EE0EC)
+/** 主色的浅底块（白天）和深底块（夜里），以及深底块上的字 */
+val AccentWash = Color(0xFFDDF7FA)
+val AccentNight = Color(0xFF123D44)
+val AccentMist = Color(0xFFD3F4F8)
 /** 点缀色：黄色，「当前」「这一周」这种要一眼看到的地方 */
 val RandoYellow = Color(0xFFFFC83D)
 
@@ -94,7 +104,7 @@ fun Color.onGlass(): Color = if (LocalPalette.current.dark) lerp(this, Color.Whi
 
 /** 主色当字、图标用：白天要深一些才看得清（青色字在白底上太淡），夜里调亮 */
 val AccentInk: Color
-    @Composable @ReadOnlyComposable get() = if (LocalPalette.current.dark) Color(0xFF5EE0EC) else Color(0xFF087E8D)
+    @Composable @ReadOnlyComposable get() = if (LocalPalette.current.dark) AccentGlow else AccentDeep
 
 /** 压在卫星图上的玻璃：照片又花又暗，默认那种玻璃要实一些，字才看得清 */
 fun Palette.overImagery(): Palette = copy(glass = glass.copy(alpha = if (dark) 0.86f else 0.84f))
@@ -104,17 +114,17 @@ fun Palette.overImagery(): Palette = copy(glass = glass.copy(alpha = if (dark) 0
 fun RandoTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val scheme = if (dark) {
         darkColorScheme(
-            primary = Color(0xFF5EE0EC),
+            primary = AccentGlow,
             secondary = RandoYellow,
-            secondaryContainer = Color(0xFF123D44),
-            onSecondaryContainer = Color(0xFFD3F4F8),
+            secondaryContainer = AccentNight,
+            onSecondaryContainer = AccentMist,
         )
     } else {
         lightColorScheme(
             primary = RandoAccent,
             secondary = RandoYellow,
-            secondaryContainer = Color(0xFFDDF7FA),
-            onSecondaryContainer = Color(0xFF06606B),
+            secondaryContainer = AccentWash,
+            onSecondaryContainer = AccentDeeper,
         )
     }
     CompositionLocalProvider(LocalPalette provides if (dark) DarkPalette else LightPalette) {

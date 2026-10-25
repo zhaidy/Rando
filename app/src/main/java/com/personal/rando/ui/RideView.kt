@@ -420,7 +420,7 @@ private fun MusicBar(music: MusicState, modifier: Modifier) {
                 Text(
                     tr("显示歌名", "Show song"),
                     Modifier.clip(GlassShapes.Pill).clickable(onClick = music::grant).padding(horizontal = 8.dp, vertical = 6.dp),
-                    color = Color(0xFF5EE0EC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    color = AccentGlow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 )
             }
         }

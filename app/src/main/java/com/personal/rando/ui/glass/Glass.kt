@@ -202,7 +202,7 @@ fun GlassIconButton(
     )
 }
 
-/** 主操作按钮：圆角的实心按钮，左上亮、右下深，底下一圈同色的柔和投影 */
+/** 主操作按钮：圆角的实心按钮，上面略亮、下面略深，底下一圈同色偏深的柔和投影 */
 @Composable
 fun PrimaryButton(
     onClick: () -> Unit,
@@ -215,10 +215,10 @@ fun PrimaryButton(
     Row(
         modifier
             .pressScale(interaction, pressed = 0.96f)
-            .dropShadow(shape, Shadow(radius = 18.dp, color = color.copy(alpha = 0.35f), offset = DpOffset(0.dp, 8.dp)))
+            .dropShadow(shape, Shadow(radius = 16.dp, color = color.darken(0.35f).copy(alpha = 0.32f), offset = DpOffset(0.dp, 6.dp)))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(color.lighten(0.3f), color)))
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.0f))), shape)
+            .background(solidFill(color))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.0f))), shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -278,6 +278,15 @@ fun NeuButton(
 
 private fun Color.lighten(amount: Float): Color =
     Color(red + (1 - red) * amount, green + (1 - green) * amount, blue + (1 - blue) * amount, alpha)
+
+private fun Color.darken(amount: Float): Color =
+    Color(red * (1 - amount), green * (1 - amount), blue * (1 - amount), alpha)
+
+/**
+ * 实心按钮的填色：同一个颜色上下只差一点点明暗，像有一点弧度的实体按键；
+ * 不用两种颜色斜着渐变，那样很像模板
+ */
+fun solidFill(color: Color): Brush = Brush.verticalGradient(listOf(color.lighten(0.1f), color, color.darken(0.1f)))
 
 /** 没有指定颜色时给个默认的 */
 fun Color.orElse(other: Color): Color = if (isSpecified) this else other
