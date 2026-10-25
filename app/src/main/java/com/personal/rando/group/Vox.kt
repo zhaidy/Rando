@@ -26,7 +26,8 @@ class Vox(
     var level: VoxLevel = VoxLevel.NORMAL,
     private val startFrames: Int = 4,
     private val hangoverFrames: Int = 40,
-    private val prerollFrames: Int = 15,
+    /** 开口前补 0.2 秒：补的越多，队友听到的整句话就越晚 */
+    private val prerollFrames: Int = 10,
     /** 有人声的帧少于这么多（0.3 秒）就当是杂音 */
     private val minFrames: Int = 15,
     private val maxFrames: Int = 1000,
