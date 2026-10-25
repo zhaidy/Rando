@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,16 +52,32 @@ import kotlinx.coroutines.launch
 
 /**
  * 分享图先预览：画好了弹出来看一眼，下面「存到相册」「分享」。
- * 返回的函数传进去怎么画图，调用就开始画、弹出预览
+ * 返回的函数传进去怎么画图（参数是要不要隐藏家附近），调用就开始画、弹出预览；
+ * 预览里切开关会重新画一张
  */
 @Composable
-fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
+fun rememberSharePreview(): (suspend (hide: Boolean) -> ShareCard.Card?) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     var card by remember { mutableStateOf<ShareCard.Card?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var saved by remember { mutableStateOf(false) }
+    var make by remember { mutableStateOf<(suspend (Boolean) -> ShareCard.Card?)?>(null) }
+    // 每次打开都默认隐藏，免得上次关掉忘了开
+    var hide by remember { mutableStateOf(true) }
+    var privacyLabel by remember { mutableStateOf("隐藏家附近") }
+
+    fun draw() {
+        val m = make ?: return
+        job?.cancel()
+        card = null
+        saved = false
+        job = scope.launch {
+            val c = m(hide)
+            if (c == null) open = false else { card = c; privacyLabel = c.privacy }
+        }
+    }
 
     fun save(c: ShareCard.Card) = scope.launch {
         val ok = ShareCard.save(context, c)
@@ -95,7 +113,16 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
                             Image(image, contentDescription = "分享图预览", modifier = Modifier.fillMaxWidth())
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(privacyLabel, Modifier.weight(1f), color = Ink, fontSize = 15.sp)
+                        Switch(
+                            checked = hide,
+                            onCheckedChange = { hide = it; draw() },
+                            colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val c = card
                         GlassButton(
@@ -128,14 +155,10 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
         }
     }
 
-    return { make ->
-        job?.cancel()
-        card = null
-        saved = false
+    return { m ->
+        make = m
+        hide = true
         open = true
-        job = scope.launch {
-            val c = make()
-            if (c == null) open = false else card = c
-        }
+        draw()
     }
 }

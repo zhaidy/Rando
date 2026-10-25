@@ -18,7 +18,10 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import com.personal.rando.places.SavedPlace
+import com.personal.rando.rando
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.SharePrivacy
 import com.personal.rando.ride.timeOfDay
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -45,34 +48,47 @@ object ShareCard {
     const val HEIGHT = 1350
     const val MAP_HEIGHT = 900
 
-    /** 画好的分享图：先给人看一眼，再分享或者存到相册 */
-    class Card(val bitmap: Bitmap, val name: String, val chooserTitle: String)
+    /**
+     * 画好的分享图：先给人看一眼，再分享或者存到相册。
+     * [privacy] 是预览里开关的名字：收藏了家是「隐藏家附近」，没收藏是剪掉起点终点
+     */
+    class Card(val bitmap: Bitmap, val name: String, val chooserTitle: String, val privacy: String)
 
-    /** 一次骑行的分享图 */
-    suspend fun card(context: Context, ride: Ride, record: String?): Card =
-        render(context, "rando-${ride.id}", "分享骑行", listOf(ride)) { map, tracks -> draw(map, tracks.first(), ride, record) }
+    /** 一次骑行的分享图；[hide] 打开时家附近的轨迹不画（见 [SharePrivacy]） */
+    suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true): Card =
+        render(context, "rando-${ride.id}", "分享骑行", listOf(ride), hide) { map, tracks -> draw(map, tracks.first(), ride, record) }
 
     /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
-    suspend fun dayCard(context: Context, rides: List<Ride>): Card? {
+    suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true): Card? {
         if (rides.isEmpty()) return null
-        return render(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides) { map, tracks -> drawDay(map, tracks, rides) }
+        return render(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides, hide) { map, tracks -> drawDay(map, tracks, rides) }
     }
 
-    /** 拍地图、画图 */
+    /** 拍地图、画图；每次骑行可能被隐私圈断成几段，所以是 骑行 → 段 → 点 */
     private suspend fun render(
         context: Context,
         name: String,
         chooserTitle: String,
         rides: List<Ride>,
-        paint: (Bitmap?, List<List<PointF>>) -> Bitmap,
+        hide: Boolean,
+        paint: (Bitmap?, List<List<List<PointF>>>) -> Bitmap,
     ): Card {
-        val tracks = rides.map { r -> r.points.map { it.location } }
-        val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, tracks.flatten()) }
-        val bitmap = withContext(Dispatchers.Default) {
-            val trackPx = snapshot?.second?.let { project -> tracks.map { it.map(project) } } ?: fitAll(tracks, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
-            paint(snapshot?.first, trackPx)
+        val home = context.rando.savedPlaces.places.value.firstOrNull { it.name == SavedPlace.HOME }?.location
+        val zone = if (hide && home != null) SharePrivacy.zone(home, SharePrivacy.seed(context)) else null
+        val rideTracks = rides.map { r ->
+            val track = r.points.map { it.location }
+            if (hide) SharePrivacy.hide(track, zone) else listOf(track)
         }
-        return Card(bitmap, name, chooserTitle)
+        val pieces = rideTracks.flatten()
+        // 地图只框住画出来的那些，不框到家
+        val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, pieces.flatten()) }
+        val bitmap = withContext(Dispatchers.Default) {
+            val piecesPx = snapshot?.second?.let { project -> pieces.map { it.map(project) } } ?: fitAll(pieces, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
+            var from = 0
+            val ridesPx = rideTracks.map { r -> piecesPx.subList(from, from + r.size).also { from += r.size } }
+            paint(snapshot?.first, ridesPx)
+        }
+        return Card(bitmap, name, chooserTitle, if (home != null) "隐藏家附近" else "隐藏起点终点附近")
     }
 
     /** 存到缓存，弹出系统分享 */
@@ -176,15 +192,15 @@ object ShareCard {
         return tracks.map { t -> all.subList(from, from + t.size).also { from += t.size } }
     }
 
-    /** 一次骑行的整张图 */
-    fun draw(map: Bitmap?, trackPx: List<PointF>, ride: Ride, record: String?): Bitmap =
+    /** 一次骑行的整张图；[trackPx] 是这次骑行要画的几段 */
+    fun draw(map: Bitmap?, trackPx: List<List<PointF>>, ride: Ride, record: String?): Bitmap =
         drawCard(
             map, listOf(trackPx), ride.title, DATE.format(Date(ride.startedAt)), record,
             ride.distanceMeters, ride.movingSeconds, ride.ascendMeters,
         )
 
     /** 今天几次骑行合在一张图上：标题写骑了几次，下面是合计 */
-    fun drawDay(map: Bitmap?, tracksPx: List<List<PointF>>, rides: List<Ride>): Bitmap {
+    fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>): Bitmap {
         val first = rides.first()
         val last = rides.last()
         val title = if (rides.size == 1) "今天${first.title}" else "今天骑了 ${rides.size} 次"
@@ -204,7 +220,7 @@ object ShareCard {
     /** 画整张图；[note] 是标题下面绿色的那行（和以前比、几点骑的） */
     private fun drawCard(
         map: Bitmap?,
-        tracksPx: List<List<PointF>>,
+        tracksPx: List<List<List<PointF>>>,
         title: String,
         date: String,
         note: String?,
@@ -272,11 +288,15 @@ object ShareCard {
         return out
     }
 
-    private fun drawTrack(c: Canvas, pts: List<PointF>) {
-        if (pts.size < 2) return
+    /** 一次骑行：几段线，起点终点各一个圆点（中间断开的地方不加点） */
+    private fun drawTrack(c: Canvas, pieces: List<List<PointF>>) {
+        val drawn = pieces.filter { it.size >= 2 }
+        if (drawn.isEmpty()) return
         val path = Path().apply {
-            moveTo(pts.first().x, pts.first().y)
-            pts.drop(1).forEach { lineTo(it.x, it.y) }
+            drawn.forEach { pts ->
+                moveTo(pts.first().x, pts.first().y)
+                pts.drop(1).forEach { lineTo(it.x, it.y) }
+            }
         }
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -290,8 +310,8 @@ object ShareCard {
             c.drawCircle(p.x, p.y, 16f, dot.apply { this.color = Color.WHITE })
             c.drawCircle(p.x, p.y, 11f, dot.apply { this.color = Color.parseColor(color) })
         }
-        pin(pts.first(), "#2E7D4F")
-        pin(pts.last(), "#E0672B")
+        pin(drawn.first().first(), "#2E7D4F")
+        pin(drawn.last().last(), "#E0672B")
     }
 
     private fun text(size: Float, color: Int, face: Typeface = Typeface.DEFAULT) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
