@@ -1,7 +1,12 @@
 package com.personal.rando.group
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
@@ -10,6 +15,8 @@ import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
+import com.google.android.gms.nearby.connection.ConnectionOptions
+import com.google.android.gms.nearby.connection.ConnectionType
 import com.google.android.gms.nearby.connection.ConnectionResolution
 import com.google.android.gms.nearby.connection.ConnectionsStatusCodes
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo
@@ -30,7 +37,11 @@ import kotlinx.coroutines.flow.StateFlow
  * 后到的那份按句子编号、段号丢掉（[VoiceDedup]）。所以连上、断开直连都不用切换，说到一半也不断
  *
  * 广播的名字是「队伍码|id|名字」，只连同一个队伍码的；两边都看到对方时 id 小的那边去连，免得撞车。
- * 队里的人都直连上了就停止搜（搜很费电，也会拖慢已有的连接），有人断了再搜
+ * 队里的人都直连上了就停止搜（搜很费电，也会拖慢已有的连接），有人断了再搜。
+ *
+ * 只在用户自己开着蓝牙时用：Nearby 默认会自己把蓝牙、Wi-Fi 打开，Wi-Fi 一连上网络就换了，
+ * 服务器连接、WebRTC 直连都要断一下重连。所以蓝牙关着就先不开，等用户开了蓝牙再开、关了就停；
+ * 开着的时候也让它别去动蓝牙、Wi-Fi 的开关（[ConnectionType.NON_DISRUPTIVE]）
  */
 class NearbyLink(context: Context, private val onMessage: (String) -> Unit) {
     private val app = context.applicationContext
@@ -59,20 +70,58 @@ class NearbyLink(context: Context, private val onMessage: (String) -> Unit) {
 
     fun hasPermissions(): Boolean = PERMISSIONS.all { ContextCompat.checkSelfPermission(app, it) == PackageManager.PERMISSION_GRANTED }
 
+    /** 开着对讲时要开的（队伍码、我的 id、名字）；蓝牙关着时先记着 */
+    private var request: Triple<String, String, String>? = null
+    private var watchingBluetooth = false
+
+    /** 蓝牙开了就开，关了就停 */
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                BluetoothAdapter.STATE_ON -> request?.let { (code, id, name) -> begin(code, id, name) }
+                BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> end()
+            }
+        }
+    }
+
     fun start(code: String, myId: String, myName: String) {
+        request = Triple(code, myId, myName)
+        if (!watchingBluetooth) {
+            ContextCompat.registerReceiver(app, bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            watchingBluetooth = true
+        }
+        if (bluetoothOn()) begin(code, myId, myName) else end()
+    }
+
+    fun stop() {
+        request = null
+        if (watchingBluetooth) {
+            runCatching { app.unregisterReceiver(bluetoothReceiver) }
+            watchingBluetooth = false
+        }
+        end()
+    }
+
+    private fun bluetoothOn(): Boolean =
+        runCatching { app.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true }.getOrDefault(false)
+
+    private fun begin(code: String, myId: String, myName: String) {
         if (this.code == code) return
-        stop()
+        end()
         if (!hasPermissions()) return
         this.code = code
         this.myId = myId
         this.myName = myName
         val name = endpointName(code, myId, myName)
-        client.startAdvertising(name, SERVICE_ID, lifecycle, AdvertisingOptions.Builder().setStrategy(STRATEGY).build())
+        client.startAdvertising(
+            name, SERVICE_ID, lifecycle,
+            AdvertisingOptions.Builder().setStrategy(STRATEGY).setConnectionType(ConnectionType.NON_DISRUPTIVE).build(),
+        )
             .addOnFailureListener { Log.w(TAG, "advertise failed", it) }
         updateDiscovery()
     }
 
-    fun stop() {
+    private fun end() {
         if (code == null) return
         code = null
         runCatching {
@@ -133,7 +182,10 @@ class NearbyLink(context: Context, private val onMessage: (String) -> Unit) {
             // 两边都搜到对方时只让一边去连
             if (myId > peer.id) return
             pending += endpointId
-            client.requestConnection(endpointName(code.orEmpty(), myId, myName), endpointId, lifecycle)
+            client.requestConnection(
+                endpointName(code.orEmpty(), myId, myName), endpointId, lifecycle,
+                ConnectionOptions.Builder().setConnectionType(ConnectionType.NON_DISRUPTIVE).build(),
+            )
                 .addOnFailureListener { e ->
                     Log.w(TAG, "connect failed", e)
                     pending -= endpointId
