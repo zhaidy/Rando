@@ -1779,7 +1779,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
-/** 设置：家、体重（算卡路里）、骑车自动开始记录、主页显示骑过的路、播报声音 */
+/** 设置：家、体重（算卡路里）、主页显示骑过的路、播报声音 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsDialog(
@@ -1794,9 +1794,6 @@ fun SettingsDialog(
     /** 关掉设置，去搜索或长按地图选 */
     onPickHome: () -> Unit = {},
     onRemoveHome: () -> Unit = {},
-    /** 定位已经是「始终允许」 */
-    backgroundLocation: Boolean = false,
-    onAskBackgroundLocation: () -> Unit = {},
     /** 手机上的普通话声音，好的排前面 */
     voices: List<VoiceOption> = emptyList(),
     /** 试听；null 是自动挑的那个 */
@@ -1805,7 +1802,6 @@ fun SettingsDialog(
     onSystemVoices: () -> Unit = {},
 ) {
     var weight by remember { mutableStateOf(settings.weightKg.toInt().toString()) }
-    var autoStart by remember { mutableStateOf(settings.autoStart) }
     var showRidden by remember { mutableStateOf(settings.showRidden) }
     var voice by remember { mutableStateOf(settings.voice) }
     var theme by remember { mutableStateOf(settings.theme) }
@@ -1823,7 +1819,7 @@ fun SettingsDialog(
                 IconTap(onClick = onDismiss) { Text("‹", color = Ink, fontSize = 30.sp) }
                 Text(tr("设置", "Settings"), Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Black)
                 PrimaryButton(
-                    onClick = { if (kg != null) onSave(settings.copy(weightKg = kg.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden, language = language, theme = theme)) },
+                    onClick = { if (kg != null) onSave(settings.copy(weightKg = kg.toDouble(), voice = voice, showRidden = showRidden, language = language, theme = theme)) },
                     modifier = Modifier.padding(end = 8.dp).alpha(if (kg != null) 1f else 0.4f),
                     color = RandoAccent,
                 ) { Text(tr("保存", "Save"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
@@ -1881,17 +1877,6 @@ fun SettingsDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("骑车时自动开始记录", "Auto-record rides"), color = Ink, fontSize = 16.sp)
-                        Text(tr("停下来 10 分钟没动自动结束保存", "Stops and saves after 10 minutes without moving"), color = InkSoft, fontSize = 13.sp)
-                    }
-                    Switch(checked = autoStart, onCheckedChange = { autoStart = it })
-                }
-                if (autoStart && !backgroundLocation) {
-                    Text(tr("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", "Without “Allow all the time” location, a notification asks when riding is detected; recording starts when you tap it."), color = InkSoft, fontSize = 13.sp)
-                    LinkText(tr("去设成始终允许", "Set to allow all the time"), onAskBackgroundLocation)
-                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(tr("地图上显示骑过的路", "Show ridden roads on map"), color = Ink, fontSize = 16.sp)

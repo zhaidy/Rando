@@ -147,7 +147,6 @@ import com.personal.rando.group.TeamCode
 import com.personal.rando.group.NearbyTeam
 import com.personal.rando.group.NearbyLink
 import com.personal.rando.places.MrtHome
-import com.personal.rando.ride.AutoStart
 import androidx.core.content.FileProvider
 import com.personal.rando.ride.Calories
 import com.personal.rando.voice.VoiceState
@@ -201,15 +200,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val settings by settingsStore.settings.collectAsStateWithLifecycle()
     var settingsDialog by remember { mutableStateOf(false) }
     val photoAppContext = LocalContext.current.applicationContext
-    val recognitionPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            AutoStart.apply(photoAppContext, true)
-        } else {
-            settingsStore.update(settingsStore.settings.value.copy(autoStart = false))
-            notices.show(tr("没有「身体活动」权限，认不出在骑车", "Without Physical activity permission, rides can't be detected"), long = true)
-        }
-    }
-    val backgroundPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val parking = LocalContext.current.rando.parking
     val parked by parking.bike.collectAsStateWithLifecycle()
     var parkedDialog by remember { mutableStateOf(false) }
@@ -425,7 +415,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val finishRide = {
         finished = finishRide(notices, vm.session)
     }
-    // 又开始记录了（自动开始、进队）：上一次的卡片没用了，不然这次结束后又冒出来
+    // 又开始记录了（进队）：上一次的卡片没用了，不然这次结束后又冒出来
     LaunchedEffect(recording != null) {
         if (recording != null) finished = null
     }
@@ -945,11 +935,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 Lang.apply(it.language, context.resources.configuration.locales[0])
                 context.rando.session.languageChanged()
                 settingsDialog = false
-                if (it.autoStart && !AutoStart.hasRecognitionPermission(context) && Build.VERSION.SDK_INT >= 29) {
-                    recognitionPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-                } else {
-                    AutoStart.apply(context, it.autoStart)
-                }
             },
             onDismiss = { settingsDialog = false },
             voices = voiceOptions,
@@ -957,10 +942,6 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onSystemVoices = {
                 runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     .onFailure { notices.show(tr("打不开系统的文字转语音设置", "Can't open system text-to-speech settings")) }
-            },
-            backgroundLocation = AutoStart.hasBackgroundLocation(context),
-            onAskBackgroundLocation = {
-                if (Build.VERSION.SDK_INT >= 29) backgroundPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             },
         )
     }

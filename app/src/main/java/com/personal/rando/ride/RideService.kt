@@ -63,7 +63,7 @@ class RideService : Service() {
             }
         }
         // 用 startForegroundService 开的，每次都得调 startForeground，不然停掉服务时系统会让整个 App 闪退。
-        // 在后台（自动开始记录、耳机键说指令）时 Android 14 起不让带麦克风，去掉麦克风再试一次
+        // 在后台（耳机键说指令）时 Android 14 起不让带麦克风，去掉麦克风再试一次
         val shown = notification(session.navigation.value, session.recording.value, rando.group.state.value)
         val started = serviceTypes().any { types ->
             runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, shown, types) }.isSuccess
