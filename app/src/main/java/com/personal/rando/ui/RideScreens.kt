@@ -2,6 +2,10 @@ package com.personal.rando.ui
 
 import com.personal.rando.ride.HeatLevel
 import com.personal.rando.ride.RideHeat
+import com.personal.rando.ride.Review
+import com.personal.rando.ride.ReviewSpan
+import com.personal.rando.ride.Reviews
+import androidx.compose.ui.text.style.TextAlign
 import com.personal.rando.ride.HeatPiece
 import com.personal.rando.places.PcnCoverage
 import com.personal.rando.places.PcnProgress
@@ -96,15 +100,22 @@ private val DATE = SimpleDateFormat("M月d日 EEE HH:mm", Locale.CHINA)
 // ───────────────────────── 记录列表 ─────────────────────────
 
 @Composable
-fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit) {
+fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit, onReview: () -> Unit = {}) {
     val store = LocalContext.current.rando.session.rides
     val rides by produceState<List<Ride>?>(null) { value = store.list() }
-    RideList(rides, onBack, onOpen, onRiddenMap)
+    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview)
 }
 
 /** 骑行记录：一整块玻璃盖在地图上，最上面是总数，下面一条条往上浮出来 */
 @Composable
-fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit = {}, now: Long = System.currentTimeMillis()) {
+fun RideList(
+    rides: List<Ride>?,
+    onBack: () -> Unit,
+    onOpen: (Long) -> Unit,
+    onRiddenMap: () -> Unit = {},
+    now: Long = System.currentTimeMillis(),
+    onReview: () -> Unit = {},
+) {
     GlassPanel(
         Modifier
             .fillMaxSize()
@@ -131,7 +142,7 @@ fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit, onR
                     contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    item { StatsCard(rides, now, onRiddenMap) }
+                    item { StatsCard(rides, now, onRiddenMap, onReview) }
                     itemsIndexed(rides, key = { _, r -> r.id }) { i, ride -> RideRow(ride, i) { onOpen(ride.id) } }
                 }
             }
@@ -144,7 +155,7 @@ fun RideList(rides: List<Ride>?, onBack: () -> Unit, onOpen: (Long) -> Unit, onR
  * 底下一行是全部合计，和「骑过的路」入口
  */
 @Composable
-private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit) {
+private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onReview: () -> Unit) {
     var period by rememberSaveable { mutableStateOf(Period.WEEK) }
     val totals = remember(rides, period, now) { RideStats.recent(rides, period, if (period == Period.WEEK) 8 else 6, now) }
     val current = totals.last()
@@ -181,6 +192,10 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit) {
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                 )
+                GlassButton(onClick = onReview, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                    Text("回顾", color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(8.dp))
                 GlassButton(onClick = onRiddenMap, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                     Text("骑过的路", color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
@@ -602,3 +617,160 @@ private fun RiddenTracks(rides: List<Ride>, mode: RiddenMode, pcn: PcnProgress?,
 
 /** 给预览、截图用的圆角，和玻璃面板一致 */
 val CardShape = RoundedCornerShape(24.dp)
+
+// ───────────────────────── 月度、年度回顾 ─────────────────────────
+
+@Composable
+fun ReviewScreen(onBack: () -> Unit, onOpen: (Long) -> Unit) {
+    val app = LocalContext.current.rando
+    val rides by produceState<List<Ride>?>(null) { value = app.session.rides.list() }
+    val list = rides ?: return
+    var span by rememberSaveable { mutableStateOf(ReviewSpan.MONTH) }
+    var back by rememberSaveable { mutableStateOf(0) }
+    val now = remember { System.currentTimeMillis() }
+    // 新点亮的公园连道要对一遍格子，放到后台算
+    val review by produceState<Review?>(null, list, span, back) {
+        value = Reviews.of(list, span, now, back)
+        value = withContext(Dispatchers.Default) { Reviews.of(list, span, now, back, loops = app.pcn) }
+    }
+    ReviewPage(review, span, onBack, onOpen, onSpan = { span = it; back = 0 }, onPrevious = { back++ }, onNext = { if (back > 0) back-- })
+}
+
+/** 回顾：上面选月 / 年、往前往后翻，下面是这段时间的数字和亮点 */
+@Composable
+fun ReviewPage(
+    review: Review?,
+    span: ReviewSpan,
+    onBack: () -> Unit,
+    onOpen: (Long) -> Unit,
+    onSpan: (ReviewSpan) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+) {
+    GlassPanel(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                Spacer(Modifier.width(4.dp))
+                Text("回顾", Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                ReviewSpan.entries.forEach { s ->
+                    val selected = s == span
+                    Text(
+                        s.label,
+                        Modifier
+                            .clip(GlassShapes.Pill)
+                            .background(if (selected) RandoGreen else Color.Transparent)
+                            .clickable { onSpan(s) }
+                            .padding(horizontal = 14.dp, vertical = 5.dp),
+                        color = if (selected) Color.White else Ink,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            val r = review ?: return@Column
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconTap(onClick = onPrevious) { Text("‹", color = Ink, fontSize = 26.sp) }
+                        Text(r.title, Modifier.weight(1f), color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        IconTap(onClick = onNext) { Text("›", color = Ink, fontSize = 26.sp) }
+                    }
+                }
+                if (r.empty) {
+                    item {
+                        Text(
+                            "这${if (span == ReviewSpan.MONTH) "个月" else "一年"}还没有骑行记录",
+                            Modifier.fillMaxWidth().padding(32.dp),
+                            color = InkSoft,
+                            fontSize = 15.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    return@LazyColumn
+                }
+                item { ReviewTotals(r) }
+                item { ReviewFacts(r) }
+                r.longest?.let { ride -> item { Highlight("最远的一次", ride, Format.distance(ride.distanceMeters.toInt())) { onOpen(ride.id) } } }
+                r.fastest?.takeIf { it.id != r.longest?.id || r.rides == 1 }?.let { ride ->
+                    item { Highlight("最快的一次", ride, Format.speed(ride.averageSpeed)) { onOpen(ride.id) } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReviewTotals(r: Review) {
+    GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoGreen)) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
+                TotalStat(Format.distance(r.meters.toInt()), "${r.rides} 次")
+                TotalStat(Format.clock(r.movingSeconds), "骑行时间")
+                TotalStat("${r.ascendMeters.toInt()} 米", "爬升")
+            }
+            val unit = if (r.span == ReviewSpan.MONTH) "上个月" else "去年"
+            Text(
+                if (r.previousMeters > 0) "比$unit ${compare(r.meters - r.previousMeters)}" else "${unit}没有记录",
+                Modifier.padding(top = 10.dp),
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+/** 骑了几天、连着几天、最常什么时候骑、新点亮多少公园连道 */
+@Composable
+private fun ReviewFacts(r: Review) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(GlassShapes.Card)
+            .background(Color.White.copy(alpha = 0.55f))
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Fact("骑车的日子", "${r.days} 天")
+        if (r.streak >= 2) Fact("最长连着骑", "${r.streak} 天")
+        r.favoriteTime?.let { Fact("最常出门", it) }
+        Fact("平均每次", Format.distance((r.meters / r.rides).toInt()))
+        r.newPcnMeters?.let { Fact("新点亮的公园连道", if (it >= 50) Format.distance(it.toInt()) else "没有") }
+    }
+}
+
+@Composable
+private fun Fact(label: String, value: String) {
+    Row {
+        Text(label, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp)
+        Text(value, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(GlassShapes.Card)
+            .background(Color.White.copy(alpha = 0.55f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = InkSoft, fontSize = 13.sp)
+            Text("${DATE.format(Date(ride.startedAt))} ${ride.title}", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(value, color = RandoGreenDeep, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+    }
+}
