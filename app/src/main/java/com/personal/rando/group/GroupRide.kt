@@ -2,12 +2,15 @@ package com.personal.rando.group
 
 import com.personal.rando.i18n.tr
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.core.content.edit
 import com.personal.rando.nav.Geo
 import com.personal.rando.places.Hazard
 import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,9 +48,11 @@ class GroupRide(
     context: Context,
     private val scope: CoroutineScope,
     private val serverUrl: String = GroupConfig.SERVER_URL,
-    private val http: OkHttpClient = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build(),
+    // 10 秒一次心跳，到下一次还没回就当断了：信号没了 10–20 秒就发现，不用等到半分钟以后
+    private val http: OkHttpClient = OkHttpClient.Builder().pingInterval(10, TimeUnit.SECONDS).build(),
 ) {
     private val prefs = context.applicationContext.getSharedPreferences("group", Context.MODE_PRIVATE)
+    private val connectivity = context.applicationContext.getSystemService(ConnectivityManager::class.java)
 
     /** 本机在队伍里的 id，装好就不变，重连时服务器认得是同一个人 */
     val myId: String = prefs.getString(KEY_ID, null) ?: UUID.randomUUID().toString().also { prefs.edit { putString(KEY_ID, it) } }
@@ -108,6 +113,9 @@ class GroupRide(
 
     private var socket: WebSocket? = null
     private var reconnectJob: Job? = null
+    /** 现在用的网络（Wi-Fi、流量）；换了网络旧连接多半已经死了，但要等心跳超时才知道 */
+    private var network: Network? = null
+    private var watchingNetwork = false
     private var lastSent: Fix? = null
     private var lastSentAt = 0L
     /** 掉队提醒：每个队友上次提醒的时间 */
@@ -129,10 +137,12 @@ class GroupRide(
         leave()
         myName = name
         _state.value = GroupState(code)
-        connect(code, attempt = 0)
+        watchNetwork()
+        connect(code)
     }
 
     fun leave() {
+        unwatchNetwork()
         reconnectJob?.cancel()
         socket?.close(1000, "bye")
         socket = null
@@ -214,7 +224,10 @@ class GroupRide(
      */
     fun sendVoice(stream: Int, seq: Int, end: Boolean, base64: String): Boolean {
         val direct = local.send(GroupProtocol.localVoice(myId, myName, stream, seq, end, base64))
-        val server = socket?.send(GroupProtocol.voice(stream, seq, end, base64)) == true
+        // 网络卡住时发不出去的会在 OkHttp 里排队，通了以后一下子全到，队友听到的是好几秒前的话，
+        // 后面也一直慢那么多：排着的超过一秒就先不发这段（最后一段照发，队友那边好收尾）
+        val ws = socket
+        val server = ws != null && (end || ws.queueSize() < MAX_VOICE_QUEUE) && ws.send(GroupProtocol.voice(stream, seq, end, base64))
         return direct || server
     }
 
@@ -236,7 +249,7 @@ class GroupRide(
         return null
     }
 
-    private fun connect(code: String, attempt: Int) {
+    private fun connect(code: String) {
         // OkHttp 的 WebSocket 地址写 https，连的时候自己换成 wss
         val url = serverUrl.toHttpUrl().newBuilder()
             .addPathSegment("room").addPathSegment(code)
@@ -248,6 +261,8 @@ class GroupRide(
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 scope.launch {
                     if (socket !== webSocket) return@launch
+                    // 连上了：下次断了从 1 秒重新退避，不要接着上次的半分钟
+                    reconnectAttempt = 0
                     lastSent = null
                     _state.update { it?.copy(connected = true) }
                     myRoute?.let { webSocket.send(GroupProtocol.route(it)) }
@@ -263,24 +278,69 @@ class GroupRide(
                 }
             }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = dropped(webSocket, attempt)
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = dropped(webSocket)
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = dropped(webSocket, attempt)
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.w(TAG, "socket failed", t)
+                dropped(webSocket)
+            }
         })
     }
 
-    private fun dropped(webSocket: WebSocket, attempt: Int) {
+    /** 连续连不上几次了；连上就清零 */
+    private var reconnectAttempt = 0
+
+    private fun dropped(webSocket: WebSocket) {
         scope.launch {
             if (socket !== webSocket) return@launch
             val state = _state.value ?: return@launch
             socket = null
             _state.update { it?.copy(connected = false) }
-            // 没信号、换基站时会断；退避着重连，最长半分钟一次
+            // 没信号、换基站时会断；退避着重连，最长半分钟一次（网络回来了会马上连，见 watchNetwork）
+            val attempt = reconnectAttempt++
             reconnectJob = scope.launch {
                 delay(minOf(30_000L, 1_000L shl minOf(attempt, 5)))
-                if (_state.value?.code == state.code) connect(state.code, attempt + 1)
+                if (_state.value?.code == state.code) connect(state.code)
             }
         }
+    }
+
+    /** 马上重连：换了网络、网络回来了，不等心跳超时、不等退避 */
+    private fun reconnectNow() {
+        val state = _state.value ?: return
+        reconnectJob?.cancel()
+        socket?.let { old ->
+            socket = null
+            old.cancel()
+        }
+        _state.update { it?.copy(connected = false) }
+        reconnectAttempt = 0
+        connect(state.code)
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(net: Network) {
+            scope.launch {
+                if (!watchingNetwork) return@launch
+                val before = network
+                network = net
+                // 注册时会先报一次现在的网络，那次不用重连；之后换了网络，或者断着的时候网络回来了，马上连
+                if ((before != null && before != net) || socket == null) reconnectNow()
+            }
+        }
+    }
+
+    private fun watchNetwork() {
+        if (watchingNetwork) return
+        network = connectivity?.activeNetwork
+        watchingNetwork = runCatching { connectivity?.registerDefaultNetworkCallback(networkCallback) }.isSuccess && connectivity != null
+    }
+
+    private fun unwatchNetwork() {
+        if (!watchingNetwork) return
+        watchingNetwork = false
+        network = null
+        runCatching { connectivity?.unregisterNetworkCallback(networkCallback) }
     }
 
     private fun apply(event: GroupEvent) {
@@ -312,6 +372,9 @@ class GroupRide(
     }
 
     companion object {
+        private const val TAG = "GroupRide"
+        /** OkHttp 里排着没发出去的超过这么多字节（大约一秒的对讲）就先不发对讲 */
+        private const val MAX_VOICE_QUEUE = 4 * 1024L
         private const val KEY_ID = "id"
         private const val KEY_NAME = "name"
         const val SEND_METERS = 15.0
