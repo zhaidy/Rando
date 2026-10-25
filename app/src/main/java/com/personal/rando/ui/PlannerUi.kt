@@ -127,6 +127,10 @@ import com.personal.rando.nav.DaylightAlerts
 import com.personal.rando.places.AmenityOnRoute
 import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.RouteWeather
+import com.personal.rando.weather.RouteWind
+import com.personal.rando.routing.RideTime
+import com.personal.rando.routing.shadeShare
+import com.personal.rando.routing.litShare
 import com.personal.rando.weather.Climate
 import com.personal.rando.routing.steepestClimb
 import androidx.compose.ui.graphics.Brush
@@ -557,6 +561,7 @@ fun PlannerSheet(
                             RouteSummary(
                                 r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities,
                                 climate = state.climate,
+                                wind = state.wind,
                                 loop = state.loop != null,
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
@@ -933,6 +938,7 @@ fun RouteSummary(
     onToggleDetails: () -> Unit = {},
     onPace: (Pace) -> Unit = {},
     climate: Climate? = null,
+    wind: RouteWind? = null,
     routeSaved: Boolean = false,
     onSaveRoute: () -> Unit = {},
 ) {
@@ -964,10 +970,10 @@ fun RouteSummary(
                 Notes(route, breakdown, prefs, onShowOnMap, loop)
             }
             Spacer(Modifier.height(5.dp))
-            Outlook(route, weather, amenities, onShowOnMap, climate)
+            Outlook(route, weather, amenities, onShowOnMap, climate, wind, prefs, loop)
         } else {
             Spacer(Modifier.height(10.dp))
-            Headline(breakdown, weather, onShowOnMap, climate)
+            Headline(breakdown, weather, onShowOnMap, climate, wind)
         }
         DetailsToggle(expanded, onToggleDetails)
     }
@@ -1018,7 +1024,7 @@ fun paceText(pace: Pace, mySpeed: Double?): String = when {
 
 /** 收起时的一两句：要不要上马路，会不会下雨 */
 @Composable
-private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onShowOnMap: (NoteTarget) -> Unit, climate: Climate?) {
+private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onShowOnMap: (NoteTarget) -> Unit, climate: Climate?, wind: RouteWind?) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         val road = breakdown[RoadKind.ROAD] ?: 0
         when {
@@ -1028,6 +1034,7 @@ private fun Headline(breakdown: Map<RoadKind, Int>, weather: RouteWeather?, onSh
         }
         weather?.takeIf { !it.dry }?.let { Note(RandoBlue, it.summary, strong = true) }
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
+        wind?.takeIf { it.strongHeadwind }?.let { Note(RandoAmber, "${it.wind.name} ${it.wind.kmh.roundToInt()} km/h，全程大多顶风", strong = true) }
     }
 }
 
@@ -1220,11 +1227,27 @@ private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs
 
 /** 天气、天黑、补给：路线本身以外，骑之前想知道的 */
 @Composable
-private fun Outlook(route: Route, weather: RouteWeather?, amenities: List<AmenityOnRoute>, onShowOnMap: (NoteTarget) -> Unit, climate: Climate?) {
+private fun Outlook(
+    route: Route,
+    weather: RouteWeather?,
+    amenities: List<AmenityOnRoute>,
+    onShowOnMap: (NoteTarget) -> Unit,
+    climate: Climate?,
+    wind: RouteWind?,
+    prefs: RoutePrefs,
+    loop: Boolean,
+) {
     Column(Modifier.animateContentSize(Motion.smooth()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         weather?.let { Note(if (it.dry) RandoGreen else RandoBlue, it.summary, strong = !it.dry) }
         climate?.summary?.let { Note(if (climate.warning != null) RandoAmber else InkSoft, "现在 $it") }
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
+        wind?.let { Note(if (it.strongHeadwind) RandoAmber else InkSoft, it.summary(loop)) }
+        // 「公园连道」配置中午挑树荫、天黑挑路灯（算路时按时间自动开）
+        if (prefs.profile == BikeProfile.PCN) {
+            val now = remember(route) { System.currentTimeMillis() }
+            if (RideTime.shade(now)) Note(RandoGreen, "中午已尽量挑有树荫的路：树荫下约 ${Format.share(route.shadeShare())}")
+            if (RideTime.night(now)) Note(RandoGreen, "天黑了，已尽量走有路灯的路：有灯的约 ${Format.share(route.litShare())}")
+        }
         val dark = remember(route) { DaylightAlerts.plan(System.currentTimeMillis(), route.durationSeconds) }
         dark?.let { Note(RandoAmber, it) }
         val (parking, along) = amenities.partition { it.amenity.type == AmenityType.PARKING }

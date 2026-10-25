@@ -20,6 +20,10 @@ data class RoutePrefs(
     val pace: Pace = Pace.MINE,
     /** 我骑过的平均速度（米/秒），骑得还不够多时是 null，这时「按我的速度」用 BRouter 的默认 */
     val mySpeed: Double? = null,
+    /** 中午：挑有树荫的路（算路时按时间自动定，不存） */
+    val shade: Boolean = false,
+    /** 天黑：挑有路灯的路（算路时按时间自动定，不存） */
+    val night: Boolean = false,
 ) {
     /** 预计时间：选了档位时 BRouter 已经按那个功率算好了；按我的速度就用距离除以平均速度 */
     fun duration(route: Route): Int {
@@ -29,5 +33,5 @@ data class RoutePrefs(
 
     /** 要上传的配置内容；用服务器自带的配置时是 null */
     val customProfile: String?
-        get() = if (profile.custom) RandoProfiles.pcn(avoidRoads, avoidBridges) else null
+        get() = if (profile.custom) RandoProfiles.pcn(avoidRoads, avoidBridges, shade, night) else null
 }

@@ -1,6 +1,7 @@
 package com.personal.rando.routing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,5 +26,43 @@ class RandoProfilesTest {
             RoutePrefs(BikeProfile.PCN, avoidRoads = true).customProfile,
         )
         assertNull(RoutePrefs(BikeProfile.CITY, avoidRoads = true, avoidBridges = true).customProfile)
+    }
+
+    @Test
+    fun `中午挑树荫、天黑挑路灯`() {
+        val p = RandoProfiles.pcn(avoidRoads = false, avoidBridges = false, shade = true, night = true)
+        assertTrue(p.contains("assign shade = 1"))
+        assertTrue(p.contains("assign night = 1"))
+        assertTrue(RandoProfiles.pcn(false, false).contains("assign shade = 0"))
+        assertTrue(RoutePrefs(BikeProfile.PCN, shade = true).customProfile!!.contains("assign shade = 1"))
+    }
+
+    @Test
+    fun `按新加坡时间定`() {
+        // 2026-10-25 12:30 / 08:00 / 21:00 新加坡时间（UTC+8）
+        val noon = 1792902600000L
+        val morning = noon - 270 * 60_000L
+        val evening = noon + 510 * 60_000L
+        assertTrue(RideTime.shade(noon))
+        assertFalse(RideTime.shade(morning))
+        assertFalse(RideTime.night(noon))
+        assertTrue(RideTime.night(evening))
+        val prefs = with(RideTime) { RoutePrefs().at(evening) }
+        assertTrue(prefs.night)
+        assertFalse(prefs.shade)
+    }
+
+    @Test
+    fun `树荫、路灯占多少`() {
+        val route = Route(
+            points = emptyList(), distanceMeters = 400, durationSeconds = 100, ascendMeters = 0,
+            segments = listOf(
+                RouteSegment(100, mapOf("highway" to "footway", "estimated_forest_class" to "4", "lit" to "yes")),
+                RouteSegment(100, mapOf("highway" to "footway", "estimated_forest_class" to "1")),
+                RouteSegment(200, mapOf("highway" to "residential")),
+            ),
+        )
+        assertEquals(0.25, route.shadeShare(), 1e-9)
+        assertEquals(0.75, route.litShare(), 1e-9)
     }
 }
