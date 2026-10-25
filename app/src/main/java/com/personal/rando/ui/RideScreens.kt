@@ -110,7 +110,7 @@ fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -
     val rides by produceState<List<Ride>?>(null) { value = store.list() }
     val context = LocalContext.current
     val preview = rememberSharePreview()
-    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview, onShareToday = { today -> preview { ShareCard.dayCard(context, today) } })
+    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview, onShareToday = { today -> preview { hide -> ShareCard.dayCard(context, today, hide) } })
 }
 
 /** 骑行记录：一整块玻璃盖在地图上，最上面是总数，下面一条条往上浮出来 */
@@ -340,18 +340,18 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
             confirmButton = {
                 TextButton(onClick = {
                     asking = false
-                    preview { ShareCard.dayCard(context, day) }
+                    preview { hide -> ShareCard.dayCard(context, day, hide) }
                 }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = RandoGreen) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     asking = false
-                    preview { ShareCard.card(context, ride, record) }
+                    preview { hide -> ShareCard.card(context, ride, record, hide) }
                 }) { Text(tr("只分享这次", "Just this ride")) }
             },
         )
     }
-    return { if (day.size > 1) asking = true else preview { ShareCard.card(context, ride, record) } }
+    return { if (day.size > 1) asking = true else preview { hide -> ShareCard.card(context, ride, record, hide) } }
 }
 
 // ───────────────────────── 记录详情 ─────────────────────────
