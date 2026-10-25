@@ -81,6 +81,8 @@ dependencies {
     implementation(libs.maplibre)
     // 活动识别：检测到在骑车就自动开始记录
     implementation(libs.play.services.location)
+    // 对讲：离得近的队友用蓝牙、Wi-Fi 直连
+    implementation(libs.play.services.nearby)
     // 液态玻璃：面板折射、模糊后面的地图
     implementation(libs.haze)
     implementation(libs.haze.glass)

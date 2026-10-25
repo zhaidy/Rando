@@ -15,6 +15,7 @@ robolectric = "4.17"
 junit = "4.13.2"
 json = "20260814"
 playServicesLocation = "21.4.0"
+playServicesNearby = "19.3.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -40,6 +41,7 @@ roborazzi-junit-rule = { module = "io.github.takahirom.roborazzi:roborazzi-junit
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 junit = { module = "junit:junit", version.ref = "junit" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
+play-services-nearby = { module = "com.google.android.gms:play-services-nearby", version.ref = "playServicesNearby" }
 json = { module = "org.json:json", version.ref = "json" }
 
 [plugins]
