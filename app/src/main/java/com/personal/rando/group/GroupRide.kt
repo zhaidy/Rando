@@ -121,7 +121,7 @@ class GroupRide(
 
     fun hasLocalPermissions(): Boolean = local.hasPermissions()
 
-    /** 开对讲时开直连；没有「附近的设备」权限就只走服务器和 WebRTC */
+    /** 开对讲时开直连；没有「附近的设备」权限、蓝牙关着就不开蓝牙 / Wi-Fi 直连，只走服务器和 WebRTC */
     fun startLocal() {
         val s = _state.value ?: return
         val team = s.teammates.map { it.id }.toSet()
