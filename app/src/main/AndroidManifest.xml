@@ -34,6 +34,8 @@
     <!-- Android 12+：安装来源是 Rando 自己时，应用内更新不再弹系统确认 -->
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16 实时更新：骑行通知提升到状态栏小胶囊，显示下一个路口 / 骑了多远 -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- 更新装好后定个马上响的闹钟把应用重新打开 -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission

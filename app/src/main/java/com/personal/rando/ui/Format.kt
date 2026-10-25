@@ -8,6 +8,9 @@ object Format {
         if (meters < 1000) "$meters 米"
         else String.format(Locale.US, "%.1f 公里", meters / 1000.0)
 
+    /** 状态栏小胶囊里放不下空格：「850米」「15.9公里」 */
+    fun shortDistance(meters: Int): String = distance(meters).replace(" ", "")
+
     fun duration(seconds: Int): String {
         val minutes = (seconds + 59) / 60
         return if (minutes < 60) "$minutes 分钟"
