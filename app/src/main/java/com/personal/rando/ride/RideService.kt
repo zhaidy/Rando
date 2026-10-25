@@ -185,17 +185,18 @@ class RideService : Service() {
         val manager = getSystemService(LocationManager::class.java) ?: return
         // GPS 刚开要等一会儿才有第一个点：先用一分钟内的上一个 GPS 点顶上，
         // 网络定位也听着，至少地图上先有个大概位置（太不准的不拿来导航）
-        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { manager.isProviderEnabled(it) }
+        // 定位关着也要注册上：系统设置里打开定位以后，注册过的才会开始收到点
         val l = Fix.listener(session::onFix)
-        try {
+        runCatching {
             manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 ?.takeIf { System.currentTimeMillis() - it.time < FRESH_FIX_MS }
                 ?.let { session.onFix(Fix.of(it)) }
-            providers.forEach { manager.requestLocationUpdates(it, 1_000L, 0f, l, Looper.getMainLooper()) }
-            listener = l
-        } catch (_: Exception) {
-            stopSelf()
         }
+        // 只给了大概位置时 Android 12 以下不让听 GPS，跳过它只用网络定位
+        val registered = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).count { provider ->
+            runCatching { manager.requestLocationUpdates(provider, 1_000L, 0f, l, Looper.getMainLooper()) }.isSuccess
+        }
+        if (registered > 0) listener = l else stopSelf()
     }
 
     /** 状态栏小胶囊里的几个字：导航时是下一个路口，不然是骑了多远 */

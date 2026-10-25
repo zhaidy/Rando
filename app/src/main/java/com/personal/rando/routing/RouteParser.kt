@@ -69,7 +69,8 @@ object RouteParser {
             val index = row.optInt(0, -1)
             val turn = Turn.fromCode(row.optInt(1)) ?: return@mapNotNull null
             if (index !in 0 until pointCount) return@mapNotNull null
-            Maneuver(pointIndex = index, turn = turn, exit = row.optInt(2), angle = row.optInt(4))
+            // 左行的地方（新加坡）环岛顺时针转，BRouter 给的出口号是负的
+            Maneuver(pointIndex = index, turn = turn, exit = kotlin.math.abs(row.optInt(2)), angle = row.optInt(4))
         }
 
     /** "highway=residential surface=asphalt" → {highway=residential, surface=asphalt} */

@@ -109,7 +109,8 @@ export class Room extends DurableObject {
     for (const old of this.ctx.getWebSockets(id)) {
       try { old.close(4000, "replaced"); } catch {}
     }
-    if (this.members().length >= MAX_MEMBERS) {
+    // 被关掉的旧连接可能还没从列表里拿掉，不算自己
+    if (this.members().filter((m) => m.id !== id).length >= MAX_MEMBERS) {
       return new Response("队伍满了", { status: 429 });
     }
 

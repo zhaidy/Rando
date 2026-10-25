@@ -59,4 +59,11 @@ class RoadAlertsTest {
         assertEquals("前方过天桥，有电梯", a.next(step + 20))
         assertNull(a.next(step + 40))
     }
+
+    @Test
+    fun `上马路的地方正好是无标记路口，两句都说`() {
+        val a = alerts(pcn to "highway=crossing crossing=unmarked", "highway=primary" to "", pcn to "")
+        assertEquals("前方100 米要上马路，约100 米", a.next(step - 100))
+        assertEquals("前方过马路，没有红绿灯，注意来车", a.next(step - 30))
+    }
 }

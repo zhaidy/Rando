@@ -79,6 +79,9 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Walkie(false), p("turn off walkie talkie"))
         assertEquals(VoiceCommand.Weather, p("is it going to rain"))
         assertEquals(VoiceCommand.MrtHome, p("take the MRT home"))
+        assertEquals(VoiceCommand.MrtHome, p("take the train home"))
+        assertEquals(VoiceCommand.Weather, p("is it going to rain"))
+        assertEquals(VoiceCommand.Weather, p("is it raining"))
         assertEquals(VoiceCommand.Unknown("what's for lunch"), p("what's for lunch"))
     }
 

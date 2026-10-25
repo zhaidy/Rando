@@ -15,20 +15,22 @@ import com.personal.rando.ui.Format
  */
 class RoadAlerts(private val timeline: RouteTimeline) {
 
-    /** 已经提醒过的路段起点、路口位置（米） */
-    private val announced = mutableSetOf<Long>()
+    /** 已经提醒过的路段起点、天桥、路口位置（米）；分开记，同一米上的路段起点和路口各说各的 */
+    private val announcedRoads = mutableSetOf<Long>()
+    private val announcedStructures = mutableSetOf<Long>()
+    private val announcedCrossings = mutableSetOf<Long>()
 
     fun next(along: Double): String? {
         timeline.ahead(along)?.next?.let { next ->
             val distance = next.startMeters - along
-            if (next.kind == RoadKind.ROAD && distance <= ROAD_WARNING_METERS && announced.add(key(next.startMeters))) {
+            if (next.kind == RoadKind.ROAD && distance <= ROAD_WARNING_METERS && announcedRoads.add(key(next.startMeters))) {
                 val ahead = Format.distance(round(distance))
                 val length = Format.distance(round(next.length))
                 return tr("前方${ahead}要上马路，约$length", "Road section in $ahead, about $length long")
             }
         }
         timeline.nextStructure(along)?.let { a ->
-            if (a.distance <= STRUCTURE_WARNING_METERS && announced.add(key(a.atMeters))) {
+            if (a.distance <= STRUCTURE_WARNING_METERS && announcedStructures.add(key(a.atMeters))) {
                 val s = a.structure
                 return when (s.kind) {
                     StructureKind.OVERPASS -> tr("前方过天桥，${s.access}", "Overhead bridge ahead, ${s.access}")
@@ -37,7 +39,7 @@ class RoadAlerts(private val timeline: RouteTimeline) {
             }
         }
         timeline.nextCrossing(along)?.let { c ->
-            if (c.type == CrossingType.UNMARKED && c.distance <= CROSSING_WARNING_METERS && announced.add(key(c.atMeters))) {
+            if (c.type == CrossingType.UNMARKED && c.distance <= CROSSING_WARNING_METERS && announcedCrossings.add(key(c.atMeters))) {
                 return tr("前方过马路，没有红绿灯，注意来车", "Crossing ahead with no traffic lights, watch for cars")
             }
         }

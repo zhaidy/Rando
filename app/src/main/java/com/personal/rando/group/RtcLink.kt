@@ -117,10 +117,13 @@ class RtcLink(
         }
     }
 
-    /** 队里现在有谁（不算自己）：离队的关掉 */
+    /**
+     * 队里现在有谁（不算自己）：离队的关掉。已经打通的留着：队友只是跟服务器断了一下（换网络）也会被说成离队，
+     * 这时正要靠直连；真走了会发 bye，没发的也会连不上、过了宽限时间自己关掉
+     */
     fun setTeam(ids: Set<String>) {
         team = ids
-        peers.keys.filter { it !in ids }.forEach { close(it) }
+        peers.filter { (id, p) -> id !in ids && !p.isOpen() }.keys.toList().forEach { close(it) }
     }
 
     /** 发给所有直连上的队友；一个都没有返回 false */

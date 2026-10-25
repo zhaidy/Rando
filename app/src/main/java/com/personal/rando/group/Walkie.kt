@@ -93,6 +93,8 @@ class Walkie(
     val state: StateFlow<WalkieState> = _state
 
     private var listenJob: Job? = null
+    /** 语音指令借走了麦克风，见 [pauseMic] */
+    private var micPaused = false
     /** 每个正在说话的队友一路播放 */
     private val players = mutableMapOf<String, Player>()
     /** 服务器、直连各来一份，只放先到的 */
@@ -115,21 +117,42 @@ class Walkie(
         listenJob = scope.launch(Dispatchers.Default) { listen() }
     }
 
-    /** 关掉；[onMicReleased] 在麦克风真正放开以后调（语音识别要等它放开才抢得到麦克风） */
-    fun turnOff(onMicReleased: (() -> Unit)? = null) {
-        if (!_state.value.on) {
-            onMicReleased?.invoke()
-            return
-        }
+    /**
+     * 语音指令要用麦克风：只停自己收音，对讲还算开着，闭麦、直连都不动（不然每说一句指令直连都要重新打一遍）。
+     * [onMicReleased] 在麦克风真正放开以后调；对讲没开着返回 false
+     */
+    fun pauseMic(onMicReleased: () -> Unit): Boolean {
+        if (!_state.value.on || micPaused) return false
+        micPaused = true
         val job = listenJob
         job?.cancel()
         listenJob = null
-        if (onMicReleased != null) scope.launch { job?.join(); onMicReleased() }
+        route.stop()
+        _state.update { it.copy(sending = false, micBars = 0, testing = false) }
+        scope.launch { job?.join(); onMicReleased() }
+        return true
+    }
+
+    /** 语音指令用完麦克风，接着收音；中间关了对讲就不开了 */
+    fun resumeMic() {
+        if (!micPaused) return
+        micPaused = false
+        if (!_state.value.on || !hasMicPermission()) return
+        val device = route.start()
+        _state.update { it.copy(device = device) }
+        listenJob = scope.launch(Dispatchers.Default) { listen() }
+    }
+
+    fun turnOff() {
+        if (!_state.value.on) return
+        micPaused = false
+        listenJob?.cancel()
+        listenJob = null
         players.values.forEach { it.close() }
         players.clear()
         route.stop()
         group.stopLocal()
-        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false, muted = false) }
+        _state.update { it.copy(on = false, sending = false, device = null, micBars = 0, testing = false, muted = false) }
     }
 
     /**
@@ -429,7 +452,7 @@ class Walkie(
         }
 
         private suspend fun run() {
-            _state.update { it.copy(talking = it.talking + name) }
+            talking(name, +1)
             val decoder = runCatching { AacStreamDecoder() }.getOrNull()
             // 同时好几个人在说、正在打电话时可能开不出音轨
             val track = runCatching { newTrack() }.getOrNull()
@@ -502,7 +525,7 @@ class Walkie(
             } finally {
                 track?.let { runCatching { it.stop() }; it.release() }
                 decoder?.close()
-                _state.update { it.copy(talking = it.talking - name) }
+                talking(name, -1)
                 withContext(Dispatchers.Main.immediate) { if (players[id] === this@Player) players.remove(id) }
             }
         }
@@ -560,11 +583,23 @@ class Walkie(
             }
     }
 
+    /**
+     * 每个名字有几路在放：同一个人接着说下一句时，新的一路先开始、上一句才放完收掉，
+     * 直接按名字加减会把正在说的也减没了（同名的队友也一样）
+     */
+    private val talkers = mutableMapOf<String, Int>()
+
+    private fun talking(name: String, delta: Int) = synchronized(talkers) {
+        val n = (talkers[name] ?: 0) + delta
+        if (n > 0) talkers[name] = n else talkers.remove(name)
+        _state.update { it.copy(talking = talkers.keys.toSet()) }
+    }
+
     /** 试一下：把录到的放给自己听；放的时候不收音 */
     private fun playSelf(pcm: ShortArray) {
         selfPlaying = true
         scope.launch(Dispatchers.Default) {
-            _state.update { it.copy(talking = it.talking + SELF_NAME) }
+            talking(SELF_NAME, +1)
             val track = runCatching { newTrack() }.getOrNull()
             try {
                 if (track == null) {
@@ -578,7 +613,7 @@ class Walkie(
                 Log.w(TAG, "self play failed", e)
             } finally {
                 track?.let { runCatching { it.stop() }; it.release() }
-                _state.update { it.copy(talking = it.talking - SELF_NAME) }
+                talking(SELF_NAME, -1)
                 selfPlaying = false
             }
         }
