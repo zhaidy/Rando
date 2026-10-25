@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
@@ -389,6 +390,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val finishRide = {
         finished = finishRide(context, vm.session)
     }
+    // 「结束」按钮先问一句：骑车时手套一蹭就把导航和记录都停了
+    var confirmFinish by remember { mutableStateOf(false) }
+    val askFinish = { confirmFinish = true }
     // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
     val joinGroup = { code: String, name: String ->
         groupDialog = false
@@ -569,7 +573,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         climate = rideClimate,
                         amenities = rideAmenities,
                         onMap = { openRideView(false) },
-                        onStop = finishRide,
+                        onStop = askFinish,
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieState.takeIf { groupState != null },
                         onToggleTalk = toggleTalk,
@@ -590,7 +594,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         NavigationOverlay(
                             nav,
                             onRideView = { openRideView(true) },
-                            onStop = finishRide,
+                            onStop = askFinish,
                         )
                         RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp))
                     }
@@ -701,7 +705,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { it },
                             exit = fadeOut() + slideOutVertically { it },
                         ) {
-                            recording?.let { RecordingPill(it, onRideView = { openRideView(true) }, onStop = finishRide) }
+                            recording?.let { RecordingPill(it, onRideView = { openRideView(true) }, onStop = askFinish) }
                         }
                         AnimatedContent(
                             targetState = focus,
@@ -876,6 +880,21 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onDismiss = { hazardShown = null },
         )
     }
+    if (confirmFinish) {
+        FinishDialog(
+            navigating = navigating,
+            recording = recording != null,
+            onFinish = {
+                confirmFinish = false
+                finishRide()
+            },
+            onStopNavigation = {
+                confirmFinish = false
+                vm.session.stopNavigation()
+            },
+            onDismiss = { confirmFinish = false },
+        )
+    }
     crash?.let { alert -> CrashDialog(alert, onOk = vm.session::imOk, onSendNow = vm.session::sendSos) }
     sosList.firstOrNull()?.takeIf { crash == null }?.let { alert ->
         SosDialog(
@@ -947,6 +966,45 @@ private fun openStreetView(context: Context, at: LatLon) {
     } catch (_: ActivityNotFoundException) {
         context.startActivity(Intent(Intent.ACTION_VIEW, url))
     }
+}
+
+/**
+ * 点了「结束」先确认一下。导航中还可以只停导航、接着记录；
+ * 「继续骑」放在最显眼的位置，误触了点它就行
+ */
+@Composable
+private fun FinishDialog(
+    navigating: Boolean,
+    recording: Boolean,
+    onFinish: () -> Unit,
+    onStopNavigation: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text(if (recording) "结束这次骑行？" else "结束导航？") },
+        text = {
+            Text(
+                when {
+                    recording && navigating -> "导航和记录一起停，记录会保存下来。只想停导航的话可以接着记录。"
+                    recording -> "记录会保存下来。"
+                    else -> "不再提示怎么走。"
+                },
+                color = InkSoft,
+            )
+        },
+        confirmButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoGreen)) { Text("继续骑") }
+                Row {
+                    if (recording && navigating) TextButton(onClick = onStopNavigation) { Text("只停导航", color = Ink) }
+                    TextButton(onClick = onFinish) { Text("结束", color = RandoRed, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        },
+    )
 }
 
 /** 收藏时起个名字；家、公司一点就行 */
