@@ -234,7 +234,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                             modifier = Modifier.weight(1f),
                         ) {
                             if (saved) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                             }
                             Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)

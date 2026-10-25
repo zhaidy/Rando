@@ -1,5 +1,13 @@
 package com.personal.rando.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -55,7 +63,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -164,9 +171,6 @@ import com.personal.rando.ui.glass.PrimaryButton
 import com.personal.rando.ui.glass.liquidGlass
 import com.personal.rando.ui.glass.pressScale
 
-/** 玻璃上的文字颜色：深墨绿，比纯黑柔和 */
-val Ink = Color(0xFF13241B)
-val InkSoft = Color(0xFF4F6157)
 
 fun kindColor(hex: String) = Color(android.graphics.Color.parseColor(hex))
 
@@ -180,12 +184,10 @@ fun SearchBar(
     build: Long,
     onQuery: (String) -> Unit,
     onPick: (Place) -> Unit,
-    onOpenRides: () -> Unit,
     onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier,
     onOfflineMaps: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onMrtHome: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -218,14 +220,20 @@ fun SearchBar(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                         shape = GlassShapes.Card,
-                        containerColor = Color(0xF7F7FAF8),
+                        containerColor = DialogColor,
                     ) {
-                        DropdownMenuItem(text = { Text(tr("骑行记录", "Rides")) }, onClick = { menuOpen = false; onOpenRides() })
+                        // 骑行记录在右边竖条上、坐 MRT 回家在卡片的收藏那一行，这里只放不常用的
                         DropdownMenuItem(text = { Text(tr("离线地图", "Offline maps")) }, onClick = { menuOpen = false; onOfflineMaps() })
-                        DropdownMenuItem(text = { Text(tr("坐 MRT 回家", "MRT home")) }, onClick = { menuOpen = false; onMrtHome() })
                         DropdownMenuItem(text = { Text(tr("设置", "Settings")) }, onClick = { menuOpen = false; onSettings() })
-                        DropdownMenuItem(text = { Text(tr("检查更新", "Check for updates")) }, onClick = { menuOpen = false; onCheckUpdate() })
-                        DropdownMenuItem(text = { Text(tr("当前版本 build $build", "Version: build $build")) }, onClick = {}, enabled = false)
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(tr("检查更新", "Check for updates"))
+                                    Text(tr("现在是 build $build", "Now on build $build"), color = InkSoft, fontSize = 12.sp)
+                                }
+                            },
+                            onClick = { menuOpen = false; onCheckUpdate() },
+                        )
                     }
                 }
             }
@@ -323,7 +331,7 @@ fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: (
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("公园连道偏好", "Park connector preferences")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -407,18 +415,64 @@ fun SideRail(
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = tr("骑行记录", "Rides"), tint = RandoGreen) }
+        // 图标统一用墨色；只有「开始记录」是橙色（主操作），在听语音时麦克风变红
+        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = tr("骑行记录", "Rides"), tint = Ink) }
         if (showLocation && showRecord) {
             IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = tr("开始记录", "Start recording"), tint = RandoOrange) }
         }
         onGroup?.let {
-            IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = tr("一起骑", "Ride together"), tint = Color(0xFF6A3FA0)) }
+            IconTap(onClick = it) { Icon(GroupIcon, contentDescription = tr("一起骑", "Ride together"), tint = Ink) }
         }
         onVoice?.let {
-            IconTap(onClick = it) { Icon(MicIcon, contentDescription = tr("语音指令", "Voice command"), tint = if (listening) RandoRed else RandoBlue) }
+            IconTap(onClick = it) { Icon(MicIcon, contentDescription = tr("语音指令", "Voice command"), tint = if (listening) RandoRed else Ink) }
         }
         if (showLocation) {
-            IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = tr("回到我的位置", "My location"), tint = RandoGreen) }
+            IconTap(onClick = onLocate) { Icon(MyLocationIcon, contentDescription = tr("回到我的位置", "My location"), tint = RandoBlue.onGlass()) }
+        }
+    }
+}
+
+// ───────────────────────── 整体排布 ─────────────────────────
+
+/** 规划页上下两摞东西挡住了地图哪里：上面那摞的下沿、底部卡片的上沿、整个高度，都是像素 */
+data class PlannerInsets(val top: Int = 0, val sheetTop: Int = 0, val height: Int = 0) {
+    val measured: Boolean get() = height > 0 && sheetTop > top
+}
+
+/**
+ * 规划页的排布：上面搜索框一摞，下面右侧竖条、各种胶囊、底部卡片一摞。
+ * 下面那摞最高只到上面那摞的下沿，放不下时卡片自己缩、里面上下滑，两摞不会叠在一起。
+ * [onInsets] 报告挡住的位置，镜头框路线时用
+ */
+@Composable
+fun PlannerFrame(
+    top: @Composable ColumnScope.() -> Unit,
+    bottom: @Composable ColumnScope.() -> Unit,
+    sheet: @Composable (Modifier) -> Unit,
+    onInsets: (PlannerInsets) -> Unit = {},
+) {
+    val density = LocalDensity.current
+    var insets by remember { mutableStateOf(PlannerInsets()) }
+    LaunchedEffect(insets) { onInsets(insets) }
+    Box(Modifier.fillMaxSize().onSizeChanged { insets = insets.copy(height = it.height) }) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .onGloballyPositioned { insets = insets.copy(top = it.boundsInParent().bottom.toInt()) },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = top,
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(top = with(density) { insets.top.toDp() })
+                .navigationBarsPadding()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            bottom()
+            sheet(Modifier.weight(1f, fill = false).onGloballyPositioned { insets = insets.copy(sheetTop = it.positionInRoot().y.toInt()) })
         }
     }
 }
@@ -449,6 +503,8 @@ class PlannerActions(
     val onRemoveRoute: (SavedRoute) -> Unit = {},
     /** 点了「我的车」 */
     val onParked: () -> Unit = {},
+    /** 骑累了坐 MRT 回家 */
+    val onMrtHome: () -> Unit = {},
 )
 
 /** 卡片顶上那行：还没选、去某个地方、骑一圈 */
@@ -591,7 +647,7 @@ fun PlannerSheet(
                         RouteState.WaitingForLocation -> Waiting(tr("正在定位，定位到就开始算路", "Finding your location; routing starts once found"))
                         RouteState.Loading -> Waiting(if (state.loop != null) tr("正在画一圈好骑的路", "Drawing a nice loop") else tr("正在找一条好骑的路", "Finding a nice route"))
                         is RouteState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr("算路失败：${r.message}", "Routing failed: ${r.message}"), Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(tr("算路失败：${r.message}", "Routing failed: ${r.message}"), Modifier.weight(1f), color = RandoRed.onGlass(), maxLines = 2, overflow = TextOverflow.Ellipsis)
                             GlassButton(onClick = actions.onRetry, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                                 Text(tr("重试", "Retry"), color = Ink)
                             }
@@ -682,7 +738,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
 @Composable
 private fun EmptyExtras(saved: List<SavedPlace>, routes: List<SavedRoute>, actions: PlannerActions) {
     Column {
-        if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
+        SavedRow(saved, actions.onChooseSaved, actions.onMrtHome)
         if (routes.isNotEmpty()) SavedRoutesRow(routes, actions.onChooseRoute, actions.onRemoveRoute)
         LoopRow(actions.onLoop)
     }
@@ -734,7 +790,7 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("我的车", "My bike")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -754,7 +810,7 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) } },
     )
 }
@@ -769,7 +825,7 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
         Text(tr("我的路线", "My routes"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         routes.forEach { r ->
             Row(
@@ -789,13 +845,13 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
         AlertDialog(
             onDismissRequest = { removing = null },
             shape = GlassShapes.Sheet,
-            containerColor = Color(0xF7F7FAF8),
+            containerColor = DialogColor,
             title = { Text(tr("不收藏「${r.name}」了？", "Remove “${r.name}” from saved?")) },
             confirmButton = {
                 TextButton(onClick = {
                     onRemove(r)
                     removing = null
-                }) { Text(tr("删掉", "Delete"), color = RandoRed) }
+                }) { Text(tr("删掉", "Delete"), color = RandoRed.onGlass()) }
             },
             dismissButton = { TextButton(onClick = { removing = null }) { Text(tr("取消", "Cancel")) } },
         )
@@ -809,7 +865,7 @@ fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("收藏这条路线", "Save this route")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -830,7 +886,7 @@ private fun LoopRow(onLoop: (Int) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(18.dp))
         Text(tr("骑一圈", "Loop"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         LOOP_KMS.forEach { km ->
             GlassButton(onClick = { onLoop(km) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
@@ -858,7 +914,7 @@ private fun ViaLines(via: List<Place>, picking: Boolean, onAdd: () -> Unit, onRe
         }
         if (!picking && via.size < MAX_VIA) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Add, contentDescription = null, tint = RandoGreen.onGlass(), modifier = Modifier.size(16.dp))
                 LinkText(tr("加途经点", "Add stop"), onAdd)
             }
         }
@@ -890,12 +946,15 @@ private fun StarButton(on: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
+private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit, onMrtHome: () -> Unit) {
+    // 「坐 MRT 回家」跟在「家」后面（没收藏家时放最前面，点了会提示先收藏），一行里滑不到最后也看得见
+    val homeFirst = saved.sortedByDescending { it.name == SavedPlace.HOME }
     Row(
         Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        saved.forEach { place ->
+        if (homeFirst.firstOrNull()?.name != SavedPlace.HOME) MrtHomeChip(onMrtHome)
+        homeFirst.forEach { place ->
             GlassButton(onClick = { onChoose(place) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
                 Icon(
                     if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star,
@@ -906,7 +965,15 @@ private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
                 Spacer(Modifier.width(6.dp))
                 Text(place.name, color = Ink, fontSize = 15.sp)
             }
+            if (place.name == SavedPlace.HOME) MrtHomeChip(onMrtHome)
         }
+    }
+}
+
+@Composable
+private fun MrtHomeChip(onClick: () -> Unit) {
+    GlassButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
+        Text(tr("坐 MRT 回家", "MRT home"), color = Ink, fontSize = 15.sp)
     }
 }
 
@@ -940,7 +1007,7 @@ private fun LinkText(text: String, onClick: () -> Unit) {
             .clip(GlassShapes.Pill)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
-        color = RandoGreen,
+        color = RandoGreen.onGlass(),
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
     )
@@ -1050,12 +1117,12 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
             expanded = open,
             onDismissRequest = { open = false },
             shape = GlassShapes.Card,
-            containerColor = Color(0xF7F7FAF8),
+            containerColor = DialogColor,
         ) {
             Pace.entries.forEach { pace ->
                 DropdownMenuItem(
                     text = { Text(paceText(pace, prefs.mySpeed).removePrefix(tr("按", "at ")).replaceFirstChar(Char::uppercase)) },
-                    leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen) },
+                    leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen.onGlass()) },
                     onClick = {
                         open = false
                         if (pace != prefs.pace) onPace(pace)
@@ -1110,11 +1177,11 @@ private fun DetailsToggle(expanded: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (expanded) tr("收起", "Less") else tr("详情：爬升、过马路、天气、补给", "Details: climbs, crossings, weather, supplies"), color = RandoGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (expanded) tr("收起", "Less") else tr("详情：爬升、过马路、天气、补给", "Details: climbs, crossings, weather, supplies"), color = RandoGreen.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Icon(
             Icons.Default.KeyboardArrowDown,
             contentDescription = null,
-            tint = RandoGreen,
+            tint = RandoGreen.onGlass(),
             modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn },
         )
     }
@@ -1363,7 +1430,7 @@ private fun Note(color: Color, text: String, strong: Boolean = false, onClick: (
         Text(
             text,
             Modifier.weight(1f),
-            color = if (strong) color else InkSoft,
+            color = if (strong) color.onGlass() else InkSoft,
             fontSize = if (strong) 15.sp else 14.sp,
             fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Normal,
         )
@@ -1411,7 +1478,7 @@ fun FinishedCard(
                     (kcal?.let { tr(" · $it 千卡", " · $it kcal") } ?: ""),
                 color = InkSoft, fontSize = 13.sp,
             )
-            record?.let { Text(it, color = RandoGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
+            record?.let { Text(it, color = RandoGreen.onGlass(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
         }
         if (canReturn) {
             GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
@@ -1448,7 +1515,7 @@ fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () 
         }
         Spacer(Modifier.width(6.dp))
         GlassButton(onClick = onStop, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text(tr("结束", "End"), color = RandoRed, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("结束", "End"), color = RandoRed.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -1464,7 +1531,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("离线地图", "Offline maps")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1481,20 +1548,20 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
                     )
                     else -> Text(tr("还没下载", "Not downloaded"), color = Ink, fontSize = 15.sp)
                 }
-                state.error?.let { Text(tr("出错了：$it", "Error: $it"), color = RandoRed, fontSize = 13.sp) }
+                state.error?.let { Text(tr("出错了：$it", "Error: $it"), color = RandoRed.onGlass(), fontSize = 13.sp) }
                 Text(tr("规划路线、骑行导航还是要联网（算路、搜索在服务器上）。", "Planning and navigation still need internet (routing and search run on servers)."), color = InkSoft, fontSize = 13.sp)
             }
         },
         confirmButton = {
             when {
-                state.progress != null -> TextButton(onClick = onCancel) { Text(tr("取消下载", "Cancel download"), color = RandoRed) }
+                state.progress != null -> TextButton(onClick = onCancel) { Text(tr("取消下载", "Cancel download"), color = RandoRed.onGlass()) }
                 state.downloadedAt != null -> TextButton(onClick = onDownload) { Text(tr("更新", "Update")) }
-                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = RandoGreen, fontWeight = FontWeight.SemiBold) }
+                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) }
             }
         },
         dismissButton = {
             Row {
-                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text(tr("删掉", "Delete"), color = RandoRed) }
+                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text(tr("删掉", "Delete"), color = RandoRed.onGlass()) }
                 TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
             }
         },
@@ -1538,7 +1605,7 @@ fun SettingsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("设置", "Settings")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1653,7 +1720,7 @@ fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("坐 MRT 回家", "MRT home")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1661,7 +1728,7 @@ fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
                 Text(tr("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", "Only folded foldable bikes (up to 114×64×36 cm) are allowed on the MRT; regular bikes aren't. Avoid peak hours."), color = InkSoft, fontSize = 13.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = RandoGreen.onGlass(), fontWeight = FontWeight.SemiBold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("算了", "Never mind")) } },
     )
 }
