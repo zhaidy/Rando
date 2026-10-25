@@ -10,14 +10,19 @@
 //          {"t":"route_clear"}（结束导航）
 //          {"t":"sos","lat":..,"lon":..}（可能摔车了） {"t":"sos_clear"}（我没事）
 //          {"t":"hazard","hid":..,"type":"CONSTRUCTION","lat":..,"lon":..,"ts":..}（标了一处路况） {"t":"hazard_del","hid":..}
+//          {"t":"rtc","to":"<队员 id>","data":{..}}（WebRTC 直连的信令：offer、answer、ICE 候选；没有 to 就发给所有人）
 // 服务端发：{"t":"roster","members":[{id,name,lat,lon,speed,bearing,ts}...]}（刚连上时）
 //          {"t":"join","id","name"} {"t":"leave","id"}
 //          {"t":"pos",id,name,lat,lon,speed,bearing,ts} {"t":"voice",id,name,format,sid,seq,end,data,ts}
 //          {"t":"route",id,name,ts,title,meters,profile,avoidRoads,avoidBridges,stops} {"t":"route_clear",id}
 //          {"t":"sos",id,name,lat,lon,ts} {"t":"sos_clear",id}
 //          {"t":"hazard",id,name,hid,type,lat,lon,ts} {"t":"hazard_del",id,hid}（只转发，不存；各人手机自己存）
+//          {"t":"rtc",id,data}（只转发，不看内容）
 //          分享的路线、求助存在房间里，后来加入的人连上就能收到；本人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
+//
+// WebRTC 直连用的服务器：GET /ice，返回 {"iceServers":[{urls,username?,credential?}...]}。
+// 一直有 STUN；配了 Cloudflare TURN（Secrets：TURN_KEY_ID、TURN_KEY_API_TOKEN）再加上 TURN，打不通直连时中转
 //
 // 附近的队伍：GET /nearby?lat=..&lon=..，返回 {"teams":[{code,names,members,meters}...]}，近的在前。
 // 房间收到队员位置时（每个房间最多半分钟一次）告诉大厅（Lobby，全局只有一个）自己在哪；
@@ -40,6 +45,9 @@ const NEARBY_STALE_MS = 10 * 60 * 1000;
 // 房间最多这么久报一次
 const REPORT_EVERY_MS = 30 * 1000;
 const NEARBY_LIMIT = 10;
+const STUN = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
+// TURN 临时账号的有效期
+const TURN_TTL_S = 24 * 3600;
 
 export default {
   async fetch(request, env) {
@@ -52,6 +60,7 @@ export default {
       const teams = await lobby(env).nearby(lat, lon);
       return Response.json({ teams });
     }
+    if (url.pathname === "/ice") return Response.json({ iceServers: await iceServers(env) });
     const match = url.pathname.match(/^\/room\/([^/]+)$/);
     if (!match) {
       return new Response("rando-group ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -159,6 +168,10 @@ export class Room extends DurableObject {
       );
     } else if (msg.t === "hazard_del" && typeof msg.hid === "string") {
       this.broadcast({ t: "hazard_del", id: me.id, hid: msg.hid.slice(0, 64) }, me.id);
+    } else if (msg.t === "rtc" && msg.data && typeof msg.data === "object") {
+      const out = { t: "rtc", id: me.id, data: msg.data };
+      if (typeof msg.to === "string") this.sendTo(msg.to, out);
+      else this.broadcast(out, me.id);
     } else if (msg.t === "sos_clear") {
       await this.ctx.storage.delete(`sos:${me.id}`);
       this.broadcast({ t: "sos_clear", id: me.id }, me.id);
@@ -207,6 +220,13 @@ export class Room extends DurableObject {
     return [...seen.values()];
   }
 
+  sendTo(id, msg) {
+    const text = JSON.stringify(msg);
+    for (const ws of this.ctx.getWebSockets(id)) {
+      try { ws.send(text); } catch {}
+    }
+  }
+
   broadcast(msg, exceptId) {
     const text = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) {
@@ -214,6 +234,25 @@ export class Room extends DurableObject {
       if (tags.includes(exceptId)) continue;
       try { ws.send(text); } catch {}
     }
+  }
+}
+
+/** STUN 加上 Cloudflare TURN 的临时账号；TURN 没配或者拿不到就只有 STUN */
+async function iceServers(env) {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return STUN;
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ttl: TURN_TTL_S }),
+    });
+    if (!res.ok) return STUN;
+    const { iceServers } = await res.json();
+    // 返回的有时是一个对象，有时是数组
+    const turn = Array.isArray(iceServers) ? iceServers : [iceServers];
+    return [...STUN, ...turn.filter((s) => s && s.urls)];
+  } catch {
+    return STUN;
   }
 }
 

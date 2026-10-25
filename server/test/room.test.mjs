@@ -219,3 +219,32 @@ test("附近的队伍：有人报了位置就列出来，走远了、没人了�
   }
   assert.ok(gone, "没人了就不列");
 });
+
+test("WebRTC 信令：指定了人只发给他，没指定发给所有人；/ice 至少有 STUN", async () => {
+  const a = join("RTC001", "aaaaaaaa-30", "阿明");
+  await a.opened;
+  await a.next("roster");
+  const b = join("RTC001", "bbbbbbbb-31", "小红");
+  await b.opened;
+  await b.next("roster");
+  const c = join("RTC001", "cccccccc-32", "大伟");
+  await c.opened;
+  await c.next("roster");
+
+  a.send({ t: "rtc", data: { k: "hi" } });
+  assert.deepEqual(await b.next("rtc"), { t: "rtc", id: "aaaaaaaa-30", data: { k: "hi" } });
+  assert.equal((await c.next("rtc")).id, "aaaaaaaa-30");
+
+  b.send({ t: "rtc", to: "aaaaaaaa-30", data: { k: "offer", sdp: "v=0" } });
+  const offer = await a.next("rtc");
+  assert.equal(offer.id, "bbbbbbbb-31");
+  assert.equal(offer.data.sdp, "v=0");
+  // 大伟收不到发给阿明的
+  await assert.rejects(c.next("rtc"));
+
+  const ice = await (await fetch(`http://127.0.0.1:${PORT}/ice`)).json();
+  assert.ok(ice.iceServers.some((s) => s.urls.some((u) => u.startsWith("stun:"))));
+  a.ws.close();
+  b.ws.close();
+  c.ws.close();
+});
