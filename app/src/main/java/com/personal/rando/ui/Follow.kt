@@ -58,6 +58,19 @@ class Follow internal constructor(
 ) {
     val isFollowing: Boolean get() = following.value
 
+    /**
+     * 跟着走时镜头的留白（左上右下，像素），人放在露出来的那块里。
+     * 只能交给定位组件设：自己 moveCamera 改留白，地图会当成手动挪了镜头，不再跟着人走
+     */
+    var padding: DoubleArray? = null
+        set(value) {
+            field = value
+            val component = map?.locationComponent ?: return
+            if (value != null && following.value && component.isLocationComponentActivated && component.cameraMode != CameraMode.NONE) {
+                component.paddingWhileTracking(value, 0)
+            }
+        }
+
     /** 「回到我的位置」：重新跟上，镜头拉回骑行的比例 */
     fun recenter() {
         following.value = true
@@ -70,6 +83,7 @@ class Follow internal constructor(
         component.renderMode = if (moving) RenderMode.GPS else RenderMode.COMPASS
         component.zoomWhileTracking(zoom)
         component.tiltWhileTracking(tilt)
+        padding?.let { component.paddingWhileTracking(it, 0) }
     }
 }
 

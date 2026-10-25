@@ -24,10 +24,17 @@ class Speaker(context: Context) {
     }
 
     init {
-        // 按导航语音播放：放音乐时音乐会自动压低
+        useCall(false)
+    }
+
+    /**
+     * 开着对讲时手机在「通话」状态（蓝牙耳机走通话线路），按导航语音放会被系统压掉或者放不出来，
+     * 这时也按通话放，和队友的声音一起从耳机出；关了对讲再换回导航语音（放音乐时音乐会自动压低）
+     */
+    fun useCall(call: Boolean) {
         tts.setAudioAttributes(
             AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                .setUsage(if (call) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
         )

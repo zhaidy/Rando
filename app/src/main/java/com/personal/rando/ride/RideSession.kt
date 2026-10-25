@@ -281,6 +281,9 @@ class RideSession(
     /** 念一句话（语音指令的回答） */
     fun say(text: String) = speaker.say(text)
 
+    /** 对讲开着时播报改走通话线路，见 [Speaker.useCall] */
+    fun useCallAudio(call: Boolean) = speaker.useCall(call)
+
     /** 「还有 3.2 公里，大约 11 分钟」；没在导航时说骑了多远 */
     fun remainingText(): String {
         val p = _navigation.value?.progress

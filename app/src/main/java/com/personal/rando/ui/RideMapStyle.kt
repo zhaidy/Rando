@@ -2,7 +2,7 @@ package com.personal.rando.ui
 
 /**
  * 骑行视图的地图样式：黑底，马路画成白色描边（白线上再压一条细黑线），
- * 小路、公园连道画成灰色单线；不要文字、建筑，晃着看也一目了然。
+ * 小路、公园连道画成浅灰单线（户外也看得清）；不要文字、建筑，晃着看也一目了然。
  * 数据还是 OpenFreeMap 的矢量瓦片（OpenMapTiles 的 transportation 图层）
  */
 object RideMapStyle {
@@ -34,11 +34,11 @@ object RideMapStyle {
   "layers": [
     { "id": "background", "type": "background", "paint": { "background-color": "#000000" } },
     { "id": "water", "type": "fill", "source": "openmaptiles", "source-layer": "water",
-      "paint": { "fill-color": "#0B1622" } },
+      "paint": { "fill-color": "#16304A" } },
     { "id": "paths", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
       "filter": $PATHS,
       "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#8A8A8A", "line-width": ${width("4", 1.0)} } },
+      "paint": { "line-color": "#C8C8C8", "line-width": ${width("4", 1.3)} } },
     { "id": "roads-outline", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
       "filter": $ROADS,
       "layout": { "line-cap": "round", "line-join": "round" },

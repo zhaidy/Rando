@@ -64,13 +64,13 @@ object MapLayers {
     private const val TEAM = "rando-team"
     private const val HAZARDS = "rando-hazards"
 
-    /** [dark]：骑行视图的黑底地图，路线外面不描白边 */
+    /** [dark]：骑行视图的黑底地图，路线外面不描白边；路线、轨迹画粗一点，户外好认 */
     fun install(style: Style, dark: Boolean = false) {
         listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, HAZARDS, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
-                lineColor(Color.parseColor("#E0672B")), lineWidth(4f),
+                lineColor(Color.parseColor("#E0672B")), lineWidth(if (dark) 6f else 4f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
@@ -84,14 +84,14 @@ object MapLayers {
         // 先画一圈白边，路线在浅色底图上更显眼
         style.addLayer(
             LineLayer("$ROUTE-casing", ROUTE).withProperties(
-                lineColor(if (dark) Color.BLACK else Color.WHITE), lineWidth(9f),
+                lineColor(if (dark) Color.BLACK else Color.WHITE), lineWidth(if (dark) 13f else 9f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
         // 每段按路的种类上色（公园连道绿、马路红……），颜色放在每段的 color 属性里
         style.addLayer(
             LineLayer(ROUTE, ROUTE).withProperties(
-                lineColor(Expression.toColor(Expression.get("color"))), lineWidth(5.5f),
+                lineColor(Expression.toColor(Expression.get("color"))), lineWidth(if (dark) 9f else 5.5f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )

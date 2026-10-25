@@ -18,6 +18,10 @@ import com.personal.rando.ui.glass.Motion
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.ContextWrapper
+import android.view.WindowManager
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
@@ -57,7 +61,6 @@ import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.mutableIntStateOf
-import org.maplibre.android.camera.CameraUpdateFactory
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,7 +97,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val DIM = Color(0xFF9E9E9E)
+/** 小字：户外太阳底下也要看得清，不能太灰 */
+private val DIM = Color(0xFFD0D0D0)
+/** 上下两块的底色：比一般的深色玻璃实，太阳底下字更清楚 */
+private val PANEL = GlassTone.Tinted(Color(0xFF0E1110))
 private val CLOCK = SimpleDateFormat("HH:mm", Locale.CHINA)
 /** 路口离这么近才在屏幕上提示 */
 private const val CROSSING_SHOWN_METERS = 300.0
@@ -136,6 +142,7 @@ fun RideView(
     val timeline = remember(navigation?.route) { navigation?.route?.let(::RouteTimeline) }
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
+    FullBrightness()
     val density = LocalDensity.current
     // 上面那块的下沿、下面那块的上沿、整个屏幕的高，都是像素
     var topEdge by remember { mutableIntStateOf(0) }
@@ -157,7 +164,7 @@ fun RideView(
                     .padding(10.dp)
                     .onGloballyPositioned { topEdge = it.boundsInParent().bottom.toInt() },
                 shape = GlassShapes.Card,
-                tone = GlassTone.Dark,
+                tone = PANEL,
             ) {
                 Column(Modifier.padding(vertical = 14.dp)) {
                     Box(Modifier.fillMaxWidth()) {
@@ -189,7 +196,7 @@ fun RideView(
                     .navigationBarsPadding()
                     .padding(10.dp)
                     .onGloballyPositioned { bottomEdge = it.boundsInParent().top.toInt() },
-                tone = GlassTone.Dark,
+                tone = PANEL,
             ) {
                 Column(Modifier.padding(vertical = 14.dp)) {
                     timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) }
@@ -247,6 +254,20 @@ fun RideView(
                 }
             }
         }
+    }
+}
+
+/** 骑行视图开着时屏幕调到最亮，户外看得清；退出时还给系统 */
+@Composable
+private fun FullBrightness() {
+    val activity = LocalContext.current.let { c ->
+        generateSequence(c) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? Activity }
+    } ?: return
+    DisposableEffect(activity) {
+        val window = activity.window
+        val before = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
+        onDispose { window.attributes = window.attributes.apply { screenBrightness = before } }
     }
 }
 
@@ -559,8 +580,11 @@ fun RideMap(
             m.setStyle(Style.Builder().fromJson(RideMapStyle.JSON)) { s ->
                 MapLayers.install(s, dark = true)
                 val puck = LocationComponentOptions.builder(context)
-                    .foregroundTintColor(android.graphics.Color.parseColor("#2E7D4F"))
-                    .bearingTintColor(android.graphics.Color.parseColor("#2E7D4F"))
+                    // 黑底上要亮一点、大一点，晃着也一眼找到自己
+                    .foregroundTintColor(android.graphics.Color.parseColor("#3DDC84"))
+                    .bearingTintColor(android.graphics.Color.parseColor("#3DDC84"))
+                    .minZoomIconScale(1.3f)
+                    .maxZoomIconScale(1.6f)
                     .accuracyAlpha(0f)
                     .build()
                 // 定位用导航自己收到的，不另外开一路：两边一致，信号差时也不会一个有一个没有
@@ -575,13 +599,6 @@ fun RideMap(
                 map = m
             }
         }
-    }
-    val density = LocalDensity.current
-    LaunchedEffect(map, cover) {
-        val m = map ?: return@LaunchedEffect
-        val top = with(density) { cover.calculateTopPadding().toPx() }.toDouble()
-        val bottom = with(density) { cover.calculateBottomPadding().toPx() }.toDouble()
-        m.moveCamera(CameraUpdateFactory.paddingTo(0.0, top, 0.0, bottom))
     }
     LaunchedEffect(map, fix) {
         val m = map ?: return@LaunchedEffect
@@ -605,6 +622,12 @@ fun RideMap(
         MapLayers.showTrack(s, track)
     }
     val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT)
+    val density = LocalDensity.current
+    LaunchedEffect(follow, cover) {
+        val top = with(density) { cover.calculateTopPadding().toPx() }.toDouble()
+        val bottom = with(density) { cover.calculateBottomPadding().toPx() }.toDouble()
+        follow.padding = doubleArrayOf(0.0, top, 0.0, bottom)
+    }
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp), dark = true)

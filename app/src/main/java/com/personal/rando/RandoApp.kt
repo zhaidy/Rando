@@ -22,6 +22,9 @@ import com.personal.rando.ui.OfflineMaps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class RandoApp : Application() {
 
@@ -50,8 +53,12 @@ class RandoApp : Application() {
 
     val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards, parking = parking) }
 
-    /** 一起骑时的声控对讲 */
-    val walkie: Walkie by lazy { Walkie(this, appScope, group) }
+    /** 一起骑时的声控对讲；开着的时候导航播报跟着走通话线路，不然队友说话时听不到导航 */
+    val walkie: Walkie by lazy {
+        Walkie(this, appScope, group).also { w ->
+            appScope.launch { w.state.map { it.on }.distinctUntilChanged().collect(session::useCallAudio) }
+        }
+    }
 
     /** 语音指令：点麦克风或者按耳机键说话 */
     val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
