@@ -670,7 +670,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 }
                                 FinishedCard(
                                     ride, onReturn = { returnTrip(ride) }, onDismiss = { finished = null }, record = record,
-                                    onShare = { scope.launch { ShareCard.share(context, ride, record) } },
+                                    onShare = rememberRideShare(ride, record),
                                     kcal = Calories.of(ride, settings.weightKg),
                                     onParkPhoto = photoParking,
                                 )
