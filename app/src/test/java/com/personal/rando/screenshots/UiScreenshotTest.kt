@@ -62,6 +62,9 @@ import com.personal.rando.weather.AreaForecast
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.ui.SearchBar
 import com.personal.rando.ui.SegmentCard
+import com.personal.rando.ui.SegmentInfo
+import com.personal.rando.ui.markLabel
+import com.personal.rando.routing.RoadKind
 import com.personal.rando.ui.SideRail
 import com.personal.rando.ui.targets
 import org.junit.Rule
@@ -196,6 +199,14 @@ class UiScreenshotTest {
         val items = route.targets(NoteTarget.CROSSINGS)
         Box(Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
             SegmentCard(items[2], 2, items.size, {}, {}, {})
+        }
+    }
+
+    @Test fun focusMark() = shot("5b_focus_mark") {
+        val p = route.points.take(10)
+        val info = SegmentInfo("自行车道", RoadKind.CYCLEWAY.color, 320, p[5], p, null, RoadKind.CYCLEWAY)
+        Box(Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
+            SegmentCard(info, 0, 3, {}, {}, {}, markLabel = info.markLabel(false))
         }
     }
 

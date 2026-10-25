@@ -11,6 +11,7 @@ import com.personal.rando.rando
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
+import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Route
 import com.personal.rando.routing.LoopPlanner
@@ -96,6 +97,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
     val session: RideSession = app.rando.session
     val savedPlaces: SavedPlaceStore = app.rando.savedPlaces
     val savedRoutes: SavedRouteStore = app.rando.savedRoutes
+    val roadCorrections: RoadCorrectionStore = app.rando.roadCorrections
 
     /** 记住上次选的路线偏好 */
     private val stored = app.getSharedPreferences("planner", Context.MODE_PRIVATE)

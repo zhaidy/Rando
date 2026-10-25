@@ -9,6 +9,7 @@ import com.personal.rando.places.MrtNetwork
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
+import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.ride.AutoStart
 import com.personal.rando.ride.RideSession
 import com.personal.rando.ride.SettingsStore
@@ -38,7 +39,12 @@ class RandoApp : Application() {
     val hazards: HazardStore by lazy { HazardStore(this) }
 
     /** 规划和导航共用：算路时带上要绕开的路况 */
-    val router: BRouterClient by lazy { BRouterClient(avoid = { hazards.avoidPoints() }) }
+    val router: BRouterClient by lazy {
+        BRouterClient(avoid = { hazards.avoidPoints() }, corrections = { roadCorrections.all.value })
+    }
+
+    /** 标过「其实是马路」的地方 */
+    val roadCorrections: RoadCorrectionStore by lazy { RoadCorrectionStore(this) }
 
     val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards, parking = parking) }
 

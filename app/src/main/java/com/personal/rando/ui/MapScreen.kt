@@ -165,6 +165,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val recording by vm.session.recording.collectAsStateWithLifecycle()
     val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
+    val corrections by vm.roadCorrections.all.collectAsStateWithLifecycle()
     val fix by vm.session.fix.collectAsStateWithLifecycle()
     val group = LocalContext.current.rando.group
     val groupState by group.state.collectAsStateWithLifecycle()
@@ -674,13 +675,26 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         ) { f ->
                             if (f != null) {
                                 BackHandler { focus = null }
+                                val item = f.items[f.index]
+                                val marked = corrections.any { it.overlaps(item.points) }
                                 SegmentCard(
-                                    info = f.items[f.index],
+                                    info = item,
                                     index = f.index,
                                     count = f.items.size,
                                     onNext = { focus = f.copy(index = (f.index + 1) % f.items.size) },
-                                    onStreetView = { openStreetView(context, f.items[f.index].location) },
+                                    onStreetView = { openStreetView(context, item.location) },
                                     onClose = { focus = null },
+                                    markLabel = item.markLabel(marked),
+                                    onMark = {
+                                        if (marked) vm.roadCorrections.removeCovering(item.points) else vm.roadCorrections.add(item.points)
+                                        focus = null
+                                        vm.retry()
+                                        Toast.makeText(
+                                            context,
+                                            if (marked) "已撤销，重新算路" else "记下了，这里按马路算；开「不上马路」会绕开",
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    },
                                 )
                             } else {
                                 PlannerSheet(
