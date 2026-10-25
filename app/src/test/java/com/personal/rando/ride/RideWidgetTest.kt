@@ -11,4 +11,11 @@ class RideWidgetTest {
         assertEquals("这周还没骑", RideWidget.text(week.copy(rides = 0, meters = 0.0, movingSeconds = 0), null).detail)
         assertEquals("记录中 · 8.4 公里", RideWidget.text(week, RecordingState(startedAt = 0, distanceMeters = 8_400.0)).button)
     }
+
+    @Test
+    fun `矮到一行就换一行的布局`() {
+        assertEquals(true, RideWidget.isRow(56))
+        assertEquals(false, RideWidget.isRow(110))
+        assertEquals(false, RideWidget.isRow(0))
+    }
 }

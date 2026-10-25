@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一行高的桌面小组件：左边本周公里数，右边开始记录 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="本周"
+        android:textColor="#6B756F"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_km"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:text="0.0"
+        android:textColor="#1F2A24"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="3dp"
+        android:text="公里"
+        android:textColor="#1F2A24"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_detail"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="还没骑"
+        android:textColor="#6B756F"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/widget_button"
+        android:maxLines="1"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:text="开始记录"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+</LinearLayout>
