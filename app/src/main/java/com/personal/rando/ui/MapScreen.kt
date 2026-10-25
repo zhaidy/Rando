@@ -366,8 +366,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     }
     // 刚结束的这次骑行：弹一张卡片，问要不要原路返回
     var finished by remember { mutableStateOf<Ride?>(null) }
+    // 骑完还留在队里（比如在终点等队友），要走了在小队面板上点「退出」
     val finishRide = {
-        leaveGroup()
         finished = finishRide(context, vm.session)
     }
     // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断

@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.personal.rando.R
+import com.personal.rando.group.GroupState
 import com.personal.rando.rando
 import com.personal.rando.ui.Format
 import kotlinx.coroutines.Job
@@ -31,7 +32,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 导航、记录轨迹时的前台服务：锁屏、切到别的 App 后系统照样每秒给 GPS，进程也不会被回收。
- * 通知栏常驻一条，显示下一个路口或者骑了多远；都结束了就自己退出。
+ * 通知栏常驻一条，显示下一个路口或者骑了多远；导航、记录都停了、也不在队里了就自己退出。
  */
 class RideService : Service() {
 
@@ -59,7 +60,7 @@ class RideService : Service() {
         }
         try {
             ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value),
+                this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value, rando.group.state.value),
                 serviceTypes(),
             )
         } catch (_: Exception) {
@@ -80,14 +81,15 @@ class RideService : Service() {
         }
         if (watchJob == null) {
             watchJob = scope.launch {
-                combine(session.navigation, session.recording) { nav, rec -> nav to rec }.collect { (nav, rec) ->
-                    if (nav == null && rec == null) {
+                // 骑完还在队里：服务留着，锁屏后位置照样发给队友、对讲照样听
+                combine(session.navigation, session.recording, rando.group.state) { nav, rec, team -> Triple(nav, rec, team) }.collect { (nav, rec, team) ->
+                    if (nav == null && rec == null && team == null) {
                         stopSelf()
                     } else {
-                        val text = text(nav, rec)
+                        val text = text(nav, rec, team)
                         if (text != lastText) {
                             lastText = text
-                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(nav, rec))
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(nav, rec, team))
                         }
                     }
                 }
@@ -184,9 +186,10 @@ class RideService : Service() {
         }
     }
 
-    private fun text(nav: NavigationState?, rec: RecordingState?): String {
+    private fun text(nav: NavigationState?, rec: RecordingState?, team: GroupState?): String {
         if (nav == null) {
             return rec?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}" }
+                ?: team?.let { if (it.connected) "队里 ${it.teammates.size + 1} 人" else "正在连接…" }
                 ?: "等待 GPS 定位…"
         }
         val progress = nav.progress ?: return nav.waitingText
@@ -200,11 +203,11 @@ class RideService : Service() {
         }
     }
 
-    private fun notification(nav: NavigationState?, rec: RecordingState?): Notification {
+    private fun notification(nav: NavigationState?, rec: RecordingState?, team: GroupState?): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "骑行中", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "导航、记录轨迹时常驻通知栏"
+                description = "导航、记录轨迹、一起骑时常驻通知栏"
             }
         )
         // 和桌面图标点进来一样，回到已经开着的界面
@@ -213,8 +216,15 @@ class RideService : Service() {
         }
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(if (nav != null) "Rando 导航中" else "Rando 记录中")
-            .setContentText(text(nav, rec))
+            .setContentTitle(
+                when {
+                    nav != null -> "Rando 导航中"
+                    rec != null -> "Rando 记录中"
+                    team != null -> "Rando 一起骑中"
+                    else -> "Rando 记录中"
+                }
+            )
+            .setContentText(text(nav, rec, team))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
