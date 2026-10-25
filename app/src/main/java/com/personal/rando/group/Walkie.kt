@@ -52,6 +52,12 @@ data class WalkieState(
     val sending: Boolean = false,
     /** 正在说话的队友 */
     val talking: Set<String> = emptySet(),
+    /** 麦克风听到的音量，0–4 格；看得出麦克风在不在收音 */
+    val micBars: Int = 0,
+    /** 出了什么问题（麦克风打不开、编码器出错），没问题是 null */
+    val problem: String? = null,
+    /** 正在试：说一句回放给自己听 */
+    val testing: Boolean = false,
 )
 
 /**
@@ -82,7 +88,8 @@ class Walkie(
     private val players = mutableMapOf<String, Player>()
 
     init {
-        scope.launch { group.voices.collect { if (_state.value.on) receive(it) } }
+        // 队友说话：不管自己开没开对讲都放出来（开了对讲才会把自己的声音发出去）
+        scope.launch { group.voices.collect { receive(it) } }
     }
 
     fun hasMicPermission(): Boolean =
@@ -91,7 +98,7 @@ class Walkie(
     fun turnOn() {
         if (_state.value.on || !hasMicPermission()) return
         val device = route.start()
-        _state.update { it.copy(on = true, device = device) }
+        _state.update { it.copy(on = true, device = device, problem = null) }
         listenJob = scope.launch(Dispatchers.Default) { listen() }
     }
 
@@ -102,7 +109,13 @@ class Walkie(
         players.values.forEach { it.close() }
         players.clear()
         route.stop()
-        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null) }
+        _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false) }
+    }
+
+    /** 试一下：下一句话不发给队友，回放给自己听，听得到就说明麦克风、耳机都没问题 */
+    fun test() {
+        if (!_state.value.on) return
+        _state.update { it.copy(testing = true, problem = null) }
     }
 
     fun setMode(mode: WalkieMode) {
@@ -129,6 +142,13 @@ class Walkie(
         } catch (e: Exception) {
             Log.w(TAG, "mic unavailable", e)
             withContext(Dispatchers.Main) { turnOff() }
+            _state.update { it.copy(problem = "麦克风打不开，可能被别的 App 占用了") }
+            return
+        }
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            record.release()
+            withContext(Dispatchers.Main) { turnOff() }
+            _state.update { it.copy(problem = "麦克风打不开，可能被别的 App 占用了") }
             return
         }
         val effects = listOfNotNull(
@@ -137,6 +157,8 @@ class Walkie(
         )
         val vox = Vox(_state.value.level)
         var sender: Sender? = null
+        var lastBars = -1
+        var framesSinceBars = 0
         try {
             record.startRecording()
             val frame = ShortArray(Vox.FRAME_SAMPLES)
@@ -147,11 +169,27 @@ class Walkie(
                     continue
                 }
                 vox.level = _state.value.level
+                // 音量格子：一秒刷新五次
+                if (++framesSinceBars >= 10) {
+                    framesSinceBars = 0
+                    val bars = micBars(Vox.levelDb(frame.copyOf(n)))
+                    if (bars != lastBars) {
+                        lastBars = bars
+                        _state.update { it.copy(micBars = bars) }
+                    }
+                }
                 for (event in vox.feed(frame.copyOf(n))) {
                     when (event) {
                         is Vox.Event.Start -> {
-                            sender = Sender(_state.value.mode).also { s -> event.frames.forEach(s::add) }
-                            _state.update { it.copy(sending = true) }
+                            // 编码器建不起来（个别手机）：说出来，不要悄悄地不发
+                            sender = runCatching { Sender(if (_state.value.testing) WalkieMode.CLIP else _state.value.mode, test = _state.value.testing) }
+                                .onFailure { e ->
+                                    Log.w(TAG, "encoder failed", e)
+                                    _state.update { it.copy(problem = "这台手机的声音编码出错了") }
+                                }
+                                .getOrNull()
+                                ?.also { s -> event.frames.forEach(s::add) }
+                            _state.update { it.copy(sending = sender != null) }
                         }
                         is Vox.Event.Speech -> sender?.add(event.frame)
                         is Vox.Event.End -> {
@@ -168,7 +206,7 @@ class Walkie(
             runCatching { record.stop() }
             record.release()
             effects.forEach { it.release() }
-            _state.update { it.copy(sending = false) }
+            _state.update { it.copy(sending = false, micBars = 0) }
         }
     }
 
@@ -176,7 +214,7 @@ class Walkie(
      * 一句话：实时的边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段；
      * 整句的压好攒着，说完一起发（只有一段，seq 0，end）
      */
-    private inner class Sender(private val mode: WalkieMode) {
+    private inner class Sender(private val mode: WalkieMode, private val test: Boolean = false) {
         private val stream = Random.nextInt(1, Int.MAX_VALUE)
         private val encoder = AacStreamEncoder()
         private val pending = mutableListOf<ByteArray>()
@@ -196,8 +234,24 @@ class Walkie(
         private fun send(end: Boolean) {
             val bytes = pending.fold(ByteArray(0)) { acc, f -> acc + f }
             pending.clear()
-            group.sendVoice(stream, seq++, end, Base64.encodeToString(bytes, Base64.NO_WRAP))
+            val data = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            if (test) {
+                // 试一下：不发出去，自己放
+                _state.update { it.copy(testing = false) }
+                scope.launch { receive(GroupEvent.Voice(SELF_ID, "你自己", AacCodec.FORMAT, stream, seq++, end, data)) }
+            } else {
+                group.sendVoice(stream, seq++, end, data)
+            }
         }
+    }
+
+    /** dBFS → 0–4 格：-55 以下没声音，-20 以上满格 */
+    private fun micBars(db: Double): Int = when {
+        db < -55 -> 0
+        db < -45 -> 1
+        db < -35 -> 2
+        db < -25 -> 3
+        else -> 4
     }
 
     // ───────────── 听 ─────────────
@@ -235,7 +289,10 @@ class Walkie(
             var playing = false
             var first = true
             try {
-                if (decoder == null) return
+                if (decoder == null) {
+                    _state.update { it.copy(problem = "这台手机的声音解码出错了，听不到队友") }
+                    return
+                }
                 while (true) {
                     val voice = withTimeoutOrNull(SILENCE_MS) { inbox.receiveCatching().getOrNull() } ?: break
                     // 整句发来的（一段就说完）先嘀一声，像对讲机
@@ -271,7 +328,7 @@ class Walkie(
 
         private suspend fun beep() {
             runCatching {
-                val tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 60)
+                val tone = ToneGenerator(if (_state.value.on) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC, 60)
                 tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
                 delay(180)
                 tone.release()
@@ -280,10 +337,12 @@ class Walkie(
 
         private fun newTrack(): AudioTrack {
             val min = AudioTrack.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            // 开着对讲走通话线路（蓝牙耳机）；没开对讲时像导航播报一样放（蓝牙耳机或者喇叭），不会跑到听筒去
+            val usage = if (_state.value.on) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
             return AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setUsage(usage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -302,6 +361,8 @@ class Walkie(
 
     private companion object {
         const val TAG = "Walkie"
+        /** 试一下时放自己声音用的 id */
+        const val SELF_ID = "self"
         const val KEY_LEVEL = "level"
         const val KEY_MODE = "mode"
         /** 攒两帧 AAC（约 0.13 秒）发一次 */
