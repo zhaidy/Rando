@@ -27,4 +27,11 @@ class VoiceControlTest {
         assertTrue(VoiceControl.errorText(99)!!.contains("99"))
         assertNotNull(VoiceControl.errorText(SpeechRecognizer.ERROR_CLIENT))
     }
+
+    @Test
+    fun `默认的识别服务不行换谷歌的`() {
+        val order = VoiceControl.order(listOf("com.samsung.voice", "com.google.android.googlequicksearchbox", "com.google.android.tts")) { it }
+        assertEquals(listOf(null, "com.google.android.googlequicksearchbox", "com.samsung.voice", "com.google.android.tts"), order)
+        assertEquals(listOf<String?>(null), VoiceControl.order(emptyList<String>()) { it })
+    }
 }
