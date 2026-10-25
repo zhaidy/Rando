@@ -196,7 +196,7 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                             .background(if (selected) Color.White.copy(alpha = 0.9f) else Color.Transparent)
                             .clickable { period = p }
                             .padding(horizontal = 14.dp, vertical = 5.dp),
-                        color = if (selected) Color(0xFF06606B) else Color.White,
+                        color = if (selected) AccentDeeper else Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -217,11 +217,11 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                 )
                 // 在绿色卡片上：白底按钮，白天夜里都一样
                 GlassButton(onClick = onReview, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text(tr("回顾", "Review"), color = Color(0xFF06606B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("回顾", "Review"), color = AccentDeeper, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
                 GlassButton(onClick = onRiddenMap, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text(tr("骑过的路", "Ridden roads"), color = Color(0xFF06606B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("骑过的路", "Ridden roads"), color = AccentDeeper, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

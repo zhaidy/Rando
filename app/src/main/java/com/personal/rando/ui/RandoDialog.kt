@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -40,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.personal.rando.ui.glass.GlassShapes
 import com.personal.rando.ui.glass.neuInset
+import com.personal.rando.ui.glass.solidFill
 
 /** 弹窗左上角的图标：带颜色的小方块，一眼看出是哪类事 */
 class DialogBadge(val icon: ImageVector, val color: Color)
@@ -136,7 +136,7 @@ fun DialogButton(
         .alpha(if (enabled) 1f else 0.4f)
         .clip(shape)
     val styled = when {
-        filled -> base.background(Brush.linearGradient(listOf(lerpWhite(fill, 0.25f), fill)))
+        filled -> base.background(solidFill(fill))
         else -> base
     }
     Row(
@@ -164,5 +164,3 @@ fun DialogInset(modifier: Modifier = Modifier, content: @Composable () -> Unit) 
         CompositionLocalProvider(LocalContentColor provides Ink) { content() }
     }
 }
-
-private fun lerpWhite(c: Color, t: Float) = Color(c.red + (1 - c.red) * t, c.green + (1 - c.green) * t, c.blue + (1 - c.blue) * t, c.alpha)
