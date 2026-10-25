@@ -437,6 +437,8 @@ class PlannerActions(
     val onStart: () -> Unit = {},
     val onShowOnMap: (NoteTarget) -> Unit = {},
     val onPace: (Pace) -> Unit = {},
+    /** 换成第几条可选的路线 */
+    val onChooseOption: (Int) -> Unit = {},
     /** 收藏现在这条路线（弹框起名字） */
     val onSaveRoute: () -> Unit = {},
     val onChooseRoute: (SavedRoute) -> Unit = {},
@@ -592,8 +594,10 @@ fun PlannerSheet(
                             }
                         }
                         is RouteState.Ready -> Column {
+                            if (r.options.size > 1) RouteChoices(r.options, r.chosen, actions.onChooseOption)
+                            val prefs = r.chosenPrefs ?: state.prefs
                             RouteSummary(
-                                r.route, state.prefs, actions.onShowOnMap, state.weather, state.amenities,
+                                r.route, prefs, actions.onShowOnMap, state.weather, state.amenities,
                                 climate = state.climate,
                                 wind = state.wind,
                                 covered = state.covered,
@@ -601,7 +605,7 @@ fun PlannerSheet(
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
                                 onPace = actions.onPace,
-                                routeSaved = savedRoutes.any { it.same(r.stops, state.prefs) },
+                                routeSaved = savedRoutes.any { it.same(r.stops, prefs) },
                                 onSaveRoute = actions.onSaveRoute,
                             )
                             Spacer(Modifier.height(16.dp))

@@ -450,6 +450,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val via = navigation?.via ?: state.via.map { it.location }
     // 沿途补给点：导航时用导航那条路线查到的
     val amenities = if (navigating) rideAmenities else state.amenities.takeIf { state.route is RouteState.Ready }.orEmpty()
+    // 没选中的几条可选路线画成灰线
+    val alternatives = (state.route as? RouteState.Ready)?.takeIf { !navigating }
+        ?.let { r -> r.options.filterIndexed { i, _ -> i != r.chosen }.map { it.route } }.orEmpty()
+    LaunchedEffect(style, alternatives) {
+        style?.let { MapLayers.showAlternatives(it, alternatives) }
+    }
     LaunchedEffect(style, amenities) {
         style?.let { MapLayers.showAmenities(it, amenities.map { a -> a.amenity }) }
     }
@@ -748,6 +754,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                                 if (items.isNotEmpty()) focus = Focus(items, 0)
                                             },
                                             onPace = vm::setPace,
+                                            onChooseOption = vm::chooseOption,
                                             onSaveRoute = { savingRoute = true },
                                             onChooseRoute = vm::chooseSavedRoute,
                                             onRemoveRoute = vm.savedRoutes::remove,

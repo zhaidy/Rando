@@ -53,6 +53,7 @@ object MapLayers {
 
     private const val TRACK = "rando-track"
     private const val ROUTE = "rando-route"
+    private const val ALTERNATIVES = "rando-alternatives"
     private const val CROSSINGS = "rando-crossings"
     private const val FOCUS_LINE = "rando-focus-line"
     private const val FOCUS_POINT = "rando-focus-point"
@@ -66,7 +67,7 @@ object MapLayers {
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边；路线、轨迹画粗一点，户外好认 */
     fun install(style: Style, dark: Boolean = false) {
-        listOf(TRACK, FOCUS_LINE, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, HAZARDS, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
+        listOf(TRACK, FOCUS_LINE, ALTERNATIVES, ROUTE, STRUCTURES, CROSSINGS, AMENITIES, HAZARDS, FOCUS_POINT, VIA, START, END, TEAM).forEach { style.addSource(GeoJsonSource(it)) }
         // 已经骑过的轨迹压在路线下面
         style.addLayer(
             LineLayer(TRACK, TRACK).withProperties(
@@ -78,6 +79,13 @@ object MapLayers {
         style.addLayer(
             LineLayer(FOCUS_LINE, FOCUS_LINE).withProperties(
                 lineColor(Color.parseColor("#FFC93C")), lineWidth(18f), lineOpacity(0.85f), lineBlur(2f),
+                lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        )
+        // 没选中的几条可选路线：灰色细线，压在选中的那条下面
+        style.addLayer(
+            LineLayer(ALTERNATIVES, ALTERNATIVES).withProperties(
+                lineColor(Color.parseColor("#7E8A84")), lineWidth(4.5f), lineOpacity(0.7f),
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
             )
         )
@@ -297,6 +305,16 @@ object MapLayers {
 
     const val PCN_RIDDEN = "#1B7F3B"
     const val PCN_NOT_YET = "#9E9E9E"
+
+    fun showAlternatives(style: Style, routes: List<Route>) {
+        style.getSourceAs<GeoJsonSource>(ALTERNATIVES)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                routes.filter { it.points.size >= 2 }.map { r ->
+                    Feature.fromGeometry(LineString.fromLngLats(r.points.map { Point.fromLngLat(it.lon, it.lat) }))
+                }
+            )
+        )
+    }
 
     fun showTrack(style: Style, track: List<LatLon>?) {
         style.getSourceAs<GeoJsonSource>(TRACK)?.setGeoJson(line(track))

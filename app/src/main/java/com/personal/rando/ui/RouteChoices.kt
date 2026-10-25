@@ -1,0 +1,94 @@
+package com.personal.rando.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.personal.rando.routing.BikeProfile
+import com.personal.rando.routing.Measure
+import com.personal.rando.routing.RouteOption
+import com.personal.rando.ui.glass.GlassShapes
+import com.personal.rando.ui.glass.GlassTone
+import com.personal.rando.ui.glass.liquidGlass
+
+/** 几条可选的路线排成一行卡片：叫什么、多远多久、为什么选它，点一下换成这条 */
+@Composable
+fun RouteChoices(options: List<RouteOption>, chosen: Int, onChoose: (Int) -> Unit) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEachIndexed { i, option ->
+            val selected = i == chosen
+            val ink = if (selected) Color.White else Ink
+            Column(
+                Modifier
+                    .width(172.dp)
+                    .clip(GlassShapes.Card)
+                    .liquidGlass(GlassShapes.Card, if (selected) GlassTone.Tinted(RandoGreen) else GlassTone.Light)
+                    .clickable { onChoose(i) }
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(optionTitle(option, i), color = ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(
+                    "${Format.distance(option.route.distanceMeters)} · ${Format.duration(option.route.durationSeconds)}",
+                    color = ink, fontSize = 14.sp, maxLines = 1,
+                )
+                Text(
+                    optionReason(option, i, options.first()),
+                    color = if (selected) Color.White.copy(alpha = 0.85f) else InkSoft,
+                    fontSize = 13.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 卡片标题：第一条是「推荐」，其余按它拿第一的那项叫，比如「最快」「马路最少」 */
+fun optionTitle(option: RouteOption, index: Int): String = when {
+    index == 0 -> "推荐"
+    option.best.isNotEmpty() -> option.best.take(2).joinToString(" · ") { it.label }
+    else -> "另一条"
+}
+
+/** 为什么选它：第一条说是按偏好算的；其余说怎么算的，比推荐的好在哪、差在哪 */
+fun optionReason(option: RouteOption, index: Int, main: RouteOption): String {
+    if (index == 0) {
+        val best = option.best.take(2).joinToString("、") { it.label }
+        return "按你选的「${describe(option)}」算的" + if (best.isNotEmpty()) "，也是$best" else ""
+    }
+    val how = when {
+        option.prefs == main.prefs -> "同样的偏好，换一条路"
+        else -> "按「${describe(option)}」算"
+    }
+    val better = option.better.entries.take(2).joinToString("、") { (m, d) -> diff(m, d, true) }
+    val worse = option.worse.entries.take(2).joinToString("、") { (m, d) -> diff(m, d, false) }
+    return "$how：" + listOf(better, worse).filter { it.isNotEmpty() }.joinToString("，但")
+}
+
+private fun describe(option: RouteOption): String {
+    val p = option.prefs
+    if (p.profile != BikeProfile.PCN) return p.profile.label
+    return listOfNotNull(p.profile.label, "不上马路".takeIf { p.avoidRoads }, "不走天桥".takeIf { p.avoidBridges }).joinToString("、")
+}
+
+private fun diff(m: Measure, d: Int, better: Boolean): String = when (m) {
+    Measure.TIME -> (if (better) "快 " else "慢 ") + Format.duration(d)
+    Measure.ROAD -> (if (better) "少 " else "多 ") + Format.distance(d) + "马路"
+    Measure.CROSSINGS -> (if (better) "少过 " else "多过 ") + "$d 次马路"
+    Measure.DISTANCE -> (if (better) "近 " else "远 ") + Format.distance(d)
+    Measure.CLIMB -> (if (better) "少爬 " else "多爬 ") + "$d 米"
+}
