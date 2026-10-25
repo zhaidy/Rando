@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import androidx.compose.ui.text.style.TextOverflow
 import com.personal.rando.i18n.Lang
 import com.personal.rando.i18n.tr
 import com.personal.rando.ride.HeatLevel
@@ -330,7 +331,7 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
     var asking by remember { mutableStateOf(false) }
     if (asking) {
         val isToday = remember(ride) { RideStats.today(listOf(ride), System.currentTimeMillis()).isNotEmpty() }
-        AlertDialog(
+        RandoDialog(
             onDismissRequest = { asking = false },
             shape = GlassShapes.Sheet,
             containerColor = DialogColor,
@@ -344,13 +345,13 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogButton(onClick = {
                     asking = false
                     preview(day) { hide, photos -> ShareCard.dayCard(context, day, hide, photos) }
-                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = AccentInk) }
+                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day")) }
             },
             dismissButton = {
-                TextButton(onClick = {
+                DialogButton(onClick = {
                     asking = false
                     preview(listOf(ride)) { hide, photos -> ShareCard.card(context, ride, record, hide, photos) }
                 }) { Text(tr("只分享这次", "Just this ride")) }
@@ -379,22 +380,22 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
         ) { modifier -> TrackMap(r, modifier) }
     }
     if (confirmDelete) {
-        AlertDialog(
+        RandoDialog(
             onDismissRequest = { confirmDelete = false },
             shape = GlassShapes.Sheet,
             containerColor = DialogColor,
             title = { Text(tr("删除这条记录？", "Delete this ride?")) },
             text = { Text(tr("删掉就找不回来了。", "This can't be undone.")) },
             confirmButton = {
-                TextButton(onClick = {
+                DialogButton(danger = true, onClick = {
                     confirmDelete = false
                     scope.launch {
                         store.delete(id)
                         onBack()
                     }
-                }) { Text(tr("删除", "Delete"), color = RandoRed.onGlass()) }
+                }) { Text(tr("删除", "Delete")) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("取消", "Cancel")) } },
+            dismissButton = { DialogButton(onClick = { confirmDelete = false }) { Text(tr("取消", "Cancel")) } },
         )
     }
 }
@@ -774,9 +775,15 @@ fun ReviewPage(
                 }
                 item { ReviewTotals(r) }
                 item { ReviewFacts(r) }
-                r.longest?.let { ride -> item { Highlight(tr("最远的一次", "Longest ride"), ride, Format.distance(ride.distanceMeters.toInt())) { onOpen(ride.id) } } }
-                r.fastest?.takeIf { it.id != r.longest?.id || r.rides == 1 }?.let { ride ->
-                    item { Highlight(tr("最快的一次", "Fastest ride"), ride, Format.speed(ride.averageSpeed)) { onOpen(ride.id) } }
+                // 最远、最快并排两格
+                val fastest = r.fastest?.takeIf { it.id != r.longest?.id || r.rides == 1 }
+                if (r.longest != null || fastest != null) {
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            r.longest?.let { ride -> Highlight(tr("最远的一次", "Longest ride"), ride, Format.distance(ride.distanceMeters.toInt()), Modifier.weight(1f)) { onOpen(ride.id) } }
+                            fastest?.let { ride -> Highlight(tr("最快的一次", "Fastest ride"), ride, Format.speed(ride.averageSpeed), Modifier.weight(1f)) { onOpen(ride.id) } }
+                        }
+                    }
                 }
             }
         }
@@ -832,21 +839,17 @@ private fun Fact(label: String, value: String) {
 }
 
 @Composable
-private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
+private fun Highlight(label: String, ride: Ride, value: String, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
             .neu(GlassShapes.Card)
             .clip(GlassShapes.Card)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, color = InkSoft, fontSize = 13.sp)
-            Text("${DATE.format(Date(ride.startedAt))} ${ride.title}", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Text(value, color = AccentInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = InkSoft, fontSize = 13.sp)
+        Text(value, color = AccentInk, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 1)
+        Text("${DATE.format(Date(ride.startedAt))} ${ride.title}", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

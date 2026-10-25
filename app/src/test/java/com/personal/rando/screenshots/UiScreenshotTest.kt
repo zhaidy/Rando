@@ -344,6 +344,18 @@ class UiScreenshotTest {
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/13_crash.png")
     }
 
+    @Test fun crashSent() {
+        compose.setContent { com.personal.rando.ui.CrashDialog(com.personal.rando.ride.CrashAlert(deadline = System.currentTimeMillis(), sent = true), {}, {}) }
+        compose.mainClock.advanceTimeBy(1_000)
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/13b_crash_sent.png")
+    }
+
+    @Test fun settings() {
+        compose.setContent { com.personal.rando.ui.RandoTheme { com.personal.rando.ui.SettingsDialog(com.personal.rando.ride.Settings(), {}, {}, home = LatLon(1.35, 103.82), here = LatLon(1.30, 103.85)) } }
+        compose.mainClock.advanceTimeBy(1_000)
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/16_settings.png")
+    }
+
     @Test fun finished() = shot("6c_finished") { Planner(finished = rides[0]) }
 
     @Test fun recording() = shot("6_recording") {

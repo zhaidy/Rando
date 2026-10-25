@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:id="@+id/widget_title"
         android:text="@string/widget_row_title"
-        android:textColor="#6B756F"
+        android:textColor="#5E6878"
         android:textSize="12sp" />
 
     <TextView
@@ -24,7 +24,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="6dp"
         android:text="0.0"
-        android:textColor="#1F2A24"
+        android:textColor="#1C2330"
         android:textSize="20sp"
         android:textStyle="bold" />
 
@@ -34,7 +34,7 @@
         android:layout_marginStart="3dp"
         android:id="@+id/widget_unit"
         android:text="@string/widget_km_unit"
-        android:textColor="#1F2A24"
+        android:textColor="#1C2330"
         android:textSize="12sp" />
 
     <TextView
@@ -46,7 +46,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:text="@string/widget_no_rides"
-        android:textColor="#6B756F"
+        android:textColor="#5E6878"
         android:textSize="12sp" />
 
     <TextView

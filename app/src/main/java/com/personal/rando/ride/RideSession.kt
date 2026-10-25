@@ -72,6 +72,9 @@ data class NavigationState(
             ?: tr("等待 GPS 定位…", "Waiting for GPS…")
 }
 
+/** 可能摔车后等这么久没回答就告诉队友 */
+const val CRASH_COUNTDOWN_MS = 30_000L
+
 /** 可能摔车了：[deadline] 前没点「我没事」就告诉队友；[sent] 已经告诉了 */
 data class CrashAlert(val deadline: Long, val sent: Boolean = false)
 
@@ -603,8 +606,6 @@ class RideSession(
         const val KEEP_PRECISE_MS = 10_000L
         /** 骑到离途经点这么近就算经过了 */
         const val VIA_PASSED_METERS = 50.0
-        /** 可能摔车后等这么久没回答就告诉队友 */
-        const val CRASH_COUNTDOWN_MS = 30_000L
         /** 自动开始的记录停下来这么久就自动结束 */
         const val AUTO_STOP_MS = 10 * 60_000L
     }

@@ -41,6 +41,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.personal.rando.ui.MapScreen
 import com.personal.rando.ui.RandoTheme
+import com.personal.rando.ride.ThemeMode
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.personal.rando.ui.RideDetailScreen
 import com.personal.rando.ui.RideListScreen
 import com.personal.rando.ui.RiddenMapScreen
@@ -65,7 +70,21 @@ class MainActivity : ComponentActivity() {
         UpdateNotifications.cancelUpdated(this)
         handle(intent)
         setContent {
-            RandoTheme {
+            val theme = rando.settings.settings.collectAsState().value.theme
+            val dark = when (theme) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            // 设置里固定了白天 / 夜间时，状态栏的字也跟着换颜色
+            LaunchedEffect(dark) {
+                val clear = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear),
+                )
+            }
+            RandoTheme(dark = dark) {
                 val vm: RouteViewModel = viewModel()
                 // 0 是地图，-1 是记录列表，其他是某条记录的 id
                 var screen by rememberSaveable { mutableLongStateOf(0L) }

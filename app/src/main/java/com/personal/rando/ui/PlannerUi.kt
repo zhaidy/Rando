@@ -1,9 +1,19 @@
 package com.personal.rando.ui
 
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.LocationOn
 import com.personal.rando.ui.glass.NeuButton
+import com.personal.rando.ui.glass.LocalOnSolid
+import com.personal.rando.ui.glass.neu
 import com.personal.rando.ui.glass.neuInset
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.platform.LocalContext
+import com.personal.rando.ride.ThemeMode
 import com.personal.rando.ui.glass.LocalHazeState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.fillMaxSize
@@ -251,16 +261,23 @@ fun SearchBar(
         ) {
             LazyColumn(Modifier.heightIn(max = 320.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                 items(results) { place ->
-                    Column(
+                    Row(
                         Modifier
                             .fillMaxWidth()
                             .clickable { onPick(place) }
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(place.name, color = Ink, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val detail = listOfNotNull(place.distanceMeters?.let { Format.distance(it) }, place.detail.ifEmpty { null }).joinToString(" · ")
-                        if (detail.isNotEmpty()) {
-                            Text(detail, color = InkSoft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.size(40.dp).neu(GlassShapes.Tile), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.LocationOn, contentDescription = null, tint = AccentInk, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(place.name, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val detail = listOfNotNull(place.distanceMeters?.let { Format.distance(it) }, place.detail.ifEmpty { null }).joinToString(" · ")
+                            if (detail.isNotEmpty()) {
+                                Text(detail, color = InkSoft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
@@ -346,7 +363,7 @@ private fun PcnPrefsChip(prefs: RoutePrefs, onClick: () -> Unit) {
 @Composable
 fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: () -> Unit) {
     var edited by remember { mutableStateOf(prefs) }
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
@@ -359,8 +376,8 @@ fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: (
                 PrefSwitch(tr("天黑挑有路灯的路", "Lit paths after dark"), tr("天黑或快黑时，少走没灯的小路", "After or near dark, avoid unlit paths"), edited.litAtNight) { edited = edited.copy(litAtNight = it) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(edited) }) { Text(tr("好", "OK")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
+        confirmButton = { DialogButton(onClick = { onSave(edited) }) { Text(tr("好", "OK")) } },
+        dismissButton = { DialogButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 
@@ -659,10 +676,8 @@ fun PlannerSheet(
                 label = "destination",
             ) { h ->
                 when (h) {
-                    SheetHeader.Empty -> Column {
-                        Text(tr("想去哪儿骑？", "Where to ride?"), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                        Text(tr("搜索目的地，或者长按地图选一个点", "Search for a destination, or long-press the map"), color = InkSoft, fontSize = 14.sp)
-                    }
+                    // 上面的搜索框已经写着「去哪儿骑？」，这里不再重复
+                    SheetHeader.Empty -> Spacer(Modifier.height(0.dp))
                     is SheetHeader.Destination -> {
                         val dest = h.place
                         val savedHere = saved.firstOrNull { it.isAt(dest.location) }
@@ -855,10 +870,11 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
             }.getOrNull()
         }
     }
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
+        badge = DialogBadge(Icons.Filled.Build, RandoYellow),
         title = { Text(tr("我的车", "My bike")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -878,8 +894,8 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) } },
+        confirmButton = { DialogButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { DialogButton(onClick = onDismiss) { Text(tr("关闭", "Close")) } },
     )
 }
 
@@ -888,7 +904,9 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
 @Composable
 private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> Unit, onRemove: (SavedRoute) -> Unit) {
     var removing by remember { mutableStateOf<SavedRoute?>(null) }
-    // 放不下就换行，不用左右滑
+    // 多了只先放前几条，最后一个「更多」点开看全部；放不下就换行，不用左右滑
+    var all by rememberSaveable { mutableStateOf(false) }
+    val shown = if (all || routes.size <= ROUTES_SHOWN + 1) routes else routes.take(ROUTES_SHOWN)
     FlowRow(
         Modifier.padding(top = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -900,7 +918,7 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
             Spacer(Modifier.width(4.dp))
             Text(tr("我的路线", "My routes"), color = RandoRed.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
-        routes.forEach { r ->
+        shown.forEach { r ->
             Row(
                 Modifier
                     .liquidGlass(GlassShapes.Pill)
@@ -909,26 +927,39 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(r.name, color = Ink, fontSize = 15.sp, maxLines = 1)
-                Text(" ${Format.distance(r.meters)}", color = InkSoft, fontSize = 13.sp)
+                Text(r.name, Modifier.weight(1f, fill = false), color = Ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(" ${Format.distance(r.meters)}", color = InkSoft, fontSize = 13.sp, maxLines = 1)
             }
+        }
+        if (routes.size > shown.size || all && routes.size > ROUTES_SHOWN + 1) {
+            Text(
+                if (all) tr("收起", "Less") else tr("更多 ${routes.size - shown.size} 条", "${routes.size - shown.size} more"),
+                Modifier.clip(GlassShapes.Pill).clickable { all = !all }.padding(horizontal = 12.dp, vertical = 9.dp),
+                color = AccentInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            )
         }
     }
     removing?.let { r ->
-        AlertDialog(
+        RandoDialog(
             onDismissRequest = { removing = null },
             shape = GlassShapes.Sheet,
             containerColor = DialogColor,
             title = { Text(tr("不收藏「${r.name}」了？", "Remove “${r.name}” from saved?")) },
             confirmButton = {
-                TextButton(onClick = {
+                DialogButton(danger = true, onClick = {
                     onRemove(r)
                     removing = null
-                }) { Text(tr("删掉", "Delete"), color = RandoRed.onGlass()) }
+                }) { Text(tr("删掉", "Delete")) }
             },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text(tr("取消", "Cancel")) } },
+            dismissButton = { DialogButton(onClick = { removing = null }) { Text(tr("取消", "Cancel")) } },
         )
     }
+}
+
+private fun themeLabel(t: ThemeMode): String = when (t) {
+    ThemeMode.SYSTEM -> tr("跟随系统", "Follow system")
+    ThemeMode.LIGHT -> tr("浅色", "Light")
+    ThemeMode.DARK -> tr("深色", "Dark")
 }
 
 /** 骑行视图上显示歌名要「通知使用权」：没开时给个入口 */
@@ -953,7 +984,7 @@ private fun MusicAccessRow() {
 @Composable
 fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(suggested) }
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
@@ -964,8 +995,8 @@ fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -
                 OutlinedTextField(value = name, onValueChange = { name = it.take(20) }, label = { Text(tr("名字", "Name")) }, singleLine = true)
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()) }) { Text(tr("收藏", "Save")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
+        confirmButton = { DialogButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()) }) { Text(tr("收藏", "Save")) } },
+        dismissButton = { DialogButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 
@@ -1071,6 +1102,8 @@ private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit, on
 }
 
 private const val PLACES_PER_ROW = 4
+/** 我的路线先放这么多条，多了收在「更多」里 */
+private const val ROUTES_SHOWN = 4
 
 /** 收藏的地方：凸起的小方块，上面图标下面名字 */
 @Composable
@@ -1575,30 +1608,54 @@ fun FinishedCard(
     onParkPhoto: () -> Unit = {},
 ) {
     val canReturn = remember(ride) { ReturnTrip.stops(ride.points.map { it.location }) != null }
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
-            .liquidGlass(GlassShapes.Pill)
-            .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .liquidGlass(GlassShapes.Card, GlassTone.Solid)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(tr("已保存${ride.title}", "Saved ${ride.title}"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(
-                "${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}" +
-                    (kcal?.let { tr(" · $it 千卡", " · $it kcal") } ?: ""),
-                color = InkSoft, fontSize = 13.sp,
-            )
-            record?.let { Text(it, color = RandoGreen.onGlass(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(RandoAccent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = AccentInk, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tr("已保存${ride.title}", "Saved ${ride.title}"), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}" +
+                        (kcal?.let { tr(" · $it 千卡", " · $it kcal") } ?: ""),
+                    color = InkSoft, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = tr("关掉", "Close"), tint = InkSoft) }
         }
-        if (canReturn) {
-            GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-                Text(tr("原路返回", "Ride back"), color = HINT_INK, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        record?.let { Text(it, color = RandoGreen.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2) }
+        // 三个一样宽的按钮：原路返回（离起点够远才有）、拍车位、分享
+        CompositionLocalProvider(LocalOnSolid provides true) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canReturn) {
+                    FinishedAction(tr("原路返回", "Ride back"), onReturn) { Icon(Icons.Default.Refresh, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)) }
+                }
+                FinishedAction(tr("拍车位", "Parking"), onParkPhoto) { Icon(CameraIcon, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)) }
+                PrimaryButton(onClick = onShare, color = RandoAccent, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(tr("分享", "Share"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
             }
         }
-        IconTap(onClick = onParkPhoto) { Icon(CameraIcon, contentDescription = tr("拍车位照片", "Parking photo"), tint = InkSoft) }
-        IconTap(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = tr("分享", "Share"), tint = InkSoft) }
-        IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = tr("关掉", "Close"), tint = InkSoft) }
+    }
+}
+
+@Composable
+private fun RowScope.FinishedAction(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    NeuButton(onClick = onClick, modifier = Modifier.weight(1f).height(52.dp), shape = GlassShapes.Button) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            icon()
+            Spacer(Modifier.width(6.dp))
+            Text(label, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
     }
 }
 
@@ -1644,10 +1701,11 @@ private fun RowScope.PillStat(value: String) {
 /** 离线地图：没下载 / 下载中 / 下好了，可以更新、删掉 */
 @Composable
 fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: () -> Unit, onDelete: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
+        badge = DialogBadge(Icons.Filled.LocationOn, RandoAccent),
         title = { Text(tr("离线地图", "Offline maps")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1670,15 +1728,15 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
         },
         confirmButton = {
             when {
-                state.progress != null -> TextButton(onClick = onCancel) { Text(tr("取消下载", "Cancel download"), color = RandoRed.onGlass()) }
-                state.downloadedAt != null -> TextButton(onClick = onDownload) { Text(tr("更新", "Update")) }
-                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = AccentInk, fontWeight = FontWeight.SemiBold) }
+                state.progress != null -> DialogButton(danger = true, onClick = onCancel) { Text(tr("取消下载", "Cancel download")) }
+                state.downloadedAt != null -> DialogButton(onClick = onDownload) { Text(tr("更新", "Update")) }
+                else -> DialogButton(onClick = onDownload) { Text(tr("下载", "Download"), fontWeight = FontWeight.SemiBold) }
             }
         },
         dismissButton = {
             Row {
-                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text(tr("删掉", "Delete"), color = RandoRed.onGlass()) }
-                TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
+                if (state.downloadedAt != null && state.progress == null) DialogButton(danger = true, onClick = onDelete) { Text(tr("删掉", "Delete")) }
+                DialogButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
             }
         },
     )
@@ -1714,17 +1772,31 @@ fun SettingsDialog(
     var autoStart by remember { mutableStateOf(settings.autoStart) }
     var showRidden by remember { mutableStateOf(settings.showRidden) }
     var voice by remember { mutableStateOf(settings.voice) }
+    var theme by remember { mutableStateOf(settings.theme) }
     var voiceMenu by remember { mutableStateOf(false) }
     var language by remember { mutableStateOf(settings.language) }
     var languageMenu by remember { mutableStateOf(false) }
     val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
-    AlertDialog(
+    // 整页的设置：顶上返回、保存，下面一组组凸起的卡片
+    Dialog(
         onDismissRequest = onDismiss,
-        shape = GlassShapes.Sheet,
-        containerColor = DialogColor,
-        title = { Text(tr("设置", "Settings")) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Column(Modifier.fillMaxSize().background(BackdropColor).systemBarsPadding().imePadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconTap(onClick = onDismiss) { Text("‹", color = Ink, fontSize = 30.sp) }
+                Text(tr("设置", "Settings"), Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                PrimaryButton(
+                    onClick = { if (kg != null) onSave(settings.copy(weightKg = kg.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden, language = language, theme = theme)) },
+                    modifier = Modifier.padding(end = 8.dp).alpha(if (kg != null) 1f else 0.4f),
+                    color = RandoAccent,
+                ) { Text(tr("保存", "Save"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+            }
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                SettingsCard(tr("外观", "Appearance")) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // 语言名字不翻译：看不懂现在的语言时也找得到自己的
                     Text("语言 · Language", Modifier.weight(1f), color = Ink, fontSize = 16.sp)
@@ -1737,8 +1809,24 @@ fun SettingsDialog(
                         }
                     }
                 }
+                    // 跟随系统 / 浅色 / 深色：三段直接点，不用打开菜单
+                    Row(Modifier.fillMaxWidth().neuInset(GlassShapes.Pill).padding(4.dp)) {
+                        ThemeMode.entries.forEach { t ->
+                            val on = t == theme
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(GlassShapes.Pill)
+                                    .background(if (on) RandoAccent else Color.Transparent)
+                                    .clickable { theme = t },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(themeLabel(t), color = if (on) Color.White else Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                        }
+                    }
+                }
+                SettingsCard(tr("家", "Home")) {
                 Column {
-                    Text(tr("家", "Home"), color = Ink, fontSize = 16.sp)
                     Text(homeLabel(home, here), color = InkSoft, fontSize = 13.sp)
                     Row {
                         LinkText(tr("用现在的位置", "Use current location"), onHomeHere)
@@ -1746,6 +1834,8 @@ fun SettingsDialog(
                         if (home != null) LinkText(tr("删掉", "Delete"), onRemoveHome)
                     }
                 }
+                }
+                SettingsCard(tr("骑行", "Riding")) {
                 OutlinedTextField(
                     value = weight,
                     onValueChange = { weight = it.filter(Char::isDigit).take(3) },
@@ -1772,6 +1862,8 @@ fun SettingsDialog(
                     }
                     Switch(checked = showRidden, onCheckedChange = { showRidden = it })
                 }
+                }
+                SettingsCard(tr("声音和音乐", "Sound & music")) {
                 MusicAccessRow()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1801,13 +1893,23 @@ fun SettingsDialog(
                 if (voices.none { it.quality >= 400 }) {
                     Text(tr("手机上没有高音质的中文声音：在系统的文字转语音里把引擎换成 Google，再下载中文语音。", "No high-quality English voice on this phone: in system text-to-speech settings, switch the engine to Google and download an English voice."), color = InkSoft, fontSize = 13.sp)
                 }
+                }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden, language = language)) }) { Text(tr("保存", "Save")) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
-    )
+        }
+    }
+}
+
+/** 设置页里的一组：小标题加一张凸起的卡片 */
+@Composable
+private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, Modifier.padding(start = 6.dp), color = InkSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Column(
+            Modifier.fillMaxWidth().neu(GlassShapes.Card).padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content,
+        )
+    }
 }
 
 private fun languageLabel(l: Language): String = when (l) {
@@ -1834,18 +1936,19 @@ private fun voiceLabel(voices: List<VoiceOption>, name: String?): String {
 /** 坐 MRT 回家的方案：骑到哪个站、怎么坐、再骑多远；可以直接导航到站 */
 @Composable
 fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
+        badge = DialogBadge(RandoIcons.Train, RandoAccent),
         title = { Text(tr("坐 MRT 回家", "MRT home")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(plan.text, color = Ink, fontSize = 16.sp)
+                DialogInset { Text(plan.text, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                 Text(tr("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", "Only folded foldable bikes (up to 114×64×36 cm) are allowed on the MRT; regular bikes aren't. Avoid peak hours."), color = InkSoft, fontSize = 13.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = AccentInk, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("算了", "Never mind")) } },
+        confirmButton = { DialogButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { DialogButton(onClick = onDismiss) { Text(tr("算了", "Never mind")) } },
     )
 }

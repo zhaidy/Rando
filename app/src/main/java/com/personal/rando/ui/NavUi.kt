@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
@@ -84,22 +85,22 @@ fun NavigationOverlay(
                 .navigationBarsPadding()
                 .padding(12.dp),
         ) {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+            // 一行：剩余、还要，右边骑行视图、结束
+            Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (progress != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         RollingStat(Format.distance(progress.remainingMeters.toInt()), tr("剩余", "Left"))
                         RollingStat(Format.duration(progress.remainingSeconds), tr("还要", "ETA"))
                     }
-                    Spacer(Modifier.height(14.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassButton(onClick = onRideView, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(tr("骑行视图", "Ride view"), color = Ink, fontSize = 15.sp)
-                    }
+                } else {
                     Spacer(Modifier.weight(1f))
-                    PrimaryButton(onClick = onStop, color = RandoRed) {
-                        Text(tr("结束", "End"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                }
+                GlassButton(onClick = onRideView, shape = GlassShapes.Button, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)) {
+                    Text(tr("骑行视图", "Ride view"), color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(8.dp))
+                PrimaryButton(onClick = onStop, color = RandoRed) {
+                    Text(tr("结束", "End"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -114,7 +115,7 @@ private fun RollingStat(value: String, label: String) {
             targetState = value,
             transitionSpec = { rollUp() },
             label = "roll",
-        ) { v -> Text(v, color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold) }
+        ) { v -> Text(v, color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 1) }
         Text(label, color = InkSoft, fontSize = 13.sp)
     }
 }
@@ -152,14 +153,16 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
                     k == "off" -> NavText(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
                     progress != null -> {
                         val next = progress.next
-                        TurnIcon(next, size = 64.dp)
-                        Spacer(Modifier.width(18.dp))
+                        Box(Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                            TurnIcon(next, size = 44.dp)
+                        }
+                        Spacer(Modifier.width(16.dp))
                         Column {
                             Text(
                                 Format.distance(progress.distanceToNext.toInt()),
                                 color = Color.White,
-                                fontSize = 30.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Black,
                             )
                             Text(next?.text ?: tr("到达终点", "Arrive at destination"), color = Color.White.copy(alpha = 0.92f), fontSize = 17.sp)
                             val following = progress.following
