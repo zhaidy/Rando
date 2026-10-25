@@ -1,8 +1,8 @@
 package com.personal.rando.ui
 
 /**
- * 骑行视图的地图样式：黑底，马路画成白色描边（白线上再压一条细黑线），
- * 小路、公园连道画成浅灰单线（户外也看得清）；不要文字、建筑，晃着看也一目了然。
+ * 骑行视图的地图样式：黑底，马路画成灰色描边（灰线上再压一条细黑线），
+ * 小路、公园连道画成暗一点的灰色单线；路都压暗，路线才显眼。不要文字、建筑，晃着看也一目了然。
  * 数据还是 OpenFreeMap 的矢量瓦片（OpenMapTiles 的 transportation 图层）
  */
 object RideMapStyle {
@@ -38,11 +38,11 @@ object RideMapStyle {
     { "id": "paths", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
       "filter": $PATHS,
       "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#C8C8C8", "line-width": ${width("4", 1.3)} } },
+      "paint": { "line-color": "#5A5A5A", "line-width": ${width("4", 1.3)} } },
     { "id": "roads-outline", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
       "filter": $ROADS,
       "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#FFFFFF", "line-width": ${width(ROAD_BASE, 1.0)} } },
+      "paint": { "line-color": "#6E6E6E", "line-width": ${width(ROAD_BASE, 1.0)} } },
     { "id": "roads-inner", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
       "filter": $ROADS,
       "layout": { "line-cap": "round", "line-join": "round" },
