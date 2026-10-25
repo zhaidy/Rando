@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import com.personal.rando.places.HazardStore
 import com.personal.rando.places.ParkingStore
+import com.personal.rando.places.MrtData
+import com.personal.rando.places.MrtNetwork
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
@@ -47,6 +49,9 @@ class RandoApp : Application() {
     val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
+
+    /** 新加坡 MRT、轻轨站（数据在 assets/mrt.json） */
+    val mrt: MrtNetwork by lazy { MrtNetwork(MrtData.parse(assets.open("mrt.json").bufferedReader().use { it.readText() })) }
 
     /** 车停在哪儿 */
     val parking: ParkingStore by lazy { ParkingStore(this) }

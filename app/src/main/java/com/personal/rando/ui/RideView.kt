@@ -119,6 +119,8 @@ fun RideView(
     /** 体重：算消耗了多少千卡 */
     weightKg: Double = Settings.DEFAULT_WEIGHT,
     onVoice: () -> Unit = {},
+    /** 骑累了坐 MRT 回家 */
+    onMrt: () -> Unit = {},
     /** 正在听语音指令：听到的字（还没听到是「请说…」）；没在听是 null */
     listening: String? = null,
     map: @Composable (Modifier) -> Unit,
@@ -218,7 +220,7 @@ fun RideView(
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
                             Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
-                        ReportButton(onReport, Modifier.weight(1f))
+                        ReportButton(onReport, onMrt, Modifier.weight(1f))
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
                             Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
@@ -451,7 +453,7 @@ private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<Ame
 
 /** 「路况」：点开选施工、封路、路面不好，标在现在的位置 */
 @Composable
-private fun ReportButton(onReport: (HazardType) -> Unit, modifier: Modifier) {
+private fun ReportButton(onReport: (HazardType) -> Unit, onMrt: () -> Unit, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         GlassButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth(), tone = GlassTone.Dark) {
@@ -468,6 +470,14 @@ private fun ReportButton(onReport: (HazardType) -> Unit, modifier: Modifier) {
                     },
                 )
             }
+            DropdownMenuItem(
+                text = { Text("骑累了，坐 MRT 回家", color = Color.White, fontSize = 17.sp) },
+                leadingIcon = { Dot("#D42E12") },
+                onClick = {
+                    open = false
+                    onMrt()
+                },
+            )
         }
     }
 }

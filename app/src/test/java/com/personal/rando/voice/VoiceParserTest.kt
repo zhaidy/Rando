@@ -39,6 +39,8 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Walkie(true), p("打开对讲"))
         assertEquals(VoiceCommand.Walkie(false), p("关掉对讲"))
         assertEquals(VoiceCommand.Weather, p("会不会下雨"))
+        assertEquals(VoiceCommand.MrtHome, p("坐地铁回家"))
+        assertEquals(VoiceCommand.MrtHome, p("搭MRT回家"))
     }
 
     @Test
