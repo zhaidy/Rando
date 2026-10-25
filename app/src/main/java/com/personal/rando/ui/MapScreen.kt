@@ -132,6 +132,7 @@ import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
 import com.personal.rando.group.NearbyTeam
+import com.personal.rando.group.NearbyLink
 import com.personal.rando.places.MrtHome
 import com.personal.rando.ride.AutoStart
 import androidx.core.content.FileProvider
@@ -294,9 +295,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         askNotifications()
         vm.startNavigation()
     }
-    // 打开对讲：先要麦克风权限；开了以后让前台服务带上麦克风，锁屏也能听
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
+    // 打开对讲：先要麦克风权限，顺便要「附近的设备」（离得近的队友直连，不给也能用，只走服务器）；
+    // 开了以后让前台服务带上麦克风，锁屏也能听
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (walkie.hasMicPermission()) {
             walkie.turnOn()
             RideService.start(context)
         } else {
@@ -306,11 +308,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val toggleTalk = {
         when {
             walkieState.on -> walkie.turnOff()
-            walkie.hasMicPermission() -> {
+            walkie.hasMicPermission() && group.hasLocalPermissions() -> {
                 walkie.turnOn()
                 RideService.start(context)
             }
-            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            else -> micPermission.launch((listOf(Manifest.permission.RECORD_AUDIO) + NearbyLink.PERMISSIONS).toTypedArray())
         }
     }
     // 语音指令：听懂了就在这里做
@@ -535,7 +537,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onMap = { openRideView(false) },
                         onStop = finishRide,
                         teammates = teammatesText(teammates, fix?.location),
-                        walkie = rideWalkieText(walkieState).takeIf { groupState != null },
+                        walkie = walkieState.takeIf { groupState != null },
+                        onToggleTalk = toggleTalk,
+                        onTalkLevel = walkie::setLevel,
+                        onTalkMode = walkie::setMode,
                         onVoice = listen,
                         onMrt = mrtHome,
                         listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },

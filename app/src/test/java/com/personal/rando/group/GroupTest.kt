@@ -5,6 +5,7 @@ import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.teammatesText
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -123,6 +124,46 @@ class GroupTest {
         assertEquals("在听 ▁▃·· · 蓝牙耳机 AirPods", com.personal.rando.ui.walkieText(WalkieState(on = true, device = "蓝牙耳机 AirPods", micBars = 2)))
         assertEquals("试一下：说一句话，会放给你自己听", com.personal.rando.ui.walkieText(WalkieState(on = true, testing = true)))
         assertEquals("对讲出问题了：麦克风打不开", com.personal.rando.ui.walkieText(WalkieState(problem = "麦克风打不开")))
+    }
+
+    @Test
+    fun `骑行视图上的对讲`() {
+        assertEquals("对讲没开", com.personal.rando.ui.rideWalkieText(WalkieState()))
+        assertEquals("对讲开着", com.personal.rando.ui.rideWalkieText(WalkieState(on = true)))
+        assertEquals("直连 2 人", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, direct = 2)))
+        assertEquals("小红 在说话…", com.personal.rando.ui.rideWalkieText(WalkieState(on = true, talking = setOf("小红"))))
+        assertEquals("在听 ▁··· · 手机 · 直连 1 人", com.personal.rando.ui.walkieText(WalkieState(on = true, micBars = 1, direct = 1)))
+    }
+
+    @Test
+    fun `直连的语音跟服务器转发的一样认`() {
+        val text = GroupProtocol.localVoice("a", "阿明", 7, 2, true, "AAAA")
+        assertEquals(GroupEvent.Voice("a", "阿明", AacCodec.FORMAT, 7, 2, true, "AAAA"), GroupProtocol.parse(text, 0))
+    }
+
+    @Test
+    fun `直连广播的名字`() {
+        val name = NearbyLink.endpointName("K7PX3M", "id-1", "小|红")
+        assertEquals(NearbyLink.Peer("K7PX3M", "id-1", "小|红"), NearbyLink.parseEndpointName(name))
+        assertEquals(null, NearbyLink.parseEndpointName("随便一个蓝牙设备"))
+        assertEquals(null, NearbyLink.parseEndpointName("|id|名字"))
+    }
+
+    @Test
+    fun `两条路来的语音只放先到的`() {
+        val d = VoiceDedup()
+        // 直连先到 0、1，服务器再来 0、1：丢掉
+        assertTrue(d.accept("a", 1, 0))
+        assertTrue(d.accept("a", 1, 1))
+        assertFalse(d.accept("a", 1, 0))
+        assertFalse(d.accept("a", 1, 1))
+        // 直连断了，服务器接着送 2：照放，不断
+        assertTrue(d.accept("a", 1, 2))
+        // 另一个人、下一句话各算各的
+        assertTrue(d.accept("b", 1, 0))
+        assertTrue(d.accept("a", 2, 0))
+        // 一句说完以后服务器那份才到：不会再放一遍
+        assertFalse(d.accept("a", 2, 0))
     }
 
     @Test

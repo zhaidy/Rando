@@ -59,6 +59,8 @@ data class WalkieState(
     val problem: String? = null,
     /** 正在试：说一句回放给自己听 */
     val testing: Boolean = false,
+    /** 蓝牙、Wi-Fi 直连上的队友有几个 */
+    val direct: Int = 0,
 )
 
 /**
@@ -87,10 +89,13 @@ class Walkie(
     private var listenJob: Job? = null
     /** 每个正在说话的队友一路播放 */
     private val players = mutableMapOf<String, Player>()
+    /** 服务器、直连各来一份，只放先到的 */
+    private val dedup = VoiceDedup()
 
     init {
         // 队友说话：不管自己开没开对讲都放出来（开了对讲才会把自己的声音发出去）
         scope.launch { group.voices.collect { receive(it) } }
+        scope.launch { group.localPeers.collect { peers -> _state.update { it.copy(direct = peers.size) } } }
     }
 
     fun hasMicPermission(): Boolean =
@@ -99,6 +104,7 @@ class Walkie(
     fun turnOn() {
         if (_state.value.on || !hasMicPermission()) return
         val device = route.start()
+        group.startLocal()
         _state.update { it.copy(on = true, device = device, problem = null) }
         listenJob = scope.launch(Dispatchers.Default) { listen() }
     }
@@ -116,6 +122,7 @@ class Walkie(
         players.values.forEach { it.close() }
         players.clear()
         route.stop()
+        group.stopLocal()
         _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false) }
     }
 
@@ -337,6 +344,7 @@ class Walkie(
     // ───────────── 听 ─────────────
 
     private fun receive(voice: GroupEvent.Voice) {
+        if (!dedup.accept(voice.id, voice.stream, voice.seq)) return
         val player = players[voice.id]?.takeIf { it.stream == voice.stream }
             ?: Player(voice.id, voice.name, voice.stream).also { new ->
                 players.put(voice.id, new)?.close()

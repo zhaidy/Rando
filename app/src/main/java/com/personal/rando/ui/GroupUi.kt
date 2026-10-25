@@ -204,12 +204,74 @@ fun walkieText(w: WalkieState): String = when {
     w.testing -> "试一下：说一句话，会放给你自己听"
     w.sending && w.mode == WalkieMode.CLIP -> "在录，说完停一下就发出去"
     w.sending -> "队友正在听你说"
-    else -> "在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}"
+    else -> "在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}" + directText(w)
 }
 
-/** 骑行视图上只在有事时说对讲：有人在说、你在说、出问题；平常在听就不占一行 */
-fun rideWalkieText(w: WalkieState): String? =
+/** 「 · 直连 2 人」：离得近的队友直接用蓝牙、Wi-Fi 连上了 */
+private fun directText(w: WalkieState): String = if (w.on && w.direct > 0) " · 直连 ${w.direct} 人" else ""
+
+/** 骑行视图上的对讲：有事（有人在说、你在说、出问题）说事，平常只说开没开、直连几个人 */
+fun rideWalkieText(w: WalkieState): String =
     walkieText(w).takeIf { w.problem != null || w.talking.isNotEmpty() || w.sending || w.testing }
+        ?: when {
+            !w.on -> "对讲没开"
+            w.direct > 0 -> "直连 ${w.direct} 人"
+            else -> "对讲开着"
+        }
+
+/**
+ * 骑行视图上的一行对讲：状态，开着时灵敏度、实时 / 整句点一下换一档，最右边开关。
+ * 按钮做大一点，骑车时戴手套也点得中
+ */
+@Composable
+fun RideWalkieRow(
+    walkie: WalkieState,
+    onToggle: () -> Unit,
+    onLevel: (VoxLevel) -> Unit,
+    onMode: (WalkieMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pad = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(
+            Modifier.padding(end = 2.dp).size(10.dp).clip(CircleShape).background(
+                when {
+                    walkie.problem != null -> Color(0xFFFFB74D)
+                    walkie.sending || walkie.talking.isNotEmpty() -> Color(0xFF7CFFB2)
+                    walkie.on -> Color(0xFFB388FF)
+                    else -> Color(0xFF8A8A8A)
+                }
+            )
+        )
+        Text(
+            rideWalkieText(walkie),
+            Modifier.weight(1f),
+            color = if (walkie.problem != null) Color(0xFFFFD08A) else Color.White,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (walkie.on) {
+            GlassButton(
+                onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
+                tone = GlassTone.Dark,
+                contentPadding = pad,
+            ) { Text(walkie.level.label, color = Color.White, fontSize = 15.sp) }
+            GlassButton(
+                onClick = { onMode(WalkieMode.entries[(walkie.mode.ordinal + 1) % WalkieMode.entries.size]) },
+                tone = GlassTone.Dark,
+                contentPadding = pad,
+            ) { Text(walkie.mode.label, color = Color.White, fontSize = 15.sp) }
+        }
+        GlassButton(
+            onClick = onToggle,
+            tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Dark,
+            contentPadding = pad,
+        ) {
+            Text(if (walkie.on) "关对讲" else "开对讲", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
 
 /** 麦克风音量：▁▃▅▇ 亮几格 */
 private fun micBars(n: Int): String = "▁▃▅▇".mapIndexed { i, c -> if (i < n) c else '·' }.joinToString("")

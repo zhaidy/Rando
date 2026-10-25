@@ -86,6 +86,25 @@ class GroupRide(
     /** 收到的对讲语音 */
     val voices: SharedFlow<GroupEvent.Voice> = _voices
 
+    /** 离得近的队友直连（蓝牙、Wi-Fi），开着对讲时才开；只用来传对讲 */
+    private val local = NearbyLink(context) { text ->
+        (GroupProtocol.parse(text, System.currentTimeMillis()) as? GroupEvent.Voice)?.let { _voices.tryEmit(it) }
+    }
+
+    /** 直连上的队友 id */
+    val localPeers: StateFlow<Set<String>> = local.peers
+
+    fun hasLocalPermissions(): Boolean = local.hasPermissions()
+
+    /** 开对讲时开直连；没有「附近的设备」权限就只走服务器 */
+    fun startLocal() {
+        val s = _state.value ?: return
+        local.start(s.code, myId, myName)
+        local.setTeam(s.teammates.map { it.id }.toSet())
+    }
+
+    fun stopLocal() = local.stop()
+
     private var socket: WebSocket? = null
     private var reconnectJob: Job? = null
     private var lastSent: Fix? = null
@@ -124,6 +143,7 @@ class GroupRide(
         answered.clear()
         _offer.value = null
         _state.value = null
+        local.stop()
     }
 
     /** 开始导航时把路线分享给队友；不在队伍里就不发 */
@@ -188,8 +208,14 @@ class GroupRide(
         }
     }
 
-    fun sendVoice(stream: Int, seq: Int, end: Boolean, base64: String): Boolean =
-        socket?.send(GroupProtocol.voice(stream, seq, end, base64)) == true
+    /**
+     * 服务器、直连两条路都发：收的人谁先到用谁，重复的丢掉；直连连上、断开都不用切换，说到一半也不断
+     */
+    fun sendVoice(stream: Int, seq: Int, end: Boolean, base64: String): Boolean {
+        val direct = local.send(GroupProtocol.localVoice(myId, myName, stream, seq, end, base64))
+        val server = socket?.send(GroupProtocol.voice(stream, seq, end, base64)) == true
+        return direct || server
+    }
 
     /**
      * 掉队提醒：队友离我超过 [STRAGGLER_METERS]，每人每 [WARN_INTERVAL_MS] 最多说一次。
@@ -278,6 +304,9 @@ class GroupRide(
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.mate.id } + event.mate)
             }
             is GroupEvent.Voice -> _voices.tryEmit(event)
+        }
+        if (event is GroupEvent.Roster || event is GroupEvent.Joined || event is GroupEvent.Left) {
+            _state.value?.let { s -> local.setTeam(s.teammates.map { it.id }.toSet()) }
         }
     }
 
