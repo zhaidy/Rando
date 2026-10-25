@@ -387,12 +387,12 @@ private fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 橙色提示条，比如「长按地图选起点」；有 [onCancel] 时右边带个「取消」 */
+/** 黄色提示条，比如「长按地图选起点」；有 [onCancel] 时右边带个「取消」 */
 @Composable
 fun HintPill(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null) {
-    GlassPanel(modifier, shape = GlassShapes.Pill, tone = GlassTone.Tinted(RandoOrange)) {
+    GlassPanel(modifier, shape = GlassShapes.Pill, tone = GlassTone.Tinted(RandoYellow)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f, fill = false).padding(start = 16.dp, end = if (onCancel == null) 16.dp else 4.dp, top = 10.dp, bottom = 10.dp), color = Color.White, fontSize = 14.sp)
+            Text(text, Modifier.weight(1f, fill = false).padding(start = 16.dp, end = if (onCancel == null) 16.dp else 4.dp, top = 10.dp, bottom = 10.dp), color = HINT_INK, fontSize = 14.sp)
             if (onCancel != null) {
                 Row(
                     Modifier
@@ -401,8 +401,8 @@ fun HintPill(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)
                         .padding(start = 8.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Text(tr("取消", "Cancel"), Modifier.padding(start = 2.dp), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Default.Close, contentDescription = null, tint = HINT_INK, modifier = Modifier.size(16.dp))
+                    Text(tr("取消", "Cancel"), Modifier.padding(start = 2.dp), color = HINT_INK, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -439,7 +439,7 @@ fun SideRail(
         // 图标统一用墨色；只有「开始记录」是橙色（主操作），在听语音时麦克风变红
         IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = tr("骑行记录", "Rides"), tint = Ink) }
         if (showLocation && showRecord) {
-            IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = tr("开始记录", "Start recording"), tint = RandoOrange) }
+            IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = tr("开始记录", "Start recording"), tint = AccentInk) }
         }
         onGroup?.let {
             IconTap(onClick = it) { Icon(GroupIcon, contentDescription = tr("一起骑", "Ride together"), tint = Ink) }
@@ -747,7 +747,7 @@ fun PlannerSheet(
                   exit = fadeOut(tween(120)) + shrinkVertically(Motion.smooth()),
               ) {
                   PrimaryButton(onClick = actions.onStart, color = RandoAccent, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                      Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                      Text(tr("开始导航", "Start navigation"), color = HINT_INK, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                   }
               }
           }
@@ -795,7 +795,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
         Text(text, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (route != null) {
             PrimaryButton(onClick = onStart, color = RandoAccent) {
-                Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("开始导航", "Start navigation"), color = HINT_INK, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -823,7 +823,7 @@ private fun ParkedRow(bike: ParkedBike, here: LatLon?, onClick: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("P", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        Text("P", color = HINT_INK, fontSize = 14.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(RandoBlue).padding(horizontal = 8.dp, vertical = 2.dp))
         Spacer(Modifier.width(10.dp))
         Text(tr("我的车", "My bike"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -1593,7 +1593,7 @@ fun FinishedCard(
         }
         if (canReturn) {
             GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-                Text(tr("原路返回", "Ride back"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("原路返回", "Ride back"), color = HINT_INK, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         IconTap(onClick = onParkPhoto) { Icon(CameraIcon, contentDescription = tr("拍车位照片", "Parking photo"), tint = InkSoft) }
@@ -1602,7 +1602,10 @@ fun FinishedCard(
     }
 }
 
-/** 记录中的小胶囊：红点呼吸，时间、距离、速度 */
+/** 黄色提示条上的字：黄底配深色字才看得清 */
+private val HINT_INK = Color(0xFF1C2330)
+
+/** 记录中的小胶囊：白点呼吸，时间、距离、速度 */
 @Composable
 fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () -> Unit, modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "rec")
@@ -1610,30 +1613,32 @@ fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () 
     Row(
         modifier
             .fillMaxWidth()
-            .liquidGlass(GlassShapes.Pill, GlassTone.Tinted(RandoOrange))
+            .liquidGlass(GlassShapes.Pill, GlassTone.Tinted(RandoAccent))
             .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(10.dp).graphicsLayer { alpha = pulse }.clip(CircleShape).background(Color.White))
         Spacer(Modifier.width(12.dp))
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillStat(Format.clock(recording.movingSeconds))
             PillStat(Format.distance(recording.distanceMeters.toInt()))
-            PillStat(Format.speed(recording.currentSpeed))
+            // 胶囊里放不下「公里/时」，写短一点
+            PillStat(String.format(java.util.Locale.US, "%.1f km/h", recording.currentSpeed * 3.6))
         }
-        GlassButton(onClick = onRideView, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+        GlassButton(onClick = onRideView, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
             Text(tr("骑行视图", "Ride view"), color = Ink, fontSize = 14.sp)
         }
         Spacer(Modifier.width(6.dp))
-        GlassButton(onClick = onStop, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+        GlassButton(onClick = onStop, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
             Text(tr("结束", "End"), color = RandoRed.onGlass(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
-private fun PillStat(value: String) {
-    Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+private fun RowScope.PillStat(value: String) {
+    // 窄屏上三个数挤不下时一起缩小，不截断
+    Text(value, Modifier.weight(1f, fill = false), color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 15.sp))
 }
 
 /** 离线地图：没下载 / 下载中 / 下好了，可以更新、删掉 */

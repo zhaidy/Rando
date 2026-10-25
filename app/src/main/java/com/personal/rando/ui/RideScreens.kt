@@ -84,6 +84,7 @@ import com.personal.rando.ui.glass.GlassIconButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassShapes
 import com.personal.rando.ui.glass.GlassTone
+import com.personal.rando.ui.glass.neu
 import com.personal.rando.ui.glass.LocalHazeState
 import com.personal.rando.ui.glass.Motion
 import com.personal.rando.ui.glass.pressScale
@@ -132,6 +133,7 @@ fun RideList(
             .fillMaxSize()
             .statusBarsPadding()
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        tone = GlassTone.Solid,
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -251,7 +253,7 @@ private fun PeriodBars(totals: List<PeriodTotal>, modifier: Modifier) {
                         .weight(1f, fill = false)
                         .fillMaxHeight((t.meters / max * grow.value).toFloat().coerceAtLeast(0.02f))
                         .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
-                        .background(Color.White.copy(alpha = if (last) 0.95f else 0.45f))
+                        .background(if (last) RandoYellow else Color.White.copy(alpha = 0.45f))
                 )
                 Text(t.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
             }
@@ -287,8 +289,8 @@ private fun RideRow(ride: Ride, index: Int, onClick: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .pressScale(interaction, pressed = 0.97f)
+                .neu(GlassShapes.Card)
                 .clip(GlassShapes.Card)
-                .background(CardColor)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
@@ -723,6 +725,7 @@ fun ReviewPage(
             .fillMaxSize()
             .statusBarsPadding()
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        tone = GlassTone.Solid,
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -807,8 +810,8 @@ private fun ReviewFacts(r: Review) {
     Column(
         Modifier
             .fillMaxWidth()
+            .neu(GlassShapes.Card)
             .clip(GlassShapes.Card)
-            .background(CardColor)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -833,8 +836,8 @@ private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> U
     Row(
         Modifier
             .fillMaxWidth()
+            .neu(GlassShapes.Card)
             .clip(GlassShapes.Card)
-            .background(CardColor)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

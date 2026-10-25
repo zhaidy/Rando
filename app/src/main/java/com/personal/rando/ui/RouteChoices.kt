@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -26,35 +27,33 @@ import com.personal.rando.ui.glass.GlassShapes
 import com.personal.rando.ui.glass.GlassTone
 import com.personal.rando.ui.glass.liquidGlass
 
-/** 几条可选的路线排成一行卡片：叫什么、多远多久、为什么选它，点一下换成这条 */
+/**
+ * 几条可选的路线并排成一行卡片（一样宽，不用左右滑）：叫什么、多远多久；
+ * 下面一行小字说选中的那条为什么选它。点一下换成这条
+ */
 @Composable
 fun RouteChoices(options: List<RouteOption>, chosen: Int, onChoose: (Int) -> Unit) {
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        options.forEachIndexed { i, option ->
-            val selected = i == chosen
-            val ink = if (selected) Color.White else Ink
-            Column(
-                Modifier
-                    .width(172.dp)
-                    .clip(GlassShapes.Card)
-                    .liquidGlass(GlassShapes.Card, if (selected) GlassTone.Tinted(RandoAccent) else GlassTone.Light)
-                    .clickable { onChoose(i) }
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(optionTitle(option, i), color = ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(
-                    "${Format.distance(option.route.distanceMeters)} · ${Format.duration(option.route.durationSeconds)}",
-                    color = ink, fontSize = 14.sp, maxLines = 1,
-                )
-                Text(
-                    optionReason(option, i, options.first()),
-                    color = if (selected) Color.White.copy(alpha = 0.85f) else InkSoft,
-                    fontSize = 13.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
-                )
+    Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEachIndexed { i, option ->
+                val selected = i == chosen
+                val ink = if (selected) Color.White else Ink
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .liquidGlass(GlassShapes.Tile, if (selected) GlassTone.Tinted(RandoAccent) else GlassTone.Light)
+                        .clickable { onChoose(i) }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(optionTitle(option, i), color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(Format.distance(option.route.distanceMeters), color = ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(Format.duration(option.route.durationSeconds), color = if (selected) Color.White.copy(alpha = 0.9f) else InkSoft, fontSize = 12.sp, maxLines = 1)
+                }
             }
+        }
+        options.getOrNull(chosen)?.let {
+            Text(optionReason(it, chosen, options.first()), color = InkSoft, fontSize = 13.sp, lineHeight = 18.sp)
         }
     }
 }
