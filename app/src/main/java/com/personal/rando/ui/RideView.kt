@@ -167,8 +167,14 @@ fun RideView(
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
     // 上面那块展开还是收成一行；下面那块三档：一行、速度加剩余、再加其余数据和按钮
-    var topOpen by rememberSaveable { mutableStateOf(true) }
-    var bottom by rememberSaveable { mutableIntStateOf(BOTTOM_NORMAL) }
+    // 收没收记下来，下次进骑行视图还是一样
+    val uiPrefs = UiPrefs(LocalContext.current)
+    var topOpen by rememberSaveable { mutableStateOf(uiPrefs.rideTopOpen) }
+    var bottom by rememberSaveable { mutableIntStateOf(uiPrefs.rideBottom.takeIf { it in BOTTOM_LINE..BOTTOM_MORE } ?: BOTTOM_NORMAL) }
+    LaunchedEffect(topOpen, bottom) {
+        uiPrefs.rideTopOpen = topOpen
+        uiPrefs.rideBottom = bottom
+    }
     var topDrag by remember { mutableFloatStateOf(0f) }
     var bottomDrag by remember { mutableFloatStateOf(0f) }
     val music = rememberMusic()
