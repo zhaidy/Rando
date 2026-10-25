@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import com.personal.rando.i18n.Lang
 import com.personal.rando.places.ParkedBike
 import com.personal.rando.routing.LatLon
 import org.junit.Assert.assertEquals
@@ -14,5 +15,13 @@ class ParkedTextTest {
         assertEquals("刚刚", parkedText(bike, null, 30_000))
         assertEquals("15 分钟前", parkedText(bike, null, 15 * 60_000L))
         assertEquals("3 天前", parkedText(bike, null, 3 * 86_400_000L))
+    }
+
+    @Test
+    fun `英文`() = Lang.with(english = true) {
+        assertEquals("just now", parkedText(bike, null, 30_000))
+        assertEquals("15 min ago", parkedText(bike, null, 15 * 60_000L))
+        assertEquals("1 day ago", parkedText(bike, null, 86_400_000L))
+        assertEquals("3 days ago", parkedText(bike, null, 3 * 86_400_000L))
     }
 }

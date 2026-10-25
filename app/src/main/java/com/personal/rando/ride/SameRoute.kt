@@ -1,5 +1,7 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
@@ -71,12 +73,16 @@ data class RouteRecord(
         get() {
             val vsLast = fasterThanLast?.let { d ->
                 when {
-                    abs(d) < 5 -> "，和上次差不多"
-                    d > 0 -> "，比上次快 ${duration(d)}"
-                    else -> "，比上次慢 ${duration(-d)}"
+                    abs(d) < 5 -> tr("，和上次差不多", ", about the same as last time")
+                    d > 0 -> tr("，比上次快 ${duration(d)}", ", ${duration(d)} faster than last time")
+                    else -> tr("，比上次慢 ${duration(-d)}", ", ${duration(-d)} slower than last time")
                 }
             }.orEmpty()
-            val best = if (best) "，最好成绩！" else "，最好成绩 ${Format.clock(bestSeconds)}"
+            val best = if (best) tr("，最好成绩！", ", personal best!") else tr("，最好成绩 ${Format.clock(bestSeconds)}", ", best ${Format.clock(bestSeconds)}")
+            if (Lang.english) {
+                val nth = if (before == 0) "First time" else "${ordinal(before + 1)} time"
+                return "$nth on this route$vsLast$best"
+            }
             val nth = if (before == 0) "第一次" else "第 ${before + 1} 次"
             return "这条路${nth}骑$vsLast$best"
         }
@@ -97,13 +103,22 @@ data class RouteRecord(
             )
         }
 
+        /** 2nd、3rd、11th */
+        private fun ordinal(n: Int): String = n.toString() + when {
+            n % 100 in 11..13 -> "th"
+            n % 10 == 1 -> "st"
+            n % 10 == 2 -> "nd"
+            n % 10 == 3 -> "rd"
+            else -> "th"
+        }
+
         private fun duration(seconds: Long): String {
             val m = seconds / 60
             val s = seconds % 60
             return when {
-                m == 0L -> "$s 秒"
-                s == 0L -> "$m 分钟"
-                else -> "$m 分 $s 秒"
+                m == 0L -> tr("$s 秒", "$s s")
+                s == 0L -> tr("$m 分钟", "$m min")
+                else -> tr("$m 分 $s 秒", "$m min $s s")
             }
         }
     }

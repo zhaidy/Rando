@@ -23,12 +23,16 @@ sealed interface VoiceCommand {
 }
 
 /**
- * 把识别出来的中文变成指令。说法尽量宽：「导航回家」「回家」「带我去公司」「去 Funan」
+ * 把识别出来的话变成指令（中文、英文都认）。说法尽量宽：「导航回家」「回家」「带我去公司」「去 Funan」
  * 「骑一圈二十公里」「骑东海岸那条」「结束导航」「还有多远」「这里在施工」「打开对讲」
  */
 object VoiceParser {
 
-    fun parse(raw: String): VoiceCommand {
+    /** 中文说法认不出来再按英文认（英文界面用英文识别） */
+    fun parse(raw: String): VoiceCommand =
+        parseChinese(raw).takeIf { it !is VoiceCommand.Unknown } ?: parseEnglish(raw)
+
+    private fun parseChinese(raw: String): VoiceCommand {
         val text = raw.trim().trimEnd('。', '！', '!', '？', '?', '.').replace(" ", "")
         if (text.isEmpty()) return VoiceCommand.Unknown(raw)
 
@@ -65,6 +69,71 @@ object VoiceParser {
         }
         return VoiceCommand.Unknown(raw)
     }
+
+    /**
+     * 英文说法：「navigate home」「take me to Funan」「ride a 20 km loop」「ride the East Coast route」
+     * 「stop navigation」「how far」「there's construction here」「turn on the walkie」
+     */
+    fun parseEnglish(raw: String): VoiceCommand {
+        val original = raw.trim().trimEnd('.', '!', '?').replace(Regex("\\s+"), " ")
+        val text = original.lowercase()
+        if (text.isEmpty()) return VoiceCommand.Unknown(raw)
+        fun has(pattern: String) = Regex(pattern).containsMatchIn(text)
+
+        if (has("^(stop|end|cancel|quit|exit)( the)?( navigation| navigating| route| ride)?$|^stop navigat")) return VoiceCommand.StopNavigation
+        if (has("how (far|long|much (further|farther|longer))|time left|distance left|^eta$")) return VoiceCommand.Remaining
+        if (has("weather|rain|hot is it|air quality|forecast")) return VoiceCommand.Weather
+        if (has("(take|by|ride|catch)( the)? (mrt|train|subway|metro) home")) return VoiceCommand.MrtHome
+
+        when {
+            has("closed|blocked") -> return VoiceCommand.Report(HazardType.CLOSED)
+            has("construction|road ?works") -> return VoiceCommand.Report(HazardType.CONSTRUCTION)
+            has("pothole|bumpy|rough|bad (road|surface)|flood|puddle") -> return VoiceCommand.Report(HazardType.BAD_SURFACE)
+        }
+
+        if (has("walkie|intercom|radio")) return VoiceCommand.Walkie(on = !has("\\b(off|stop|close|disable|end)\\b"))
+
+        Regex("loop (of )?(.+?) ?(km|kilometers?|kilometres?|k)?$").find(text)?.let { m ->
+            val km = englishNumber(m.groupValues[2])
+            if (km != null && km in 1..200) return VoiceCommand.Loop(km)
+        }
+        Regex("^(ride |do )?(a )?(.+?) ?(km|kilometers?|kilometres?|k) loop$").find(text)?.let { m ->
+            val km = englishNumber(m.groupValues[3])
+            if (km != null && km in 1..200) return VoiceCommand.Loop(km)
+        }
+
+        if (has("^((navigate|take me|bring me|go|head|ride|directions)( back)? )?home$")) return VoiceCommand.GoTo("家")
+        Regex("^(?:navigate|navigation|take me|bring me|go|head|directions)(?: to)? (.+)$", RegexOption.IGNORE_CASE)
+            .find(original)?.let { return VoiceCommand.GoTo(it.groupValues[1].removePrefix("the ")) }
+
+        Regex("^ride (?:the |my )?(.+?)(?: route| loop| one)?$", RegexOption.IGNORE_CASE)
+            .find(original)?.let { return VoiceCommand.Route(it.groupValues[1]) }
+        return VoiceCommand.Unknown(raw)
+    }
+
+    /** 「20」「twenty」「twenty five」「twenty-five」「a hundred」 */
+    fun englishNumber(s: String): Int? {
+        val t = s.trim().lowercase()
+        t.toIntOrNull()?.let { return it }
+        val words = t.replace('-', ' ').split(' ').filter { it.isNotEmpty() && it != "and" }
+        if (words.isEmpty()) return null
+        var total = 0
+        for (w in words) {
+            when (w) {
+                "hundred" -> total = (if (total == 0) 1 else total) * 100
+                "a" -> Unit
+                in ENGLISH -> total += ENGLISH.getValue(w)
+                else -> return null
+            }
+        }
+        return total.takeIf { it > 0 }
+    }
+
+    private val ENGLISH = listOf(
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+    ).withIndex().associate { it.value to it.index } +
+        listOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety").withIndex().associate { it.value to (it.index + 2) * 10 }
 
     /** 「20」「二十」「二十五」「十」「一百」 */
     fun number(s: String): Int? {

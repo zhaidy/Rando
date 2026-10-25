@@ -2,6 +2,7 @@ package com.personal.rando.ride
 
 import android.content.Context
 import androidx.core.content.edit
+import com.personal.rando.i18n.Language
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
@@ -37,12 +38,13 @@ object Calories {
     fun of(ride: Ride, weightKg: Double) = of(ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, weightKg)
 }
 
-/** 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路 */
+/** 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路、界面语言 */
 data class Settings(
     val weightKg: Double = DEFAULT_WEIGHT,
     val autoStart: Boolean = false,
     val voice: String? = null,
     val showRidden: Boolean = true,
+    val language: Language = Language.SYSTEM,
 ) {
     companion object {
         const val DEFAULT_WEIGHT = 65.0
@@ -57,6 +59,7 @@ class SettingsStore(context: Context) {
             autoStart = prefs.getBoolean(KEY_AUTO_START, false),
             voice = prefs.getString(KEY_VOICE, null),
             showRidden = prefs.getBoolean(KEY_SHOW_RIDDEN, true),
+            language = prefs.getString(KEY_LANGUAGE, null)?.let { n -> Language.entries.firstOrNull { it.name == n } } ?: Language.SYSTEM,
         )
     )
     val settings: StateFlow<Settings> = _settings
@@ -68,6 +71,7 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_AUTO_START, s.autoStart)
             putString(KEY_VOICE, s.voice)
             putBoolean(KEY_SHOW_RIDDEN, s.showRidden)
+            putString(KEY_LANGUAGE, s.language.name)
         }
     }
 
@@ -76,5 +80,6 @@ class SettingsStore(context: Context) {
         const val KEY_AUTO_START = "auto_start"
         const val KEY_VOICE = "voice"
         const val KEY_SHOW_RIDDEN = "show_ridden"
+        const val KEY_LANGUAGE = "language"
     }
 }

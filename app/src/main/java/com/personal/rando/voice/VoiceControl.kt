@@ -17,6 +17,8 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.content.ContextCompat
 import com.personal.rando.group.Walkie
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -62,11 +64,11 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
             return
         }
         if (!available) {
-            say("手机上没有语音识别，装一个谷歌语音输入就能用")
+            say(tr("手机上没有语音识别，装一个谷歌语音输入就能用", "No speech recognition on this phone. Install Google voice typing to use it"))
             return
         }
         if (!hasMicPermission()) {
-            say("先在 Rando 里允许使用麦克风")
+            say(tr("先在 Rando 里允许使用麦克风", "Allow Rando to use the microphone first"))
             return
         }
         _state.value = VoiceState.Listening()
@@ -108,7 +110,7 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
 
     private fun recognizeIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (Lang.english) "en-SG" else "zh-CN")
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
 
     /**
@@ -141,7 +143,7 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         // 几个候选里取第一个听得懂的
         val command = candidates.map(VoiceParser::parse).firstOrNull { it !is VoiceCommand.Unknown }
             ?: VoiceCommand.Unknown(candidates.firstOrNull().orEmpty())
-        handler?.invoke(command) ?: say("打开 Rando 再说")
+        handler?.invoke(command) ?: say(tr("打开 Rando 再说", "Open Rando first"))
     }
 
     private fun done() {
@@ -232,16 +234,16 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
 
         /** 出错了说什么：说清楚是哪儿的问题，不只说「出错了」 */
         fun errorText(error: Int): String? = when (error) {
-            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听清，再说一次"
+            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> tr("没听清，再说一次", "Didn't catch that, please say it again")
             SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
-                "语音识别要联网，或者下载中文离线语音包"
-            in LANGUAGE_ERRORS -> "语音识别不支持中文，在系统设置里给语音识别下载中文语音包"
-            SpeechRecognizer.ERROR_AUDIO -> "语音识别打不开麦克风，可能被别的 App 占用了"
-            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "语音识别没有麦克风权限：在系统设置里给谷歌 App 打开麦克风权限"
-            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正忙，过一会再试；一直忙的话重启一下手机"
-            ERROR_SERVER_DISCONNECTED -> "语音识别断开了，在系统设置里把默认语音识别换成谷歌试试"
-            SpeechRecognizer.ERROR_CLIENT -> "连不上手机的语音识别，在系统设置里把默认语音识别换成谷歌试试"
-            else -> "语音识别出错了，错误码 $error"
+                tr("语音识别要联网，或者下载中文离线语音包", "Speech recognition needs internet, or download the offline speech pack")
+            in LANGUAGE_ERRORS -> tr("语音识别不支持中文，在系统设置里给语音识别下载中文语音包", "Speech recognition doesn't support this language. Download the language pack in system settings")
+            SpeechRecognizer.ERROR_AUDIO -> tr("语音识别打不开麦克风，可能被别的 App 占用了", "Speech recognition can't open the microphone. Another app may be using it")
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> tr("语音识别没有麦克风权限：在系统设置里给谷歌 App 打开麦克风权限", "Speech recognition has no microphone permission. Allow it for the Google app in system settings")
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> tr("语音识别正忙，过一会再试；一直忙的话重启一下手机", "Speech recognition is busy. Try again later, or restart the phone if it stays busy")
+            ERROR_SERVER_DISCONNECTED -> tr("语音识别断开了，在系统设置里把默认语音识别换成谷歌试试", "Speech recognition disconnected. Try switching the default to Google in system settings")
+            SpeechRecognizer.ERROR_CLIENT -> tr("连不上手机的语音识别，在系统设置里把默认语音识别换成谷歌试试", "Can't connect to speech recognition. Try switching the default to Google in system settings")
+            else -> tr("语音识别出错了，错误码 $error", "Speech recognition error $error")
         }
     }
 }

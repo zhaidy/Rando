@@ -86,6 +86,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.Language
+import com.personal.rando.i18n.tr
 import com.personal.rando.routing.Pace
 import androidx.compose.material.icons.filled.ArrowDropDown
 import com.personal.rando.places.SavedRoute
@@ -207,22 +210,22 @@ fun SearchBar(
                 )
             }
             if (query.isNotEmpty()) {
-                IconTap(onClick = { onQuery("") }) { Icon(Icons.Default.Close, contentDescription = "清空", tint = InkSoft) }
+                IconTap(onClick = { onQuery("") }) { Icon(Icons.Default.Close, contentDescription = tr("清空", "Clear"), tint = InkSoft) }
             } else {
                 Box {
-                    IconTap(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "更多", tint = InkSoft) }
+                    IconTap(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = tr("更多", "More"), tint = InkSoft) }
                     DropdownMenu(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                         shape = GlassShapes.Card,
                         containerColor = Color(0xF7F7FAF8),
                     ) {
-                        DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
-                        DropdownMenuItem(text = { Text("离线地图") }, onClick = { menuOpen = false; onOfflineMaps() })
-                        DropdownMenuItem(text = { Text("坐 MRT 回家") }, onClick = { menuOpen = false; onMrtHome() })
-                        DropdownMenuItem(text = { Text("设置") }, onClick = { menuOpen = false; onSettings() })
-                        DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
-                        DropdownMenuItem(text = { Text("当前版本 build $build") }, onClick = {}, enabled = false)
+                        DropdownMenuItem(text = { Text(tr("骑行记录", "Rides")) }, onClick = { menuOpen = false; onOpenRides() })
+                        DropdownMenuItem(text = { Text(tr("离线地图", "Offline maps")) }, onClick = { menuOpen = false; onOfflineMaps() })
+                        DropdownMenuItem(text = { Text(tr("坐 MRT 回家", "MRT home")) }, onClick = { menuOpen = false; onMrtHome() })
+                        DropdownMenuItem(text = { Text(tr("设置", "Settings")) }, onClick = { menuOpen = false; onSettings() })
+                        DropdownMenuItem(text = { Text(tr("检查更新", "Check for updates")) }, onClick = { menuOpen = false; onCheckUpdate() })
+                        DropdownMenuItem(text = { Text(tr("当前版本 build $build", "Version: build $build")) }, onClick = {}, enabled = false)
                     }
                 }
             }
@@ -301,15 +304,15 @@ fun PrefsRow(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit, modifier: Modifi
 /** 「偏好」胶囊：打开了「不上马路」「不走天桥」时直接写出来，免得忘了开着 */
 @Composable
 private fun PcnPrefsChip(prefs: RoutePrefs, onClick: () -> Unit) {
-    val avoiding = listOfNotNull("不上马路".takeIf { prefs.avoidRoads }, "不走天桥".takeIf { prefs.avoidBridges })
+    val avoiding = listOfNotNull(tr("不上马路", "No roads").takeIf { prefs.avoidRoads }, tr("不走天桥", "No overpasses").takeIf { prefs.avoidBridges })
     val on = avoiding.isNotEmpty()
     GlassButton(
         onClick = onClick,
         tone = if (on) GlassTone.Tinted(RandoGreenDeep) else GlassTone.Light,
         contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 9.dp, bottom = 9.dp),
     ) {
-        Text(avoiding.joinToString("、").ifEmpty { "偏好" }, color = if (on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        Icon(Icons.Default.ArrowDropDown, contentDescription = "路线偏好", tint = if (on) Color.White else InkSoft, modifier = Modifier.size(20.dp))
+        Text(avoiding.joinToString(tr("、", ", ")).ifEmpty { tr("偏好", "Preferences") }, color = if (on) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Icon(Icons.Default.ArrowDropDown, contentDescription = tr("路线偏好", "Route preferences"), tint = if (on) Color.White else InkSoft, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -321,17 +324,17 @@ fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: (
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("公园连道偏好") },
+        title = { Text(tr("公园连道偏好", "Park connector preferences")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrefSwitch("不上马路", "尽量避开马路，有人行道的走人行道", edited.avoidRoads) { edited = edited.copy(avoidRoads = it) }
-                PrefSwitch("不走天桥", "绕开人行天桥，公园连道、自行车道上的桥照走", edited.avoidBridges) { edited = edited.copy(avoidBridges = it) }
-                PrefSwitch("中午挑有树荫的路", "11 点到 4 点算路时，宁可绕一点也走树多的路", edited.shadeAtNoon) { edited = edited.copy(shadeAtNoon = it) }
-                PrefSwitch("天黑挑有路灯的路", "天黑或快黑时，少走没灯的小路", edited.litAtNight) { edited = edited.copy(litAtNight = it) }
+                PrefSwitch(tr("不上马路", "Avoid roads"), tr("尽量避开马路，有人行道的走人行道", "Keep off roads where possible; use pavements where there are any"), edited.avoidRoads) { edited = edited.copy(avoidRoads = it) }
+                PrefSwitch(tr("不走天桥", "Avoid overpasses"), tr("绕开人行天桥，公园连道、自行车道上的桥照走", "Go around pedestrian overpasses; bridges on park connectors and cycle paths are fine"), edited.avoidBridges) { edited = edited.copy(avoidBridges = it) }
+                PrefSwitch(tr("中午挑有树荫的路", "Shade at midday"), tr("11 点到 4 点算路时，宁可绕一点也走树多的路", "Between 11am and 4pm, take a slightly longer route under more trees"), edited.shadeAtNoon) { edited = edited.copy(shadeAtNoon = it) }
+                PrefSwitch(tr("天黑挑有路灯的路", "Lit paths after dark"), tr("天黑或快黑时，少走没灯的小路", "After or near dark, avoid unlit paths"), edited.litAtNight) { edited = edited.copy(litAtNight = it) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(edited) }) { Text("好") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onSave(edited) }) { Text(tr("好", "OK")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 
@@ -373,7 +376,7 @@ fun HintPill(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Text("取消", Modifier.padding(start = 2.dp), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("取消", "Cancel"), Modifier.padding(start = 2.dp), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -404,18 +407,18 @@ fun SideRail(
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = RandoGreen) }
+        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = tr("骑行记录", "Rides"), tint = RandoGreen) }
         if (showLocation && showRecord) {
-            IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = "开始记录", tint = RandoOrange) }
+            IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = tr("开始记录", "Start recording"), tint = RandoOrange) }
         }
         onGroup?.let {
-            IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = "一起骑", tint = Color(0xFF6A3FA0)) }
+            IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = tr("一起骑", "Ride together"), tint = Color(0xFF6A3FA0)) }
         }
         onVoice?.let {
-            IconTap(onClick = it) { Icon(MicIcon, contentDescription = "语音指令", tint = if (listening) RandoRed else RandoBlue) }
+            IconTap(onClick = it) { Icon(MicIcon, contentDescription = tr("语音指令", "Voice command"), tint = if (listening) RandoRed else RandoBlue) }
         }
         if (showLocation) {
-            IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen) }
+            IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = tr("回到我的位置", "My location"), tint = RandoGreen) }
         }
     }
 }
@@ -534,8 +537,8 @@ fun PlannerSheet(
             ) { h ->
                 when (h) {
                     SheetHeader.Empty -> Column {
-                        Text("想去哪儿骑？", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                        Text("搜索目的地，或者长按地图选一个点", color = InkSoft, fontSize = 14.sp)
+                        Text(tr("想去哪儿骑？", "Where to ride?"), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("搜索目的地，或者长按地图选一个点", "Search for a destination, or long-press the map"), color = InkSoft, fontSize = 14.sp)
                     }
                     is SheetHeader.Destination -> {
                         val dest = h.place
@@ -551,13 +554,13 @@ fun PlannerSheet(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             StarButton(savedHere != null) { actions.onToggleSave(dest, savedHere) }
-                            IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
+                            IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = tr("取消路线", "Clear route"), tint = InkSoft) }
                         }
                     }
                     is SheetHeader.Loop -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("骑一圈 · 约 ${h.km} 公里", Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        LinkText("换一条", actions.onAnotherLoop)
-                        IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = "取消路线", tint = InkSoft) }
+                        Text(tr("骑一圈 · 约 ${h.km} 公里", "Loop · about ${h.km} km"), Modifier.weight(1f), color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        LinkText(tr("换一条", "Another one"), actions.onAnotherLoop)
+                        IconTap(onClick = actions.onClear) { Icon(Icons.Default.Close, contentDescription = tr("取消路线", "Clear route"), tint = InkSoft) }
                     }
                 }
             }
@@ -585,12 +588,12 @@ fun PlannerSheet(
                 ) { r ->
                     when (r) {
                         RouteState.Idle -> Spacer(Modifier.height(0.dp))
-                        RouteState.WaitingForLocation -> Waiting("正在定位，定位到就开始算路")
-                        RouteState.Loading -> Waiting(if (state.loop != null) "正在画一圈好骑的路" else "正在找一条好骑的路")
+                        RouteState.WaitingForLocation -> Waiting(tr("正在定位，定位到就开始算路", "Finding your location; routing starts once found"))
+                        RouteState.Loading -> Waiting(if (state.loop != null) tr("正在画一圈好骑的路", "Drawing a nice loop") else tr("正在找一条好骑的路", "Finding a nice route"))
                         is RouteState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("算路失败：${r.message}", Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(tr("算路失败：${r.message}", "Routing failed: ${r.message}"), Modifier.weight(1f), color = RandoRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             GlassButton(onClick = actions.onRetry, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-                                Text("重试", color = Ink)
+                                Text(tr("重试", "Retry"), color = Ink)
                             }
                         }
                         is RouteState.Ready -> Column {
@@ -610,7 +613,7 @@ fun PlannerSheet(
                             )
                             Spacer(Modifier.height(16.dp))
                             PrimaryButton(onClick = actions.onStart, color = RandoGreen, modifier = Modifier.fillMaxWidth()) {
-                                Text("开始导航", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                                Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -652,16 +655,16 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
             route != null -> {
                 val road = route.breakdown()[RoadKind.ROAD] ?: 0
                 "${Format.distance(route.distanceMeters)} · ${Format.duration(route.durationSeconds)} · " +
-                    if (road > 0) "${Format.distance(road)} 马路" else "不上马路"
+                    if (road > 0) tr("${Format.distance(road)} 马路", "${Format.distance(road)} on roads") else tr("不上马路", "no roads")
             }
-            header == SheetHeader.Empty -> "往上拉看收藏的地方、骑一圈"
-            state.route is RouteState.Failed -> "算路失败，往上拉看看"
-            else -> "正在算路…"
+            header == SheetHeader.Empty -> tr("往上拉看收藏的地方、骑一圈", "Pull up for saved places and loops")
+            state.route is RouteState.Failed -> tr("算路失败，往上拉看看", "Routing failed; pull up for details")
+            else -> tr("正在算路…", "Routing…")
         }
         Text(text, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (route != null) {
             PrimaryButton(onClick = onStart, color = RandoGreen) {
-                Text("开始导航", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -692,7 +695,7 @@ private fun ParkedRow(bike: ParkedBike, here: LatLon?, onClick: () -> Unit) {
         Text("P", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(RandoBlue).padding(horizontal = 6.dp, vertical = 1.dp))
         Spacer(Modifier.width(8.dp))
-        Text("我的车", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(tr("我的车", "My bike"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Text(" · " + parkedText(bike, here, System.currentTimeMillis()), color = InkSoft, fontSize = 14.sp, maxLines = 1)
     }
 }
@@ -701,10 +704,10 @@ private fun ParkedRow(bike: ParkedBike, here: LatLon?, onClick: () -> Unit) {
 fun parkedText(bike: ParkedBike, here: LatLon?, now: Long): String {
     val minutes = ((now - bike.at) / 60_000).coerceAtLeast(0)
     val ago = when {
-        minutes < 1 -> "刚刚"
-        minutes < 60 -> "$minutes 分钟前"
-        minutes < 24 * 60 -> "${minutes / 60} 小时前"
-        else -> "${minutes / (24 * 60)} 天前"
+        minutes < 1 -> tr("刚刚", "just now")
+        minutes < 60 -> tr("$minutes 分钟前", "$minutes min ago")
+        minutes < 24 * 60 -> tr("${minutes / 60} 小时前", "${minutes / 60} h ago")
+        else -> (minutes / (24 * 60)).let { d -> tr("$d 天前", if (d == 1L) "1 day ago" else "$d days ago") }
     }
     return listOfNotNull(here?.let { Format.distance(Geo.distance(it, bike.location).toInt()) }, ago).joinToString(" · ")
 }
@@ -724,27 +727,27 @@ fun ParkedDialog(bike: ParkedBike, here: LatLon?, onShow: () -> Unit, onWalk: ()
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("我的车") },
+        title = { Text(tr("我的车", "My bike")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("停在这里 · " + parkedText(bike, here, System.currentTimeMillis()), color = Ink, fontSize = 15.sp)
+                Text(tr("停在这里 · ", "Parked here · ") + parkedText(bike, here, System.currentTimeMillis()), color = Ink, fontSize = 15.sp)
                 if (photo != null) {
                     androidx.compose.foundation.Image(
-                        photo, contentDescription = "车位照片",
+                        photo, contentDescription = tr("车位照片", "Parking photo"),
                         modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).clip(RoundedCornerShape(12.dp)),
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     )
                 } else {
-                    LinkText("拍一张车位照片", onPhoto)
+                    LinkText(tr("拍一张车位照片", "Take a parking photo"), onPhoto)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LinkText("在地图上看", onShow)
-                    LinkText("走路过去", onWalk)
+                    LinkText(tr("在地图上看", "Show on map"), onShow)
+                    LinkText(tr("走路过去", "Walk there"), onWalk)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClear) { Text("已取车", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = onClear) { Text(tr("已取车", "Got my bike"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) } },
     )
 }
 
@@ -759,7 +762,7 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Default.Favorite, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
-        Text("我的路线", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(tr("我的路线", "My routes"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         routes.forEach { r ->
             Row(
                 Modifier
@@ -779,14 +782,14 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
             onDismissRequest = { removing = null },
             shape = GlassShapes.Sheet,
             containerColor = Color(0xF7F7FAF8),
-            title = { Text("不收藏「${r.name}」了？") },
+            title = { Text(tr("不收藏「${r.name}」了？", "Remove “${r.name}” from saved?")) },
             confirmButton = {
                 TextButton(onClick = {
                     onRemove(r)
                     removing = null
-                }) { Text("删掉", color = RandoRed) }
+                }) { Text(tr("删掉", "Delete"), color = RandoRed) }
             },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text(tr("取消", "Cancel")) } },
         )
     }
 }
@@ -799,15 +802,15 @@ fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("收藏这条路线") },
+        title = { Text(tr("收藏这条路线", "Save this route")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("下次在首页点一下就能再骑；同名的会覆盖。", color = InkSoft, fontSize = 14.sp)
-                OutlinedTextField(value = name, onValueChange = { name = it.take(20) }, label = { Text("名字") }, singleLine = true)
+                Text(tr("下次在首页点一下就能再骑；同名的会覆盖。", "Ride it again with one tap from the home screen; a route with the same name is replaced."), color = InkSoft, fontSize = 14.sp)
+                OutlinedTextField(value = name, onValueChange = { name = it.take(20) }, label = { Text(tr("名字", "Name")) }, singleLine = true)
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()) }) { Text("收藏") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()) }) { Text(tr("收藏", "Save")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 
@@ -820,10 +823,10 @@ private fun LoopRow(onLoop: (Int) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Default.Refresh, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
-        Text("骑一圈", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(tr("骑一圈", "Loop"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         LOOP_KMS.forEach { km ->
             GlassButton(onClick = { onLoop(km) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
-                Text("$km 公里", color = Ink, fontSize = 15.sp)
+                Text(tr("$km 公里", "$km km"), color = Ink, fontSize = 15.sp)
             }
         }
     }
@@ -839,16 +842,16 @@ private fun ViaLines(via: List<Place>, picking: Boolean, onAdd: () -> Unit, onRe
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(RandoBlue))
                 Spacer(Modifier.width(8.dp))
-                Text("经过 ${place.name}", Modifier.weight(1f), color = InkSoft, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tr("经过 ${place.name}", "Via ${place.name}"), Modifier.weight(1f), color = InkSoft, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 IconTap(onClick = { onRemove(place) }) {
-                    Icon(Icons.Default.Close, contentDescription = "不经过这里", tint = InkSoft.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, contentDescription = tr("不经过这里", "Remove stop"), tint = InkSoft.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
                 }
             }
         }
         if (!picking && via.size < MAX_VIA) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(16.dp))
-                LinkText("加途经点", onAdd)
+                LinkText(tr("加途经点", "Add stop"), onAdd)
             }
         }
     }
@@ -871,7 +874,7 @@ private fun StarButton(on: Boolean, onClick: () -> Unit) {
     IconTap(onClick = onClick) {
         Icon(
             Icons.Default.Star,
-            contentDescription = if (on) "取消收藏" else "收藏",
+            contentDescription = if (on) tr("取消收藏", "Unsave") else tr("收藏", "Save"),
             tint = tint,
             modifier = Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         )
@@ -905,7 +908,7 @@ private fun StartLine(start: Place?, pickingStart: Boolean, onPickStart: () -> U
         Box(Modifier.size(8.dp).clip(CircleShape).background(if (start == null) RandoBlue else RandoGreen))
         Spacer(Modifier.width(8.dp))
         Text(
-            "从${start?.name ?: "我的位置"}出发",
+            start?.name.let { n -> if (n == null) tr("从我的位置出发", "From my location") else tr("从${n}出发", "From $n") },
             Modifier.weight(1f),
             color = InkSoft,
             fontSize = 14.sp,
@@ -913,8 +916,8 @@ private fun StartLine(start: Place?, pickingStart: Boolean, onPickStart: () -> U
             overflow = TextOverflow.Ellipsis,
         )
         when {
-            start != null -> LinkText("用我的位置", onUseMyLocation)
-            !pickingStart -> LinkText("换起点", onPickStart)
+            start != null -> LinkText(tr("用我的位置", "Use my location"), onUseMyLocation)
+            !pickingStart -> LinkText(tr("换起点", "Change start"), onPickStart)
         }
     }
 }
@@ -983,16 +986,16 @@ fun RouteSummary(
     onSaveRoute: () -> Unit = {},
 ) {
     Row {
-        BigStat(Format.distance(route.distanceMeters), "距离", Modifier.weight(1.2f))
-        BigStat(Format.duration(route.durationSeconds), "预计", Modifier.weight(1.2f))
-        BigStat("${route.ascendMeters} 米", "爬升", Modifier.weight(1f))
+        BigStat(Format.distance(route.distanceMeters), tr("距离", "Distance"), Modifier.weight(1.2f))
+        BigStat(Format.duration(route.durationSeconds), tr("预计", "Time"), Modifier.weight(1.2f))
+        BigStat(tr("${route.ascendMeters} 米", "${route.ascendMeters} m"), tr("爬升", "Climb"), Modifier.weight(1f))
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) { PaceLine(prefs, onPace) }
         if (routeSaved) {
-            Text("已收藏", color = InkSoft, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp))
+            Text(tr("已收藏", "Saved"), color = InkSoft, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp))
         } else {
-            LinkText("收藏路线", onSaveRoute)
+            LinkText(tr("收藏路线", "Save route"), onSaveRoute)
         }
     }
     val breakdown = route.breakdown()
@@ -1032,8 +1035,8 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("预计时间${paceText(prefs.pace, prefs.mySpeed)}", color = InkSoft, fontSize = 13.sp)
-            Icon(Icons.Default.ArrowDropDown, contentDescription = "换速度", tint = InkSoft, modifier = Modifier.size(18.dp))
+            Text(tr("预计时间", "Est. time ") + paceText(prefs.pace, prefs.mySpeed), color = InkSoft, fontSize = 13.sp)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = tr("换速度", "Change pace"), tint = InkSoft, modifier = Modifier.size(18.dp))
         }
         DropdownMenu(
             expanded = open,
@@ -1043,7 +1046,7 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
         ) {
             Pace.entries.forEach { pace ->
                 DropdownMenuItem(
-                    text = { Text(paceText(pace, prefs.mySpeed).removePrefix("按")) },
+                    text = { Text(paceText(pace, prefs.mySpeed).removePrefix(tr("按", "at ")).replaceFirstChar(Char::uppercase)) },
                     leadingIcon = { if (pace == prefs.pace) Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen) },
                     onClick = {
                         open = false
@@ -1057,9 +1060,9 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
 
 /** 「按我的速度 18.2 km/h」「按悠闲的速度」 */
 fun paceText(pace: Pace, mySpeed: Double?): String = when {
-    pace != Pace.MINE -> "按${pace.label}的速度（${pace.watts} 瓦）"
-    mySpeed == null -> "按我的速度（再骑几次才准）"
-    else -> "按我的速度 ${Format.speed(mySpeed)}"
+    pace != Pace.MINE -> tr("按${pace.label}的速度（${pace.watts} 瓦）", "at ${pace.label.lowercase()} pace (${pace.watts} W)")
+    mySpeed == null -> tr("按我的速度（再骑几次才准）", "at my pace (accurate after a few more rides)")
+    else -> tr("按我的速度 ${Format.speed(mySpeed)}", "at my pace, ${Format.speed(mySpeed)}")
 }
 
 /** 收起时的一两句：要不要上马路，会不会下雨 */
@@ -1076,13 +1079,13 @@ private fun Headline(
         val road = breakdown[RoadKind.ROAD] ?: 0
         when {
             breakdown.isEmpty() -> Unit
-            road > 0 -> Note(RandoRed, "有 ${Format.distance(road)} 要在马路上骑", strong = true) { onShowOnMap(NoteTarget.ROAD) }
-            else -> Note(RandoGreen, "全程不用上马路", strong = true)
+            road > 0 -> Note(RandoRed, tr("有 ${Format.distance(road)} 要在马路上骑", "${Format.distance(road)} on roads"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            else -> Note(RandoGreen, tr("全程不用上马路", "No roads at all"), strong = true)
         }
         weather?.takeIf { !it.dry }?.let { Note(RandoBlue, it.summary, strong = true) }
         if (weather?.dry == false) CoveredNote(covered, onShowOnMap)
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
-        wind?.takeIf { it.strongHeadwind }?.let { Note(RandoAmber, "${it.wind.name} ${it.wind.kmh.roundToInt()} km/h，全程大多顶风", strong = true) }
+        wind?.takeIf { it.strongHeadwind }?.let { Note(RandoAmber, tr("${it.wind.name} ${it.wind.kmh.roundToInt()} km/h，全程大多顶风", "${it.wind.name} ${it.wind.kmh.roundToInt()} km/h, headwind most of the way"), strong = true) }
     }
 }
 
@@ -1099,7 +1102,7 @@ private fun DetailsToggle(expanded: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (expanded) "收起" else "详情：爬升、过马路、天气、补给", color = RandoGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (expanded) tr("收起", "Less") else tr("详情：爬升、过马路、天气、补给", "Details: climbs, crossings, weather, supplies"), color = RandoGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Icon(
             Icons.Default.KeyboardArrowDown,
             contentDescription = null,
@@ -1171,8 +1174,8 @@ private fun ElevationChart(route: Route) {
         }
         Spacer(Modifier.width(10.dp))
         Column(horizontalAlignment = Alignment.End) {
-            Text("最高 ${high.roundToInt()} 米", color = InkSoft, fontSize = 12.sp)
-            Text("最低 ${low.roundToInt()} 米", color = InkSoft, fontSize = 12.sp)
+            Text(tr("最高 ${high.roundToInt()} 米", "High ${high.roundToInt()} m"), color = InkSoft, fontSize = 12.sp)
+            Text(tr("最低 ${low.roundToInt()} 米", "Low ${low.roundToInt()} m"), color = InkSoft, fontSize = 12.sp)
         }
     }
 }
@@ -1235,21 +1238,21 @@ private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         if (road > 0) {
             val hint = when {
-                prefs.profile != BikeProfile.PCN -> "；选「公园连道」再打开「不上马路」可以尽量避开"
-                !prefs.avoidRoads -> "；打开「不上马路」可以尽量避开"
-                loop -> "；点「换一条」换个方向试试"
-                else -> "，附近没有别的路可走"
+                prefs.profile != BikeProfile.PCN -> tr("；选「公园连道」再打开「不上马路」可以尽量避开", "; choose “Park connector” and turn on “Avoid roads” to keep off them")
+                !prefs.avoidRoads -> tr("；打开「不上马路」可以尽量避开", "; turn on “Avoid roads” to keep off them")
+                loop -> tr("；点「换一条」换个方向试试", "; tap “Another one” to try another direction")
+                else -> tr("，附近没有别的路可走", ", no other way around here")
             }
-            Note(RandoRed, "有 ${Format.distance(road)} 要在马路上骑$hint", strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            Note(RandoRed, tr("有 ${Format.distance(road)} 要在马路上骑$hint", "${Format.distance(road)} on roads$hint"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
         } else {
-            Note(RandoGreen, "全程不用上马路", strong = true)
+            Note(RandoGreen, tr("全程不用上马路", "No roads at all"), strong = true)
         }
         val crossings = route.crossings()
         if (crossings.isNotEmpty()) {
             val byType = crossings.groupingBy { it.type }.eachCount()
             Note(
                 kindColor(RoadKind.CROSSING.color),
-                "过马路 ${crossings.size} 次：" +
+                tr("过马路 ${crossings.size} 次：", "Road crossings ${crossings.size}: ") +
                     CrossingType.entries.filter { (byType[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${byType[it]}" },
             ) { onShowOnMap(NoteTarget.CROSSINGS) }
         }
@@ -1260,15 +1263,15 @@ private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs
             val byAccess = list.groupingBy { it.access }.eachCount()
             val detail = if (byAccess.size == 1) byAccess.keys.first() else byAccess.entries.joinToString(" · ") { "${it.key} ${it.value}" }
             val unavoidable = kind == StructureKind.OVERPASS && prefs.avoidBridges && prefs.profile == BikeProfile.PCN
-            Note(InkSoft, "经过${kind.label} ${list.size} ${kind.unit}：$detail" + if (unavoidable) "（绕不开）" else "") {
+            Note(InkSoft, tr("经过${kind.label} ${list.size} ${kind.unit}：$detail", "${kind.label} × ${list.size}: $detail") + if (unavoidable) tr("（绕不开）", " (unavoidable)") else "") {
                 onShowOnMap(NoteTarget.STRUCTURES)
             }
         }
         // 起点、终点那头的推车（商场里、停车场）不算
         val push = route.pushBetweenEnds()
-        if (push > 0) Note(kindColor(RoadKind.PUSH.color), "途中有 ${Format.distance(push)} 禁止骑车，要推车") { onShowOnMap(NoteTarget.PUSH) }
+        if (push > 0) Note(kindColor(RoadKind.PUSH.color), tr("途中有 ${Format.distance(push)} 禁止骑车，要推车", "${Format.distance(push)} where cycling is banned; push your bike")) { onShowOnMap(NoteTarget.PUSH) }
         route.steepestClimb()?.let { c ->
-            Note(RandoAmber, "最陡的坡在第 ${Format.km(c.startMeters)} 公里，平均 ${Format.percent(c.grade)}") { onShowOnMap(NoteTarget.CLIMB) }
+            Note(RandoAmber, tr("最陡的坡在第 ${Format.km(c.startMeters)} 公里，平均 ${Format.percent(c.grade)}", "Steepest climb at km ${Format.km(c.startMeters)}, averaging ${Format.percent(c.grade)}")) { onShowOnMap(NoteTarget.CLIMB) }
         }
     }
 }
@@ -1289,14 +1292,14 @@ private fun Outlook(
     Column(Modifier.animateContentSize(Motion.smooth()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         weather?.let { Note(if (it.dry) RandoGreen else RandoBlue, it.summary, strong = !it.dry) }
         CoveredNote(covered, onShowOnMap)
-        climate?.summary?.let { Note(if (climate.warning != null) RandoAmber else InkSoft, "现在 $it") }
+        climate?.summary?.let { Note(if (climate.warning != null) RandoAmber else InkSoft, tr("现在 $it", "Now $it")) }
         climate?.warning?.let { Note(RandoAmber, it, strong = true) }
         wind?.let { Note(if (it.strongHeadwind) RandoAmber else InkSoft, it.summary(loop)) }
         // 「公园连道」配置中午挑树荫、天黑挑路灯（算路时按时间自动开，偏好里可以关）
         if (prefs.profile == BikeProfile.PCN) {
             val now = remember(route) { System.currentTimeMillis() }
-            if (prefs.shadeAtNoon && RideTime.shade(now)) Note(RandoGreen, "中午已尽量挑有树荫的路：树荫下约 ${Format.share(route.shadeShare())}")
-            if (prefs.litAtNight && RideTime.night(now)) Note(RandoGreen, "天黑了，已尽量走有路灯的路：有灯的约 ${Format.share(route.litShare())}")
+            if (prefs.shadeAtNoon && RideTime.shade(now)) Note(RandoGreen, tr("中午已尽量挑有树荫的路：树荫下约 ${Format.share(route.shadeShare())}", "Midday, so shaded paths preferred: about ${Format.share(route.shadeShare())} in shade"))
+            if (prefs.litAtNight && RideTime.night(now)) Note(RandoGreen, tr("天黑了，已尽量走有路灯的路：有灯的约 ${Format.share(route.litShare())}", "It's dark, so lit paths preferred: about ${Format.share(route.litShare())} lit"))
         }
         val dark = remember(route) { DaylightAlerts.plan(System.currentTimeMillis(), route.durationSeconds) }
         dark?.let { Note(RandoAmber, it) }
@@ -1305,13 +1308,13 @@ private fun Outlook(
             val counts = along.groupingBy { it.amenity.type }.eachCount()
             Note(
                 kindColor(AmenityType.WATER.color),
-                "沿途补给：" + AmenityType.entries.filter { (counts[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${counts[it]}" },
+                tr("沿途补给：", "Along the way: ") + AmenityType.entries.filter { (counts[it] ?: 0) > 0 }.joinToString(" · ") { "${it.label} ${counts[it]}" },
             ) { onShowOnMap(NoteTarget.AMENITIES) }
         }
         parking.minByOrNull { it.offRouteMeters }?.let { nearest ->
             Note(
                 kindColor(AmenityType.PARKING.color),
-                "终点附近有停车架 ${parking.size} 处，最近的离终点 ${Format.distance(nearest.offRouteMeters.toInt())}",
+                tr("终点附近有停车架 ${parking.size} 处，最近的离终点 ${Format.distance(nearest.offRouteMeters.toInt())}", "${parking.size} bike ${if (parking.size == 1) "rack" else "racks"} near the end; nearest ${Format.distance(nearest.offRouteMeters.toInt())} away"),
             ) { onShowOnMap(NoteTarget.AMENITIES) }
         }
     }
@@ -1322,7 +1325,7 @@ private fun Outlook(
 private fun CoveredNote(covered: List<CoveredStretch>, onShowOnMap: (NoteTarget) -> Unit) {
     if (covered.isEmpty()) return
     val total = covered.sumOf { it.lengthMeters }.toInt()
-    Note(kindColor(COVERED_COLOR), "有顶棚的路 ${covered.size} 段，共 ${Format.distance(total)}，下雨可以躲") {
+    Note(kindColor(COVERED_COLOR), tr("有顶棚的路 ${covered.size} 段，共 ${Format.distance(total)}，下雨可以躲", "${covered.size} covered ${if (covered.size == 1) "stretch" else "stretches"}, ${Format.distance(total)} in total, shelter from rain")) {
         onShowOnMap(NoteTarget.COVERED)
     }
 }
@@ -1359,7 +1362,7 @@ private fun Note(color: Color, text: String, strong: Boolean = false, onClick: (
         if (onClick != null) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "在地图上看",
+                contentDescription = tr("在地图上看", "Show on map"),
                 tint = InkSoft.copy(alpha = 0.6f),
                 modifier = Modifier.size(20.dp),
             )
@@ -1394,22 +1397,22 @@ fun FinishedCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("已保存${ride.title}", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(tr("已保存${ride.title}", "Saved ${ride.title}"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(
                 "${Format.distance(ride.distanceMeters.toInt())} · ${Format.clock(ride.movingSeconds)}" +
-                    (kcal?.let { " · $it 千卡" } ?: ""),
+                    (kcal?.let { tr(" · $it 千卡", " · $it kcal") } ?: ""),
                 color = InkSoft, fontSize = 13.sp,
             )
             record?.let { Text(it, color = RandoGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2) }
         }
         if (canReturn) {
             GlassButton(onClick = onReturn, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-                Text("原路返回", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("原路返回", "Ride back"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        IconTap(onClick = onParkPhoto) { Icon(CameraIcon, contentDescription = "拍车位照片", tint = InkSoft) }
-        IconTap(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "分享", tint = InkSoft) }
-        IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关掉", tint = InkSoft) }
+        IconTap(onClick = onParkPhoto) { Icon(CameraIcon, contentDescription = tr("拍车位照片", "Parking photo"), tint = InkSoft) }
+        IconTap(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = tr("分享", "Share"), tint = InkSoft) }
+        IconTap(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = tr("关掉", "Close"), tint = InkSoft) }
     }
 }
 
@@ -1433,11 +1436,11 @@ fun RecordingPill(recording: RecordingState, onRideView: () -> Unit, onStop: () 
             PillStat(Format.speed(recording.currentSpeed))
         }
         GlassButton(onClick = onRideView, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text("骑行视图", color = Ink, fontSize = 14.sp)
+            Text(tr("骑行视图", "Ride view"), color = Ink, fontSize = 14.sp)
         }
         Spacer(Modifier.width(6.dp))
         GlassButton(onClick = onStop, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text("结束", color = RandoRed, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("结束", "End"), color = RandoRed, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -1454,37 +1457,37 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("离线地图") },
+        title = { Text(tr("离线地图", "Offline maps")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("把整个新加坡的地图存到手机里，没信号的地方地图也不会空白。大约 30–60 MB，最好连着 Wi-Fi 下。", color = InkSoft, fontSize = 14.sp)
+                Text(tr("把整个新加坡的地图存到手机里，没信号的地方地图也不会空白。大约 30–60 MB，最好连着 Wi-Fi 下。", "Save the whole Singapore map on your phone so it isn't blank where there's no signal. About 30–60 MB; best on Wi-Fi."), color = InkSoft, fontSize = 14.sp)
                 val progress = state.progress
                 when {
                     progress != null -> {
                         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = RandoGreen)
-                        Text("正在下载 ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}", color = Ink, fontSize = 15.sp)
+                        Text(tr("正在下载 ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}", "Downloading ${(progress * 100).toInt()}% · ${megabytes(state.bytes)}"), color = Ink, fontSize = 15.sp)
                     }
                     state.downloadedAt != null -> Text(
-                        "已下载 · ${java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA).format(java.util.Date(state.downloadedAt))} · ${megabytes(state.bytes)}",
+                        tr("已下载", "Downloaded") + " · ${java.text.SimpleDateFormat(tr("M月d日", "d MMM"), Lang.locale).format(java.util.Date(state.downloadedAt))} · ${megabytes(state.bytes)}",
                         color = Ink, fontSize = 15.sp,
                     )
-                    else -> Text("还没下载", color = Ink, fontSize = 15.sp)
+                    else -> Text(tr("还没下载", "Not downloaded"), color = Ink, fontSize = 15.sp)
                 }
-                state.error?.let { Text("出错了：$it", color = RandoRed, fontSize = 13.sp) }
-                Text("规划路线、骑行导航还是要联网（算路、搜索在服务器上）。", color = InkSoft, fontSize = 13.sp)
+                state.error?.let { Text(tr("出错了：$it", "Error: $it"), color = RandoRed, fontSize = 13.sp) }
+                Text(tr("规划路线、骑行导航还是要联网（算路、搜索在服务器上）。", "Planning and navigation still need internet (routing and search run on servers)."), color = InkSoft, fontSize = 13.sp)
             }
         },
         confirmButton = {
             when {
-                state.progress != null -> TextButton(onClick = onCancel) { Text("取消下载", color = RandoRed) }
-                state.downloadedAt != null -> TextButton(onClick = onDownload) { Text("更新") }
-                else -> TextButton(onClick = onDownload) { Text("下载", color = RandoGreen, fontWeight = FontWeight.SemiBold) }
+                state.progress != null -> TextButton(onClick = onCancel) { Text(tr("取消下载", "Cancel download"), color = RandoRed) }
+                state.downloadedAt != null -> TextButton(onClick = onDownload) { Text(tr("更新", "Update")) }
+                else -> TextButton(onClick = onDownload) { Text(tr("下载", "Download"), color = RandoGreen, fontWeight = FontWeight.SemiBold) }
             }
         },
         dismissButton = {
             Row {
-                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text("删掉", color = RandoRed) }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                if (state.downloadedAt != null && state.progress == null) TextButton(onClick = onDelete) { Text(tr("删掉", "Delete"), color = RandoRed) }
+                TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
             }
         },
     )
@@ -1521,64 +1524,78 @@ fun SettingsDialog(
     var showRidden by remember { mutableStateOf(settings.showRidden) }
     var voice by remember { mutableStateOf(settings.voice) }
     var voiceMenu by remember { mutableStateOf(false) }
+    var language by remember { mutableStateOf(settings.language) }
+    var languageMenu by remember { mutableStateOf(false) }
     val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("设置") },
+        title = { Text(tr("设置", "Settings")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 语言名字不翻译：看不懂现在的语言时也找得到自己的
+                    Text("语言 · Language", Modifier.weight(1f), color = Ink, fontSize = 16.sp)
+                    Box {
+                        LinkText(languageLabel(language)) { languageMenu = true }
+                        DropdownMenu(expanded = languageMenu, onDismissRequest = { languageMenu = false }) {
+                            Language.entries.forEach { l ->
+                                DropdownMenuItem(text = { Text(languageLabel(l)) }, onClick = { language = l; languageMenu = false })
+                            }
+                        }
+                    }
+                }
                 Column {
-                    Text("家", color = Ink, fontSize = 16.sp)
+                    Text(tr("家", "Home"), color = Ink, fontSize = 16.sp)
                     Text(homeLabel(home, here), color = InkSoft, fontSize = 13.sp)
                     Row {
-                        LinkText("用现在的位置", onHomeHere)
-                        LinkText("搜索或在地图上选", onPickHome)
-                        if (home != null) LinkText("删掉", onRemoveHome)
+                        LinkText(tr("用现在的位置", "Use current location"), onHomeHere)
+                        LinkText(tr("搜索或在地图上选", "Search or pick on map"), onPickHome)
+                        if (home != null) LinkText(tr("删掉", "Delete"), onRemoveHome)
                     }
                 }
                 OutlinedTextField(
                     value = weight,
                     onValueChange = { weight = it.filter(Char::isDigit).take(3) },
-                    label = { Text("体重（公斤）") },
-                    supportingText = { Text("用来算骑车消耗了多少千卡") },
+                    label = { Text(tr("体重（公斤）", "Weight (kg)")) },
+                    supportingText = { Text(tr("用来算骑车消耗了多少千卡", "Used to estimate calories burned")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("骑车时自动开始记录", color = Ink, fontSize = 16.sp)
-                        Text("停下来 10 分钟没动自动结束保存", color = InkSoft, fontSize = 13.sp)
+                        Text(tr("骑车时自动开始记录", "Auto-record rides"), color = Ink, fontSize = 16.sp)
+                        Text(tr("停下来 10 分钟没动自动结束保存", "Stops and saves after 10 minutes without moving"), color = InkSoft, fontSize = 13.sp)
                     }
                     Switch(checked = autoStart, onCheckedChange = { autoStart = it })
                 }
                 if (autoStart && !backgroundLocation) {
-                    Text("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", color = InkSoft, fontSize = 13.sp)
-                    LinkText("去设成始终允许", onAskBackgroundLocation)
+                    Text(tr("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", "Without “Allow all the time” location, a notification asks when riding is detected; recording starts when you tap it."), color = InkSoft, fontSize = 13.sp)
+                    LinkText(tr("去设成始终允许", "Set to allow all the time"), onAskBackgroundLocation)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("地图上显示骑过的路", color = Ink, fontSize = 16.sp)
-                        Text("按骑过几次上色，垫在路线下面", color = InkSoft, fontSize = 13.sp)
+                        Text(tr("地图上显示骑过的路", "Show ridden roads on map"), color = Ink, fontSize = 16.sp)
+                        Text(tr("按骑过几次上色，垫在路线下面", "Coloured by how often you've ridden them, under the route"), color = InkSoft, fontSize = 13.sp)
                     }
                     Switch(checked = showRidden, onCheckedChange = { showRidden = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("播报声音", color = Ink, fontSize = 16.sp)
+                        Text(tr("播报声音", "Voice"), color = Ink, fontSize = 16.sp)
                         Text(voiceLabel(voices, voice), color = InkSoft, fontSize = 13.sp)
                     }
                     Box {
-                        LinkText("换一个") { voiceMenu = true }
+                        LinkText(tr("换一个", "Change")) { voiceMenu = true }
                         DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
                             DropdownMenuItem(
-                                text = { Text("自动（不联网里音质最好的）") },
+                                text = { Text(tr("自动（不联网里音质最好的）", "Auto (best offline voice)")) },
                                 onClick = { voice = null; voiceMenu = false; onPreviewVoice(null) },
                             )
                             voices.forEachIndexed { i, v ->
                                 DropdownMenuItem(
-                                    text = { Text("声音 ${i + 1}：${VoiceChoice.describe(v)}") },
+                                    text = { Text(tr("声音 ${i + 1}：${VoiceChoice.describe(v)}", "Voice ${i + 1}: ${VoiceChoice.describe(v)}")) },
                                     onClick = { voice = v.name; voiceMenu = false; onPreviewVoice(v.name) },
                                 )
                             }
@@ -1586,34 +1603,40 @@ fun SettingsDialog(
                     }
                 }
                 Row {
-                    LinkText("试听") { onPreviewVoice(voice) }
-                    LinkText("下载更多声音", onSystemVoices)
+                    LinkText(tr("试听", "Preview")) { onPreviewVoice(voice) }
+                    LinkText(tr("下载更多声音", "Get more voices"), onSystemVoices)
                 }
                 if (voices.none { it.quality >= 400 }) {
-                    Text("手机上没有高音质的中文声音：在系统的文字转语音里把引擎换成 Google，再下载中文语音。", color = InkSoft, fontSize = 13.sp)
+                    Text(tr("手机上没有高音质的中文声音：在系统的文字转语音里把引擎换成 Google，再下载中文语音。", "No high-quality English voice on this phone: in system text-to-speech settings, switch the engine to Google and download an English voice."), color = InkSoft, fontSize = 13.sp)
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden)) }) { Text("保存") }
+            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden, language = language)) }) { Text(tr("保存", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
+}
+
+private fun languageLabel(l: Language): String = when (l) {
+    Language.SYSTEM -> tr("跟随系统", "System default")
+    Language.ZH -> "中文"
+    Language.EN -> "English"
 }
 
 /** 「已设好，离这里 3.2 km」：只有坐标，没有地址可显示 */
 private fun homeLabel(home: LatLon?, here: LatLon?): String = when {
-    home == null -> "还没设：设好后能一键回家、说「回家」、坐 MRT 回家"
-    here == null -> "已设好"
-    Geo.distance(here, home) < 100 -> "已设好，就在这里"
-    else -> "已设好，离这里 ${Format.distance(Geo.distance(here, home).toInt())}"
+    home == null -> tr("还没设：设好后能一键回家、说「回家」、坐 MRT 回家", "Not set: once set you can go home in one tap, say “go home”, or take the MRT home")
+    here == null -> tr("已设好", "Set")
+    Geo.distance(here, home) < 100 -> tr("已设好，就在这里", "Set, you're here")
+    else -> tr("已设好，离这里 ${Format.distance(Geo.distance(here, home).toInt())}", "Set, ${Format.distance(Geo.distance(here, home).toInt())} from here")
 }
 
 /** 「自动 · 很高音质」「声音 2：高音质 · 要联网」 */
 private fun voiceLabel(voices: List<VoiceOption>, name: String?): String {
-    if (name == null) return VoiceChoice.best(voices)?.let { "自动 · ${VoiceChoice.describe(it)}" } ?: "自动"
+    if (name == null) return VoiceChoice.best(voices)?.let { tr("自动 · ${VoiceChoice.describe(it)}", "Auto · ${VoiceChoice.describe(it)}") } ?: tr("自动", "Auto")
     val i = voices.indexOfFirst { it.name == name }
-    return if (i < 0) "选的声音不在了，用自动挑的" else "声音 ${i + 1}：${VoiceChoice.describe(voices[i])}"
+    return if (i < 0) tr("选的声音不在了，用自动挑的", "The chosen voice is gone; using auto") else tr("声音 ${i + 1}：${VoiceChoice.describe(voices[i])}", "Voice ${i + 1}: ${VoiceChoice.describe(voices[i])}")
 }
 
 /** 坐 MRT 回家的方案：骑到哪个站、怎么坐、再骑多远；可以直接导航到站 */
@@ -1623,14 +1646,14 @@ fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("坐 MRT 回家") },
+        title = { Text(tr("坐 MRT 回家", "MRT home")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(plan.text, color = Ink, fontSize = 16.sp)
-                Text("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", color = InkSoft, fontSize = 13.sp)
+                Text(tr("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", "Only folded foldable bikes (up to 114×64×36 cm) are allowed on the MRT; regular bikes aren't. Avoid peak hours."), color = InkSoft, fontSize = 13.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onGo) { Text("导航到${plan.board.zh}站", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("算了") } },
+        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航到${plan.board.label}站", "Navigate to ${plan.board.label} station"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("算了", "Never mind")) } },
     )
 }

@@ -1,5 +1,7 @@
 package com.personal.rando.places
 
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
@@ -14,6 +16,9 @@ data class MrtStation(
     val location: LatLon,
     val exits: List<MrtExit> = emptyList(),
 ) {
+    /** 界面上显示的站名：中文界面用 [zh]，英文界面用 [name] */
+    val label: String get() = tr(zh, name)
+
     /** 离 [p] 最近的出口；没有出口数据就是车站本身 */
     fun nearestExit(p: LatLon): MrtExit =
         exits.minByOrNull { Geo.distance(it.location, p) } ?: MrtExit("", location)
@@ -34,9 +39,11 @@ data class MrtTrip(val legs: List<MrtLeg>) {
     /** 「坐东西线 金文泰 → 裕廊东，换南北线 → 碧山」 */
     val text: String
         get() = legs.mapIndexed { i, leg ->
-            val head = if (i == 0) "坐${MrtLines.name(leg.line)} ${leg.from.zh} → ${leg.to.zh}" else "换${MrtLines.name(leg.line)} → ${leg.to.zh}"
+            val line = MrtLines.name(leg.line)
+            val head = if (i == 0) tr("坐$line ${leg.from.zh} → ${leg.to.zh}", "Take the $line ${leg.from.name} → ${leg.to.name}")
+            else tr("换$line → ${leg.to.zh}", "change to the $line → ${leg.to.name}")
             head
-        }.joinToString("，")
+        }.joinToString(tr("，", ", "))
 }
 
 object MrtLines {
@@ -45,8 +52,13 @@ object MrtLines {
         "DT" to "滨海市区线", "TE" to "汤申-东海岸线", "BP" to "武吉班让轻轨",
         "SE" to "盛港轻轨", "SW" to "盛港轻轨", "STC" to "盛港轻轨", "PE" to "榜鹅轻轨", "PW" to "榜鹅轻轨", "PTC" to "榜鹅轻轨",
     )
+    private val EN = mapOf(
+        "NS" to "North South Line", "EW" to "East West Line", "CG" to "Changi Airport Branch", "NE" to "North East Line", "CC" to "Circle Line",
+        "DT" to "Downtown Line", "TE" to "Thomson-East Coast Line", "BP" to "Bukit Panjang LRT",
+        "SE" to "Sengkang LRT", "SW" to "Sengkang LRT", "STC" to "Sengkang LRT", "PE" to "Punggol LRT", "PW" to "Punggol LRT", "PTC" to "Punggol LRT",
+    )
 
-    fun name(line: String) = NAMES[line] ?: line
+    fun name(line: String) = (if (Lang.english) EN[line] else NAMES[line]) ?: line
 
     /** 「NS17」→ ("NS", 17)；「STC」「CG」这种没数字的当 0 */
     fun split(code: String): Pair<String, Int> {
@@ -189,6 +201,13 @@ data class MrtHome(
 ) {
     val text: String
         get() {
+            if (Lang.english) {
+                val exit = boardExit.name.takeIf { it.isNotEmpty() }?.let { " (Exit $it)" }.orEmpty()
+                val stops = if (trip.stops == 1) "1 stop" else "${trip.stops} stops"
+                return "Ride ${Format.distance(toStationMeters)} to ${board.name} station$exit, " +
+                    "${trip.text} ($stops, about ${trip.minutes} min), " +
+                    "then ride ${Format.distance(fromStationMeters)} home"
+            }
             val exit = boardExit.name.takeIf { it.isNotEmpty() }?.let { "（$it 出口）" }.orEmpty()
             return "骑 ${Format.distance(toStationMeters)} 到${board.zh}站$exit，" +
                 "${trip.text}（${trip.stops} 站，约 ${trip.minutes} 分钟），" +

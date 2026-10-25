@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.personal.rando.i18n.tr
 import com.personal.rando.ui.glass.GlassIconButton
 import com.personal.rando.ui.glass.GlassTone
 import com.personal.rando.ui.glass.Motion
@@ -97,7 +98,7 @@ fun RecenterButton(follow: Follow, modifier: Modifier = Modifier, dark: Boolean 
         exit = scaleOut() + fadeOut(),
     ) {
         GlassIconButton(onClick = follow::recenter, tone = if (dark) GlassTone.Dark else GlassTone.Light) {
-            Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = if (dark) Color.White else RandoGreen)
+            Icon(Icons.Default.LocationOn, contentDescription = tr("回到我的位置", "Back to my location"), tint = if (dark) Color.White else RandoGreen)
         }
     }
 }

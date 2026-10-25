@@ -1,12 +1,18 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import java.util.Calendar
 import java.util.TimeZone
 
 /** 按周还是按月统计 */
-enum class Period(val label: String, val unit: String) {
-    WEEK("周", "本周"),
-    MONTH("月", "本月"),
+enum class Period(private val zh: String, private val zhUnit: String, private val en: String, private val enUnit: String) {
+    WEEK("周", "本周", "week", "This week"),
+    MONTH("月", "本月", "month", "This month");
+
+    /** 「周」/「week」 */
+    val label: String get() = tr(zh, en)
+    /** 「本周」/「This week」 */
+    val unit: String get() = tr(zhUnit, enUnit)
 }
 
 /** 一周或一个月的合计 */
@@ -80,7 +86,10 @@ object RideStats {
         val c = Calendar.getInstance(zone).apply { timeInMillis = start }
         return when (period) {
             Period.WEEK -> "${c.get(Calendar.MONTH) + 1}/${c.get(Calendar.DAY_OF_MONTH)}"
-            Period.MONTH -> "${c.get(Calendar.MONTH) + 1}月"
+            Period.MONTH -> tr("${c.get(Calendar.MONTH) + 1}月", MONTHS[c.get(Calendar.MONTH)])
         }
     }
 }
+
+/** 英文的月份缩写（不跟系统地区走，测试里也一样） */
+internal val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")

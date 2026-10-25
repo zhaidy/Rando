@@ -1,5 +1,6 @@
 package com.personal.rando.weather
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
@@ -14,12 +15,15 @@ import java.io.IOException
 import kotlin.math.roundToInt
 
 /** 空气质量：按新加坡 NEA 的 24 小时 PSI 分档 */
-enum class Haze(val label: String, val max: Int) {
-    GOOD("良好", 50),
-    MODERATE("一般", 100),
-    UNHEALTHY("不健康", 200),
-    VERY_UNHEALTHY("非常不健康", 300),
-    HAZARDOUS("危险", Int.MAX_VALUE);
+enum class Haze(private val zh: String, private val en: String, val max: Int) {
+    GOOD("良好", "good", 50),
+    MODERATE("一般", "moderate", 100),
+    UNHEALTHY("不健康", "unhealthy", 200),
+    VERY_UNHEALTHY("非常不健康", "very unhealthy", 300),
+    HAZARDOUS("危险", "hazardous", Int.MAX_VALUE);
+
+    /** 英文是小写，放在「PSI 148 unhealthy」里 */
+    val label: String get() = tr(zh, en)
 
     companion object {
         fun of(psi: Int): Haze = entries.first { psi <= it.max }
@@ -27,10 +31,12 @@ enum class Haze(val label: String, val max: Int) {
 }
 
 /** 热的程度：按体感温度（热指数） */
-enum class Heat(val label: String) {
-    OK("不算热"),
-    HOT("很热"),
-    EXTREME("酷热");
+enum class Heat(private val zh: String, private val en: String) {
+    OK("不算热", "not too hot"),
+    HOT("很热", "hot"),
+    EXTREME("酷热", "very hot");
+
+    val label: String get() = tr(zh, en)
 
     companion object {
         fun of(feelsLike: Double): Heat = when {
@@ -72,20 +78,24 @@ data class Climate(
     val summary: String?
         get() = listOfNotNull(
             tempC?.let { t ->
-                val feels = feelsLike?.takeIf { it - t >= 2 }?.let { "，体感 ${it.roundToInt()}°C" }.orEmpty()
+                val feels = feelsLike?.takeIf { it - t >= 2 }?.let { tr("，体感 ${it.roundToInt()}°C", ", feels like ${it.roundToInt()}°C") }.orEmpty()
                 "${t.roundToInt()}°C$feels"
             },
-            uv?.takeIf { it >= UV_HIGH }?.let { "紫外线 $it ${if (it >= UV_VERY_HIGH) "很强" else "强"}" },
+            uv?.takeIf { it >= UV_HIGH }?.let {
+                if (it >= UV_VERY_HIGH) tr("紫外线 $it 很强", "UV $it very high") else tr("紫外线 $it 强", "UV $it high")
+            },
             psi?.let { "PSI $it ${Haze.of(it).label}" },
         ).joinToString(" · ").ifEmpty { null }
 
     /** 要不要特别提醒：酷热、紫外线很强、空气不健康 */
     val warning: String?
         get() = listOfNotNull(
-            "体感 ${feelsLike?.roundToInt()}°C，注意防暑多喝水".takeIf { heat == Heat.EXTREME },
-            "空气${haze?.label}（PSI $psi），少骑一会儿".takeIf { (haze?.ordinal ?: 0) >= Haze.UNHEALTHY.ordinal },
-            "紫外线很强，记得防晒".takeIf { (uv ?: 0) >= UV_VERY_HIGH },
-        ).joinToString("；").ifEmpty { null }
+            tr("体感 ${feelsLike?.roundToInt()}°C，注意防暑多喝水", "Feels like ${feelsLike?.roundToInt()}°C, watch for heat and drink plenty")
+                .takeIf { heat == Heat.EXTREME },
+            tr("空气${haze?.label}（PSI $psi），少骑一会儿", "Air quality ${haze?.label} (PSI $psi), keep the ride short")
+                .takeIf { (haze?.ordinal ?: 0) >= Haze.UNHEALTHY.ordinal },
+            tr("紫外线很强，记得防晒", "Very high UV, wear sunscreen").takeIf { (uv ?: 0) >= UV_VERY_HIGH },
+        ).joinToString(tr("；", "; ")).ifEmpty { null }
 
     companion object {
         const val UV_HIGH = 6
@@ -159,7 +169,7 @@ class ClimateClient(
 
     private fun get(name: String): String =
         http.newCall(Request.Builder().url("$baseUrl/$name").build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("天气数据 HTTP ${response.code}")
+            if (!response.isSuccessful) throw IOException(tr("天气数据 HTTP ${response.code}", "Weather data HTTP ${response.code}"))
             response.body.string()
         }
 }
@@ -185,8 +195,8 @@ class HydrationReminder(
         lastAt = now
         val minutes = ((now - startedAt) / 60_000).toInt()
         val water = waterAheadMeters?.takeIf { it <= WATER_MENTION_METERS }
-            ?.let { "，前方 ${Format.distance(it.toInt())} 有饮水机" }.orEmpty()
-        return "骑了 $minutes 分钟，喝口水吧$water"
+            ?.let { tr("，前方 ${Format.distance(it.toInt())} 有饮水机", ", water fountain in ${Format.distance(it.toInt())}") }.orEmpty()
+        return tr("骑了 $minutes 分钟，喝口水吧$water", "$minutes minutes in, time for a drink$water")
     }
 
     private companion object {

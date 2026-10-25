@@ -1,15 +1,18 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import kotlin.math.cos
 import kotlin.math.floor
 
 /** 骑过几次：浅黄、橙、红 */
-enum class HeatLevel(val label: String, val color: String) {
-    LOW("1–2 次", "#FFC94D"),
-    MID("3–9 次", "#F57C00"),
-    HIGH("10 次以上", "#D32F2F");
+enum class HeatLevel(private val zh: String, private val en: String, val color: String) {
+    LOW("1–2 次", "1–2 times", "#FFC94D"),
+    MID("3–9 次", "3–9 times", "#F57C00"),
+    HIGH("10 次以上", "10+ times", "#D32F2F");
+
+    val label: String get() = tr(zh, en)
 
     companion object {
         fun of(count: Int): HeatLevel = when {
