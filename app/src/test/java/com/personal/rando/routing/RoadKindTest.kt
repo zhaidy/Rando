@@ -99,4 +99,26 @@ class RoadKindTest {
         )
         assertEquals(30, r.pushBetweenEnds())
     }
+
+    @Test
+    fun `起点终点附近楼下的车道不算上马路，途中的马路照算`() {
+        val service = RouteParser.parseTags("highway=service")
+        val path = RouteParser.parseTags("highway=footway")
+        val road = RouteParser.parseTags("highway=residential")
+        val r = Route(
+            points = (0..6).map { LatLon(1.3 + it * 0.001, 103.8) },
+            distanceMeters = 0, durationSeconds = 0, ascendMeters = 0,
+            segments = listOf(
+                RouteSegment(60, service, 1),
+                RouteSegment(500, path, 2),
+                RouteSegment(30, service, 3),
+                RouteSegment(40, road, 4),
+                RouteSegment(500, path, 5),
+                RouteSegment(50, road, 6),
+            ),
+        )
+        assertEquals(mapOf(RoadKind.PATH to 1000, RoadKind.ROAD to 180), r.breakdown())
+        // 起点 60 米车道不算；途中车道、马路都算；终点那头是正经马路也算
+        assertEquals(120, r.roadOnTheWay())
+    }
 }

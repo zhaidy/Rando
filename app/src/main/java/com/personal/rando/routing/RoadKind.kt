@@ -117,3 +117,18 @@ fun Route.pushBetweenEnds(): Int {
     }
     return meters
 }
+
+/** 起点、终点这么近的车道（highway=service：组屋楼下的车道、停车场）是出门、进门绕不开的，不算上马路 */
+fun Route.roadOnTheWay(): Int {
+    val kinds = segmentKinds()
+    val total = segments.sumOf { it.distanceMeters }
+    var start = 0
+    var meters = 0
+    for ((i, s) in segments.withIndex()) {
+        val end = start + s.distanceMeters
+        val atEnds = start < END_PUSH_METERS || end > total - END_PUSH_METERS
+        if (kinds[i] == RoadKind.ROAD && !(atEnds && s.wayTags["highway"] == "service")) meters += s.distanceMeters
+        start = end
+    }
+    return meters
+}

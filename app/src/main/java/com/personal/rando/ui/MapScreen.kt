@@ -588,10 +588,18 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         MapLayers.showFocus(s, focused?.points)
         val m = map ?: return@LaunchedEffect
         if (focused == null) return@LaunchedEffect
+        // 点了提示，底下的路线卡片要缩成小卡片，等它缩完再框；
+        // 不然还按大卡片的高度留边，留出来的地方比那段路还小，镜头就不放大了
+        var settled = plannerInsets
+        for (i in 0 until 10) {
+            delay(80)
+            if (plannerInsets == settled) break
+            settled = plannerInsets
+        }
         with(density) {
             if (focused.points.size >= 2) {
                 val bounds = LatLngBounds.Builder().includes(focused.points.map { LatLng(it.lat, it.lon) }).build()
-                val (top, bottom) = cameraInsets(plannerInsets, density, fallbackTop = 240, fallbackBottom = 260)
+                val (top, bottom) = cameraInsets(settled, density, fallbackTop = 240, fallbackBottom = 260)
                 m.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 80.dp.roundToPx(), top, 80.dp.roundToPx(), bottom), 700)
             } else {
                 m.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(focused.location.lat, focused.location.lon), 17.5), 700)

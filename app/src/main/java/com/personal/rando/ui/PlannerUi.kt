@@ -150,6 +150,7 @@ import com.personal.rando.routing.StructureKind
 import com.personal.rando.routing.breakdown
 import com.personal.rando.routing.crossings
 import com.personal.rando.routing.pushBetweenEnds
+import com.personal.rando.routing.roadOnTheWay
 import com.personal.rando.routing.structures
 import com.personal.rando.routing.elevationProfile
 import com.personal.rando.nav.DaylightAlerts
@@ -1232,6 +1233,7 @@ fun RouteSummary(
         }
     }
     val breakdown = route.breakdown()
+    val onTheWay = route.roadOnTheWay()
     if (breakdown.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         RoadBar(route, breakdown)
@@ -1243,13 +1245,13 @@ fun RouteSummary(
                 Spacer(Modifier.height(4.dp))
                 Legend(breakdown)
                 Spacer(Modifier.height(10.dp))
-                Notes(route, breakdown, prefs, onShowOnMap, loop)
+                Notes(route, breakdown, onTheWay, prefs, onShowOnMap, loop)
             }
             Spacer(Modifier.height(5.dp))
             Outlook(route, weather, amenities, onShowOnMap, climate, wind, prefs, loop, covered)
         } else {
             Spacer(Modifier.height(10.dp))
-            Headline(breakdown, weather, onShowOnMap, climate, wind, covered)
+            Headline(breakdown, onTheWay, weather, onShowOnMap, climate, wind, covered)
         }
         DetailsToggle(expanded, onToggleDetails)
     }
@@ -1309,6 +1311,8 @@ fun paceText(pace: Pace, mySpeed: Double?): String = when {
 @Composable
 private fun Headline(
     breakdown: Map<RoadKind, Int>,
+    /** 途中要上马路的米数，见 [roadOnTheWay] */
+    onTheWay: Int,
     weather: RouteWeather?,
     onShowOnMap: (NoteTarget) -> Unit,
     climate: Climate?,
@@ -1319,7 +1323,8 @@ private fun Headline(
         val road = breakdown[RoadKind.ROAD] ?: 0
         when {
             breakdown.isEmpty() -> Unit
-            road > 0 -> Note(RandoRed, tr("有 ${Format.distance(road)} 要在马路上骑", "${Format.distance(road)} on roads"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            onTheWay > 0 -> Note(RandoRed, tr("有 ${Format.distance(onTheWay)} 要在马路上骑", "${Format.distance(onTheWay)} on roads"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            road > 0 -> Note(RandoGreen, tr("途中不用上马路", "No roads on the way"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
             else -> Note(RandoGreen, tr("全程不用上马路", "No roads at all"), strong = true)
         }
         weather?.takeIf { !it.dry }?.let { Note(RandoBlue, it.summary, strong = true) }
@@ -1473,17 +1478,22 @@ private fun Legend(breakdown: Map<RoadKind, Int>) {
 
 /** 要不要上马路、过几次马路、天桥、推车：每条一行，点一下在地图上一处处看 */
 @Composable
-private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> Unit, loop: Boolean) {
+private fun Notes(route: Route, breakdown: Map<RoadKind, Int>, onTheWay: Int, prefs: RoutePrefs, onShowOnMap: (NoteTarget) -> Unit, loop: Boolean) {
     val road = breakdown[RoadKind.ROAD] ?: 0
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (road > 0) {
+        if (onTheWay > 0) {
             val hint = when {
                 prefs.profile != BikeProfile.PCN -> tr("；选「公园连道」再打开「不上马路」可以尽量避开", "; choose “Park connector” and turn on “Avoid roads” to keep off them")
                 !prefs.avoidRoads -> tr("；打开「不上马路」可以尽量避开", "; turn on “Avoid roads” to keep off them")
                 loop -> tr("；点「换一条」换个方向试试", "; tap “Another one” to try another direction")
                 else -> tr("，附近没有别的路可走", ", no other way around here")
             }
-            Note(RandoRed, tr("有 ${Format.distance(road)} 要在马路上骑$hint", "${Format.distance(road)} on roads$hint"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
+            Note(RandoRed, tr("有 ${Format.distance(onTheWay)} 要在马路上骑$hint", "${Format.distance(onTheWay)} on roads$hint"), strong = true) { onShowOnMap(NoteTarget.ROAD) }
+        } else if (road > 0) {
+            // 组屋楼下的车道、停车场：出门进门绕不开，地图上照样画红的，点了能看到在哪
+            Note(RandoGreen, tr("途中不用上马路；起点、终点那头有 ${Format.distance(road)} 小区车道、停车场", "No roads on the way; ${Format.distance(road)} of driveway or car park at the ends"), strong = true) {
+                onShowOnMap(NoteTarget.ROAD)
+            }
         } else {
             Note(RandoGreen, tr("全程不用上马路", "No roads at all"), strong = true)
         }
