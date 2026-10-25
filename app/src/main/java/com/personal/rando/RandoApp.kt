@@ -51,7 +51,7 @@ class RandoApp : Application() {
     /** 标过「其实是马路」的地方 */
     val roadCorrections: RoadCorrectionStore by lazy { RoadCorrectionStore(this) }
 
-    val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards, parking = parking) }
+    val session: RideSession by lazy { RideSession(this, appScope, router = router, group = group, hazards = hazards, parking = parking, voice = { settings.settings.value.voice }) }
 
     /** 一起骑时的声控对讲；开着的时候导航播报跟着走通话线路，不然队友说话时听不到导航 */
     val walkie: Walkie by lazy {

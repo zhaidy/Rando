@@ -784,6 +784,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         )
     }
     if (settingsDialog) {
+        val voiceOptions by context.rando.session.voiceOptions.collectAsStateWithLifecycle()
         SettingsDialog(
             settings,
             onSave = {
@@ -796,6 +797,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 }
             },
             onDismiss = { settingsDialog = false },
+            voices = voiceOptions,
+            onPreviewVoice = context.rando.session::previewVoice,
+            onSystemVoices = {
+                runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { Toast.makeText(context, "打不开系统的文字转语音设置", Toast.LENGTH_SHORT).show() }
+            },
             backgroundLocation = AutoStart.hasBackgroundLocation(context),
             onAskBackgroundLocation = {
                 if (Build.VERSION.SDK_INT >= 29) backgroundPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)

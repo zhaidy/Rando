@@ -93,9 +93,11 @@ class RideSession(
     private val hazards: HazardStore? = null,
     /** 结束骑行时记下车停在哪儿 */
     private val parking: ParkingStore? = null,
+    /** 设置里选的播报声音，null 是自动挑 */
+    private val voice: () -> String? = { null },
 ) {
     private val app = context.applicationContext
-    private val speaker by lazy { Speaker(app) }
+    private val speaker by lazy { Speaker(app, voice) }
     val rides = RideStore(app)
 
     private val _location = MutableStateFlow<LatLon?>(null)
@@ -280,6 +282,12 @@ class RideSession(
 
     /** 念一句话（语音指令的回答） */
     fun say(text: String) = speaker.say(text)
+
+    /** 设置里能选的播报声音 */
+    val voiceOptions get() = speaker.options
+
+    /** 设置里试听；null 是自动挑的那个 */
+    fun previewVoice(name: String?) = speaker.preview(name)
 
     /** 对讲开着时播报改走通话线路，见 [Speaker.useCall] */
     fun useCallAudio(call: Boolean) = speaker.useCall(call)
