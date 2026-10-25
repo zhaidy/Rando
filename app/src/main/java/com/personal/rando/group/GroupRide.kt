@@ -126,10 +126,13 @@ class GroupRide(
     }
 
     fun join(code: String, name: String) {
+        // 开着对讲换队伍：leave 会关掉直连，换好后接着开
+        val wasLocal = local.running
         leave()
         myName = name
         _state.value = GroupState(code)
         connect(code, attempt = 0)
+        if (wasLocal) startLocal()
     }
 
     fun leave() {
@@ -245,7 +248,11 @@ class GroupRide(
             .build()
         val request = Request.Builder().url(url).build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
+            /** 连上过就从头退避，不然断过几次以后每次都要等半分钟 */
+            @Volatile private var tries = attempt
+
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                tries = 0
                 scope.launch {
                     if (socket !== webSocket) return@launch
                     lastSent = null
@@ -263,9 +270,9 @@ class GroupRide(
                 }
             }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = dropped(webSocket, attempt)
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = dropped(webSocket, tries)
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = dropped(webSocket, attempt)
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = dropped(webSocket, tries)
         })
     }
 

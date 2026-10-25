@@ -163,8 +163,9 @@ class Walkie(
             record = openMic(Vox.SAMPLE_RATE)
         }
         if (record == null) {
-            withContext(Dispatchers.Main) { turnOff() }
+            // turnOff 会取消正在跑的这个协程，提示要先放进去，放在后面就执行不到了
             _state.update { it.copy(problem = tr("麦克风打不开，可能被别的 App 占用了", "Can't open the mic, another app may be using it")) }
+            withContext(Dispatchers.Main) { turnOff() }
             return
         }
         val effects = listOfNotNull(
