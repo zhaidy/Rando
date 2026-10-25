@@ -37,6 +37,17 @@ object AacCodec {
         )
     }
 
+    /**
+     * AAC-LC 单声道的 AudioSpecificConfig（解码器的 csd-0）：5 位编码类型、4 位采样率序号、4 位声道数、3 位 0
+     */
+    fun audioSpecificConfig(sampleRate: Int): ByteArray {
+        val profile = 2 // AAC LC
+        val freq = FREQUENCIES.indexOf(sampleRate).also { require(it >= 0) { "不支持的采样率 $sampleRate" } }
+        val channels = 1
+        val bits = (profile shl 11) or (freq shl 7) or (channels shl 3)
+        return byteArrayOf((bits shr 8).toByte(), bits.toByte())
+    }
+
     /** 把连在一起的几个 ADTS 帧拆开；不完整的尾巴丢掉 */
     fun splitAdts(bytes: ByteArray): List<ByteArray> {
         val frames = mutableListOf<ByteArray>()
@@ -130,14 +141,17 @@ class AacStreamEncoder(private val sampleRate: Int = Vox.SAMPLE_RATE) : Closeabl
     }
 }
 
-/** 边收边解：喂 ADTS 帧进去，吐出 PCM */
+/**
+ * 边收边解：喂 ADTS 帧进去，吐出 PCM。
+ * 去掉 ADTS 头、给解码器 csd-0 再解：有的手机的解码器不认 KEY_IS_ADTS，喂 ADTS 帧一点都解不出来
+ */
 class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
 
     private val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
         configure(
             MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
-                setInteger(MediaFormat.KEY_IS_ADTS, 1)
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                setByteBuffer("csd-0", ByteBuffer.wrap(AacCodec.audioSpecificConfig(sampleRate)))
             },
             null, null, 0,
         )
@@ -156,9 +170,10 @@ class AacStreamDecoder(sampleRate: Int = Vox.SAMPLE_RATE) : Closeable {
                 drain(pcm, 0)
                 i = codec.dequeueInputBuffer(TIMEOUT_US)
             }
-            if (i >= 0) {
-                codec.getInputBuffer(i)!!.apply { clear(); put(frame) }
-                codec.queueInputBuffer(i, 0, frame.size, timeUs, 0)
+            if (i >= 0 && frame.size > AacCodec.ADTS_HEADER) {
+                val size = frame.size - AacCodec.ADTS_HEADER
+                codec.getInputBuffer(i)!!.apply { clear(); put(frame, AacCodec.ADTS_HEADER, size) }
+                codec.queueInputBuffer(i, 0, size, timeUs, 0)
                 timeUs += 64_000
             }
             drain(pcm, 0)
