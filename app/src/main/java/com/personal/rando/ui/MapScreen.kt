@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.personal.rando.i18n.Lang
 import com.personal.rando.i18n.tr
 import com.personal.rando.ui.glass.GlassShapes
+import com.personal.rando.ui.glass.neu
 import com.personal.rando.ui.glass.LocalHazeState
 import com.personal.rando.ui.glass.Motion
 import dev.chrisbanes.haze.hazeSource
@@ -965,7 +966,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         )
     }
     if (confirmLeave) {
-        AlertDialog(
+        RandoDialog(
             onDismissRequest = { confirmLeave = false },
             shape = GlassShapes.Sheet,
             containerColor = DialogColor,
@@ -978,12 +979,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogButton(danger = true, onClick = {
                     confirmLeave = false
                     leaveGroup()
-                }) { Text(tr("退出", "Leave"), color = RandoRed.onGlass(), fontWeight = FontWeight.SemiBold) }
+                }) { Text(tr("退出", "Leave"), fontWeight = FontWeight.SemiBold) }
             },
-            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(tr("取消", "Cancel"), color = Ink) } },
+            dismissButton = { DialogButton(onClick = { confirmLeave = false }) { Text(tr("取消", "Cancel")) } },
         )
     }
     if (confirmFinish) {
@@ -1093,7 +1094,7 @@ private fun FinishDialog(
     onStopNavigation: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
@@ -1108,13 +1109,17 @@ private fun FinishDialog(
                 color = InkSoft,
             )
         },
+        // 一个一行、占满宽：骑着车点，按钮大一点、分得清楚
+        stacked = true,
         confirmButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoAccent)) { Text(tr("继续骑", "Keep riding")) }
-                Row {
-                    if (recording && navigating) TextButton(onClick = onStopNavigation) { Text(tr("只停导航", "Stop navigation only"), color = Ink) }
-                    TextButton(onClick = onFinish) { Text(tr("结束", "End"), color = RandoRed.onGlass(), fontWeight = FontWeight.SemiBold) }
+            DialogButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(tr("继续骑", "Keep riding"), fontSize = 17.sp) }
+        },
+        dismissButton = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (recording && navigating) {
+                    DialogButton(onClick = onStopNavigation, modifier = Modifier.fillMaxWidth().neu(GlassShapes.Button)) { Text(tr("只停导航", "Stop navigation only")) }
                 }
+                DialogButton(onClick = onFinish, modifier = Modifier.fillMaxWidth(), danger = true, primary = true) { Text(tr("结束", "End")) }
             }
         },
     )
@@ -1125,7 +1130,7 @@ private fun FinishDialog(
 private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismiss: () -> Unit) {
     // 长按地图选的点没有名字，不拿「地图上的点」当默认名
     var name by remember { mutableStateOf(if (place.detail.isEmpty() && isMapPlaceName(place.name)) "" else place.name) }
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = DialogColor,
@@ -1142,9 +1147,9 @@ private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismis
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(SavedPlace(name.trim(), place.location)) }) { Text(tr("收藏", "Save")) }
+            DialogButton(enabled = name.isNotBlank(), onClick = { onSave(SavedPlace(name.trim(), place.location)) }) { Text(tr("收藏", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
+        dismissButton = { DialogButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 

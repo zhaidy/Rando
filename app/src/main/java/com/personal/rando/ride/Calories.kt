@@ -39,7 +39,7 @@ object Calories {
 }
 
 /**
- * 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路、界面语言；
+ * 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路、界面语言、白天夜间；
  * 地图用不用卫星图、画不画公园连道网络（这两个在地图右边的「图层」里切换）
  */
 data class Settings(
@@ -50,11 +50,15 @@ data class Settings(
     val language: Language = Language.SYSTEM,
     val satellite: Boolean = false,
     val showPcn: Boolean = true,
+    val theme: ThemeMode = ThemeMode.SYSTEM,
 ) {
     companion object {
         const val DEFAULT_WEIGHT = 65.0
     }
 }
+
+/** 白天 / 夜间：跟着系统的深色模式，或者固定一种 */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 class SettingsStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -67,6 +71,7 @@ class SettingsStore(context: Context) {
             language = prefs.getString(KEY_LANGUAGE, null)?.let { n -> Language.entries.firstOrNull { it.name == n } } ?: Language.SYSTEM,
             satellite = prefs.getBoolean(KEY_SATELLITE, false),
             showPcn = prefs.getBoolean(KEY_SHOW_PCN, true),
+            theme = prefs.getString(KEY_THEME, null)?.let { n -> ThemeMode.entries.firstOrNull { it.name == n } } ?: ThemeMode.SYSTEM,
         )
     )
     val settings: StateFlow<Settings> = _settings
@@ -81,6 +86,7 @@ class SettingsStore(context: Context) {
             putString(KEY_LANGUAGE, s.language.name)
             putBoolean(KEY_SATELLITE, s.satellite)
             putBoolean(KEY_SHOW_PCN, s.showPcn)
+            putString(KEY_THEME, s.theme.name)
         }
     }
 
@@ -92,5 +98,6 @@ class SettingsStore(context: Context) {
         const val KEY_LANGUAGE = "language"
         const val KEY_SATELLITE = "satellite"
         const val KEY_SHOW_PCN = "show_pcn"
+        const val KEY_THEME = "theme"
     }
 }

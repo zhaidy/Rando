@@ -1,5 +1,7 @@
 package com.personal.rando.ui
 
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.Icons
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -64,23 +66,28 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
 
     val info = update ?: return
     if (navigating) return
-    AlertDialog(
+    RandoDialog(
         onDismissRequest = { if (!updating) update = null },
         shape = com.personal.rando.ui.glass.GlassShapes.Sheet,
         containerColor = DialogColor,
+        badge = DialogBadge(Icons.Filled.Refresh, RandoAccent),
         title = { Text(tr("发现新版本 build ${info.build}", "New version available: build ${info.build}")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (info.changes.isNotEmpty()) {
-                    Text(tr("更新内容", "What's new"), style = MaterialTheme.typography.titleSmall)
-                    info.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    DialogInset {
+                        Column {
+                            Text(tr("更新内容", "What's new"), style = MaterialTheme.typography.titleSmall)
+                            info.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
                 Text(message ?: if (updating) tr("正在下载安装…装好后应用会自动重新打开。", "Downloading and installing… The app will reopen when done.") else tr("装好后应用会自动重新打开。", "The app will reopen once installed."))
             }
         },
         confirmButton = {
-            TextButton(
+            DialogButton(
                 enabled = !updating,
                 onClick = {
                     if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -101,6 +108,6 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
                 },
             ) { Text(tr("更新", "Update")) }
         },
-        dismissButton = { TextButton(enabled = !updating, onClick = { update = null }) { Text(tr("以后再说", "Later")) } },
+        dismissButton = { DialogButton(enabled = !updating, onClick = { update = null }) { Text(tr("以后再说", "Later")) } },
     )
 }
