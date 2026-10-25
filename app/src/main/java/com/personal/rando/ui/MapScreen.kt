@@ -280,6 +280,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     // 规划页上下两摞挡住了哪里，镜头框路线、框某一段时避开
     var plannerInsets by remember { mutableStateOf(PlannerInsets()) }
+    // 规划卡片拉满看详情时，右边竖条让开
+    var sheetExpanded by remember { mutableStateOf(false) }
     // 比例尺：地图中心每 1 dp 多少米，镜头一动就更新
     var metersPerDp by remember { mutableStateOf(0.0) }
     // 地图转了多少度（0 是正北朝上）
@@ -814,6 +816,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                     savedRoutes = savedRoutes,
                                     parked = parked,
                                     here = fix?.location,
+                                    onExpandedChange = { sheetExpanded = it },
                                     actions = remember(vm) {
                                         PlannerActions(
                                             onChooseSaved = vm::chooseSaved,
@@ -852,6 +855,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         }
                     },
                     onInsets = { plannerInsets = it },
+                    sheetExpanded = sheetExpanded && focus == null,
                 )
             }
         }
