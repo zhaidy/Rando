@@ -408,7 +408,11 @@ class RideSession(
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
         (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
-            rides.save(ride)
+            // 手机存储满了存不上：说一声，不要整个 App 闪退
+            if (runCatching { rides.save(ride) }.isFailure) {
+                speaker.say(tr("手机存储空间不够，这次骑行没存上", "Phone storage is full, this ride wasn't saved"))
+                return@launch
+            }
             RideWidget.refresh(app)
             // 骑过的路：比一比上次
             RouteRecord.of(ride, rides.list())?.let { speaker.say(it.text) }

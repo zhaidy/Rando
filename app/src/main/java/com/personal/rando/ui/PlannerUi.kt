@@ -1,5 +1,7 @@
 package com.personal.rando.ui
 
+import com.personal.rando.ui.glass.LocalHazeState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -407,6 +409,8 @@ fun SideRail(
     /** 语音指令；null 就不显示 */
     onVoice: (() -> Unit)? = null,
     listening: Boolean = false,
+    /** 竖条最上面的「图层」按钮；null 就不显示 */
+    layers: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier
@@ -415,6 +419,7 @@ fun SideRail(
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        layers?.invoke()
         // 图标统一用墨色；只有「开始记录」是橙色（主操作），在听语音时麦克风变红
         IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = tr("骑行记录", "Rides"), tint = Ink) }
         if (showLocation && showRecord) {
@@ -429,6 +434,52 @@ fun SideRail(
         if (showLocation) {
             IconTap(onClick = onLocate) { Icon(MyLocationIcon, contentDescription = tr("回到我的位置", "My location"), tint = RandoBlue.onGlass()) }
         }
+    }
+}
+
+/**
+ * 「图层」按钮：点开一个小菜单，地图 / 卫星图二选一，公园连道网络、骑过的路各一个开关。
+ * 改了马上生效，也记在设置里
+ */
+@Composable
+fun LayersButton(settings: Settings, onChange: (Settings) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconTap(onClick = { open = true }) { Icon(LayersIcon, contentDescription = tr("地图图层", "Map layers"), tint = Ink) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = GlassShapes.Card, containerColor = DialogColor) {
+            // 菜单是单独的弹出窗口，后面没有地图可取，玻璃退回实色
+            CompositionLocalProvider(LocalHazeState provides null) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassChip(tr("地图", "Map"), selected = !settings.satellite) { onChange(settings.copy(satellite = false)) }
+                    GlassChip(tr("卫星图", "Satellite"), selected = settings.satellite) { onChange(settings.copy(satellite = true)) }
+                }
+            }
+            LayerSwitch(tr("公园连道网络", "Park connector network"), settings.showPcn) { onChange(settings.copy(showPcn = it)) }
+            LayerSwitch(tr("骑过的路", "Roads I've ridden"), settings.showRidden) { onChange(settings.copy(showRidden = it)) }
+            if (settings.satellite) {
+                Text(
+                    tr("卫星图：", "Satellite: ") + MapLayers.SATELLITE_CREDIT,
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    color = InkSoft,
+                    fontSize = 11.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayerSwitch(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onChange(!on) }
+            .padding(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, Modifier.padding(end = 12.dp), color = Ink, fontSize = 15.sp)
+        Spacer(Modifier.weight(1f))
+        Switch(checked = on, onCheckedChange = onChange)
     }
 }
 

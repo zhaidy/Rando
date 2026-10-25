@@ -40,6 +40,10 @@ import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
+import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
@@ -68,6 +72,13 @@ object MapLayers {
     private const val AMENITIES = "rando-amenities"
     private const val TEAM = "rando-team"
     private const val HAZARDS = "rando-hazards"
+    private const val SATELLITE = "rando-satellite"
+    private const val PCN_NETWORK = "rando-pcn-network"
+
+    /** OneMap 的卫星图瓦片，新加坡范围 */
+    const val SATELLITE_TILES = "https://www.onemap.gov.sg/maps/tiles/Satellite/{z}/{x}/{y}.png"
+    /** 用 OneMap 的图要写出处 */
+    const val SATELLITE_CREDIT = "OneMap © Singapore Land Authority"
 
     /** [dark]：骑行视图的黑底地图，路线外面不描白边；路线、轨迹画粗一点，户外好认 */
     fun install(style: Style, dark: Boolean = false) {
@@ -279,6 +290,54 @@ object MapLayers {
                     Feature.fromGeometry(LineString.fromLngLats(piece.points.map { Point.fromLngLat(it.lon, it.lat) }))
                         .apply { addStringProperty("color", piece.level.color) }
                 }
+            )
+        )
+    }
+
+    /**
+     * 卫星图：OneMap（新加坡土地管理局）的航拍，不需要 key，界面上要写出处。
+     * 压在底图第一个文字图层下面：路、楼、绿地都换成照片，地名还浮在上面，我们画的路线、轨迹在最上面。
+     * 新加坡以外没有图，那里还是看得到底图
+     */
+    fun showSatellite(style: Style, on: Boolean) {
+        if (style.getLayer(SATELLITE) == null) {
+            if (!on) return
+            val tiles = TileSet("2.2.0", SATELLITE_TILES).apply {
+                minZoom = 10f
+                maxZoom = 19f
+                attribution = SATELLITE_CREDIT
+            }
+            style.addSource(RasterSource(SATELLITE, tiles, 256))
+            val layer = RasterLayer(SATELLITE, SATELLITE)
+            val firstLabel = style.layers.firstOrNull { it is SymbolLayer }
+            if (firstLabel != null) style.addLayerBelow(layer, firstLabel.id) else style.addLayerAt(layer, 1)
+        }
+        style.getLayer(SATELLITE)?.setProperties(visibility(if (on) Property.VISIBLE else Property.NONE))
+    }
+
+    /**
+     * 全岛的公园连道网络：一层淡紫色细线，规划时一眼看出哪里有连道能骑。
+     * 压在骑过的路、轨迹、路线下面；[lines] 为空就清掉
+     */
+    fun showPcnNetwork(style: Style, lines: List<List<LatLon>>) {
+        val source = style.getSourceAs<GeoJsonSource>(PCN_NETWORK) ?: GeoJsonSource(PCN_NETWORK).also { src ->
+            style.addSource(src)
+            val layer = LineLayer(PCN_NETWORK, PCN_NETWORK).withProperties(
+                lineColor(Color.parseColor("#9B4DCA")),
+                lineWidth(Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(11, 1.5f), Expression.stop(16, 4f))),
+                lineOpacity(0.6f),
+                lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+            )
+            // 骑过的路在它上面；还没画过骑过的路时压在轨迹下面
+            when {
+                style.getLayer("rando-ridden-casing") != null -> style.addLayerBelow(layer, "rando-ridden-casing")
+                style.getLayer(TRACK) != null -> style.addLayerBelow(layer, TRACK)
+                else -> style.addLayer(layer)
+            }
+        }
+        source.setGeoJson(
+            FeatureCollection.fromFeatures(
+                lines.map { line -> Feature.fromGeometry(LineString.fromLngLats(line.map { Point.fromLngLat(it.lon, it.lat) })) }
             )
         )
     }

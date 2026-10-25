@@ -1,5 +1,7 @@
 package com.personal.rando.screenshots
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import com.personal.rando.ui.overImagery
 import com.personal.rando.routing.RouteOption
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,8 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
@@ -131,6 +135,7 @@ class UiScreenshotTest {
         group: GroupState? = null,
         finished: Ride? = null,
         climate: com.personal.rando.weather.Climate? = null,
+        satellite: Boolean = false,
     ) {
         PlannerFrame(
             top = {
@@ -139,7 +144,14 @@ class UiScreenshotTest {
                 if (picking) HintPill("长按地图选起点，或者在上面搜一个地方", onCancel = {})
             },
             bottom = {
-                SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    com.personal.rando.ui.ScaleBar(metersPerDp = 2.2)
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                    SideRail(
+                        showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null },
+                        layers = { com.personal.rando.ui.LayersButton(com.personal.rando.ride.Settings(satellite = satellite), {}) },
+                    )
+                }
                 group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, device = "蓝牙耳机 AirPods", talking = setOf("小红"))) }
                 finished?.let { FinishedCard(it, {}, {}) }
                 recording?.let { RecordingPill(it, {}, {}) }
@@ -293,6 +305,37 @@ class UiScreenshotTest {
         val notices = com.personal.rando.ui.rememberNotices(host)
         androidx.compose.runtime.LaunchedEffect(Unit) { notices.show("记下了，这里按马路算", long = true) }
         com.personal.rando.ui.NoticeHost(host)
+    }
+
+    /** 卫星图（OneMap 航拍拼的背景）：玻璃调实，字要看得清 */
+    private fun satelliteShot(name: String, content: @Composable BoxScope.() -> Unit) {
+        compose.setContent {
+            OverMap(map = "map_satellite.jpg") {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.personal.rando.ui.LocalPalette provides com.personal.rando.ui.LocalPalette.current.overImagery(),
+                ) { content() }
+            }
+        }
+        compose.mainClock.advanceTimeBy(2_000)
+    }
+
+    @Test fun satellite() {
+        satelliteShot("17_satellite_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList()), satellite = true) }
+        compose.onRoot().captureRoboImage("build/screenshots/17_satellite_route.png")
+    }
+
+    @Test fun satelliteEmpty() {
+        satelliteShot("17b_satellite_empty") { Planner(satellite = true) }
+        compose.onRoot().captureRoboImage("build/screenshots/17b_satellite_empty.png")
+    }
+
+    @Test fun layersMenu() {
+        satelliteShot("17c_layers_menu") { Planner(satellite = true) }
+        compose.onNodeWithContentDescription("地图图层").performClick()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        compose.onNodeWithText("公园连道网络").assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/17c_layers_menu.png")
     }
 
     @Test fun crash() {

@@ -1,6 +1,7 @@
 package com.personal.rando.ride
 
 import com.personal.rando.i18n.tr
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -9,6 +10,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.LocationListener
 import android.location.LocationManager
@@ -60,12 +62,13 @@ class RideService : Service() {
                 return START_NOT_STICKY
             }
         }
-        try {
-            ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, notification(session.navigation.value, session.recording.value, rando.group.state.value),
-                serviceTypes(),
-            )
-        } catch (_: Exception) {
+        // 用 startForegroundService 开的，每次都得调 startForeground，不然停掉服务时系统会让整个 App 闪退。
+        // 在后台（自动开始记录、耳机键说指令）时 Android 14 起不让带麦克风，去掉麦克风再试一次
+        val shown = notification(session.navigation.value, session.recording.value, rando.group.state.value)
+        val started = serviceTypes().any { types ->
+            runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, shown, types) }.isSuccess
+        }
+        if (!started) {
             // 定位权限被收回之类的，系统不让开定位前台服务
             stopSelf()
             return START_NOT_STICKY
@@ -101,11 +104,12 @@ class RideService : Service() {
         return START_NOT_STICKY
     }
 
-    /** 有麦克风权限时再加上麦克风：锁屏后对讲还能听、按耳机键能说语音指令 */
-    private fun serviceTypes(): Int {
-        if (Build.VERSION.SDK_INT < 29) return 0
+    /** 有麦克风权限时先试带上麦克风（锁屏后对讲还能听、按耳机键能说语音指令），不行再只要定位 */
+    private fun serviceTypes(): List<Int> {
+        if (Build.VERSION.SDK_INT < 29) return listOf(0)
+        val location = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         val mic = Build.VERSION.SDK_INT >= 30 && rando.walkie.hasMicPermission()
-        return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+        return listOfNotNull(if (mic) location or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else null, location)
     }
 
     private fun crashNotification(alert: CrashAlert): Notification {
@@ -177,7 +181,7 @@ class RideService : Service() {
         // GPS 刚开要等一会儿才有第一个点：先用一分钟内的上一个 GPS 点顶上，
         // 网络定位也听着，至少地图上先有个大概位置（太不准的不拿来导航）
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { manager.isProviderEnabled(it) }
-        val l = LocationListener { session.onFix(Fix.of(it)) }
+        val l = Fix.listener(session::onFix)
         try {
             manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 ?.takeIf { System.currentTimeMillis() - it.time < FRESH_FIX_MS }
@@ -282,7 +286,12 @@ class RideService : Service() {
         }
 
         fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, RideService::class.java))
+            // 没定位权限开不了定位前台服务，开了也只会闪退
+            val location = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+            if (!location) return
+            // Android 12 起在后台不让开前台服务，会直接抛异常；开不了就先不开，总比整个 App 闪退好
+            runCatching { ContextCompat.startForegroundService(context, Intent(context, RideService::class.java)) }
         }
     }
 }
