@@ -103,7 +103,9 @@ private val DATE = SimpleDateFormat("M月d日 EEE HH:mm", Locale.CHINA)
 fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -> Unit, onReview: () -> Unit = {}) {
     val store = LocalContext.current.rando.session.rides
     val rides by produceState<List<Ride>?>(null) { value = store.list() }
-    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview, onShareToday = { today -> scope.launch { ShareCard.shareDay(context, today) } })
 }
 
 /** 骑行记录：一整块玻璃盖在地图上，最上面是总数，下面一条条往上浮出来 */
@@ -115,7 +117,10 @@ fun RideList(
     onRiddenMap: () -> Unit = {},
     now: Long = System.currentTimeMillis(),
     onReview: () -> Unit = {},
+    /** 分享今天骑的几次；今天没骑就不显示按钮 */
+    onShareToday: (List<Ride>) -> Unit = {},
 ) {
+    val today = remember(rides, now) { rides?.let { RideStats.today(it, now) }.orEmpty() }
     GlassPanel(
         Modifier
             .fillMaxSize()
@@ -126,7 +131,14 @@ fun RideList(
             Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
                 Spacer(Modifier.width(4.dp))
-                Text("骑行记录", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text("骑行记录", Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                if (today.isNotEmpty()) {
+                    GlassButton(onClick = { onShareToday(today) }, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                        Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("分享今天", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
             when {
                 rides == null -> Unit
@@ -292,6 +304,48 @@ private fun SmallStat(value: String, label: String) {
     }
 }
 
+/**
+ * 分享按钮按下去做什么：那天只骑了这一次就直接分享；
+ * 骑了好几次先问一下，分享这一次还是那天全部
+ */
+@Composable
+fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = context.rando.session.rides
+    val day by produceState(listOf(ride), ride) {
+        value = RideStats.today(store.list().filter { it.id != ride.id } + ride, ride.startedAt)
+    }
+    var asking by remember { mutableStateOf(false) }
+    if (asking) {
+        val isToday = remember(ride) { RideStats.today(listOf(ride), System.currentTimeMillis()).isNotEmpty() }
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            shape = GlassShapes.Sheet,
+            containerColor = Color(0xF7F7FAF8),
+            title = { Text("分享哪些？") },
+            text = {
+                Text(
+                    "${if (isToday) "今天" else "这天"}骑了 ${day.size} 次，一共 ${Format.distance(day.sumOf { it.distanceMeters }.toInt())}。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = false
+                    scope.launch { ShareCard.shareDay(context, day) }
+                }) { Text(if (isToday) "今天全部" else "这天全部", color = RandoGreen) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    asking = false
+                    scope.launch { ShareCard.share(context, ride, record) }
+                }) { Text("只分享这次") }
+            },
+        )
+    }
+    return { if (day.size > 1) asking = true else scope.launch { ShareCard.share(context, ride, record) } }
+}
+
 // ───────────────────────── 记录详情 ─────────────────────────
 
 @Composable
@@ -304,10 +358,9 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     val r = ride
     if (r != null) {
-        val context = LocalContext.current
         RideDetail(
             r, onBack = onBack, onDelete = { confirmDelete = true }, record = record,
-            onShare = { scope.launch { ShareCard.share(context, r, record) } },
+            onShare = rememberRideShare(r, record),
             weightKg = weight,
         ) { modifier -> TrackMap(r, modifier) }
     }

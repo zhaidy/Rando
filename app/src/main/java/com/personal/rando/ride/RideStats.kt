@@ -41,6 +41,19 @@ object RideStats {
         }
     }
 
+    /** [now] 那天开始的骑行，按开始时间先后排；过了半夜才骑完的算开始那天 */
+    fun today(rides: List<Ride>, now: Long, zone: TimeZone = TimeZone.getDefault()): List<Ride> {
+        val start = Calendar.getInstance(zone).apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
+        return rides.filter { it.startedAt in start.timeInMillis until end.timeInMillis }.sortedBy { it.startedAt }
+    }
+
     /** [now] 所在的那周（月）往前数 [back] 个的开始时间；back 为 -1 是下一个 */
     private fun startOf(now: Long, period: Period, zone: TimeZone, back: Int): Long =
         Calendar.getInstance(zone).apply {

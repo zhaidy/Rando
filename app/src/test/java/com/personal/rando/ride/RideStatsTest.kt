@@ -43,4 +43,15 @@ class RideStatsTest {
         assertEquals(12.0, months[1].meters / 1000, 0.01)
         assertEquals(30.0, months.last().meters / 1000, 0.01)
     }
+
+    @Test
+    fun `今天的骑行：只要今天开始的，按时间先后`() {
+        val rides = listOf(
+            ride(at(2026, 10, 24, 18), 6.0),
+            ride(at(2026, 10, 25, 0), 3.0), // 明天凌晨
+            ride(at(2026, 10, 24, 0), 4.0), // 今天刚过半夜
+            ride(at(2026, 10, 23, 23), 9.0), // 昨晚
+        )
+        assertEquals(listOf(4.0, 6.0), RideStats.today(rides, now, zone).map { it.distanceMeters / 1000 })
+    }
 }

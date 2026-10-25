@@ -284,6 +284,20 @@ class UiScreenshotTest {
         File("build/screenshots/12_share_card.png").outputStream().use { plain.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** 今天骑的两次合成一张分享图 */
+    @Test fun shareDayCard() {
+        val evening = Ride(
+            1_729_764_000_000, 1_729_766_400_000, 9_100.0, 1_980, 15.0, 8.2,
+            route.points.take(route.points.size / 2).reversed().map { TrackPoint(LatLon(it.lat + 0.004, it.lon + 0.006), null, 0) },
+        )
+        val day = listOf(rides[0], evening)
+        val card = com.personal.rando.ui.ShareCard.drawDay(
+            null, com.personal.rando.ui.ShareCard.fitAll(day.map { r -> r.points.map { it.location } }, 1080f, 900f), day,
+        )
+        File("build/screenshots").mkdirs()
+        File("build/screenshots/12b_share_day_card.png").outputStream().use { card.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun rideDetail() {
         compose.setContent {
             RandoTheme {

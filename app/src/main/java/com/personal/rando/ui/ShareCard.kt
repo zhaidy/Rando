@@ -14,6 +14,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import androidx.core.content.FileProvider
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.timeOfDay
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -39,17 +40,33 @@ object ShareCard {
     const val HEIGHT = 1350
     const val MAP_HEIGHT = 900
 
+    /** 分享一次骑行 */
+    suspend fun share(context: Context, ride: Ride, record: String?) =
+        send(context, "rando-${ride.id}", "分享骑行", listOf(ride)) { map, tracks -> draw(map, tracks.first(), ride, record) }
+
+    /** 分享今天骑的几次：轨迹画在一张图上，数据加起来 */
+    suspend fun shareDay(context: Context, rides: List<Ride>) {
+        if (rides.isEmpty()) return
+        send(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides) { map, tracks -> drawDay(map, tracks, rides) }
+    }
+
     /** 拍地图、画图、存到缓存，弹出系统分享 */
-    suspend fun share(context: Context, ride: Ride, record: String?) {
-        val track = ride.points.map { it.location }
-        val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, track) }
+    private suspend fun send(
+        context: Context,
+        name: String,
+        chooserTitle: String,
+        rides: List<Ride>,
+        paint: (Bitmap?, List<List<PointF>>) -> Bitmap,
+    ) {
+        val tracks = rides.map { r -> r.points.map { it.location } }
+        val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, tracks.flatten()) }
         val bitmap = withContext(Dispatchers.Default) {
-            val trackPx = snapshot?.second?.let { project -> track.map(project) } ?: fit(track, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
-            draw(snapshot?.first, trackPx, ride, record)
+            val trackPx = snapshot?.second?.let { project -> tracks.map { it.map(project) } } ?: fitAll(tracks, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
+            paint(snapshot?.first, trackPx)
         }
         val file = withContext(Dispatchers.IO) {
             File(context.cacheDir, "share").apply { mkdirs() }.let { dir ->
-                File(dir, "rando-${ride.id}.png").also { f -> f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+                File(dir, "$name.png").also { f -> f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             }
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
@@ -57,7 +74,7 @@ object ShareCard {
             .setType("image/png")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(intent, "分享骑行").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** 地图快照：框住整条轨迹；拍不到（没网）返回 null，就画在纯色底上 */
@@ -103,8 +120,49 @@ object ShareCard {
         return track.indices.map { i -> PointF((ox + (xs[i] - xs.min()) * scale).toFloat(), (oy + (ys.max() - ys[i]) * scale).toFloat()) }
     }
 
-    /** 画整张图 */
-    fun draw(map: Bitmap?, trackPx: List<PointF>, ride: Ride, record: String?): Bitmap {
+    /** 几条轨迹一起缩放（同一个比例），再按原来的条数分开 */
+    fun fitAll(tracks: List<List<LatLon>>, w: Float, h: Float): List<List<PointF>> {
+        val all = fit(tracks.flatten(), w, h)
+        var from = 0
+        return tracks.map { t -> all.subList(from, from + t.size).also { from += t.size } }
+    }
+
+    /** 一次骑行的整张图 */
+    fun draw(map: Bitmap?, trackPx: List<PointF>, ride: Ride, record: String?): Bitmap =
+        drawCard(
+            map, listOf(trackPx), ride.title, DATE.format(Date(ride.startedAt)), record,
+            ride.distanceMeters, ride.movingSeconds, ride.ascendMeters,
+        )
+
+    /** 今天几次骑行合在一张图上：标题写骑了几次，下面是合计 */
+    fun drawDay(map: Bitmap?, tracksPx: List<List<PointF>>, rides: List<Ride>): Bitmap {
+        val first = rides.first()
+        val last = rides.last()
+        val title = if (rides.size == 1) "今天${first.title}" else "今天骑了 ${rides.size} 次"
+        val time = if (rides.size == 1) {
+            "${CLOCK.format(Date(first.startedAt))}–${CLOCK.format(Date(first.endedAt))}"
+        } else {
+            // 「早上 · 傍晚」；两次都在早上就写几点到几点
+            rides.map { timeOfDay(it.startedAt) }.takeIf { it.distinct().size == it.size && it.size <= 4 }?.joinToString(" · ")
+                ?: "${CLOCK.format(Date(first.startedAt))}–${CLOCK.format(Date(last.endedAt))}"
+        }
+        return drawCard(
+            map, tracksPx, title, DAY.format(Date(first.startedAt)), time,
+            rides.sumOf { it.distanceMeters }, rides.sumOf { it.movingSeconds }, rides.sumOf { it.ascendMeters },
+        )
+    }
+
+    /** 画整张图；[note] 是标题下面绿色的那行（和以前比、几点骑的） */
+    private fun drawCard(
+        map: Bitmap?,
+        tracksPx: List<List<PointF>>,
+        title: String,
+        date: String,
+        note: String?,
+        meters: Double,
+        movingSeconds: Long,
+        ascendMeters: Double,
+    ): Bitmap {
         val out = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         c.drawColor(Color.parseColor("#F2F0EB"))
@@ -120,7 +178,7 @@ object ShareCard {
                 shader = LinearGradient(0f, MAP_HEIGHT - 120f, 0f, MAP_HEIGHT.toFloat(), Color.TRANSPARENT, Color.parseColor("#F2F0EB"), Shader.TileMode.CLAMP)
             },
         )
-        drawTrack(c, trackPx)
+        tracksPx.forEach { drawTrack(c, it) }
 
         val ink = Color.parseColor("#1F2A24")
         val soft = Color.parseColor("#6B756F")
@@ -128,28 +186,37 @@ object ShareCard {
         val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         val left = 72f
         var y = MAP_HEIGHT + 40f
-        c.drawText(ride.title, left, y, text(56f, ink, bold))
-        c.drawText(DATE.format(Date(ride.startedAt)), WIDTH - 72f, y, text(32f, soft).apply { textAlign = Paint.Align.RIGHT })
-        if (record != null) {
+        c.drawText(title, left, y, text(56f, ink, bold))
+        c.drawText(date, WIDTH - 72f, y, text(32f, soft).apply { textAlign = Paint.Align.RIGHT })
+        if (note != null) {
             y += 62f
-            c.drawText(record, left, y, text(34f, green, bold))
+            c.drawText(note, left, y, text(34f, green, bold))
         }
         y += 140f
         val stats = listOf(
-            Format.distance(ride.distanceMeters.toInt()) to "距离",
-            Format.clock(ride.movingSeconds) to "骑行时间",
-            "${ride.ascendMeters.toInt()} 米" to "爬升",
-            Format.speed(ride.averageSpeed) to "均速",
+            Format.distance(meters.toInt()) to "距离",
+            Format.clock(movingSeconds) to "骑行时间",
+            "${ascendMeters.toInt()} 米" to "爬升",
+            Format.speed(if (movingSeconds > 0) meters / movingSeconds else 0.0) to "均速",
         )
-        val col = (WIDTH - 2 * left) / stats.size
-        stats.forEachIndexed { i, (value, label) ->
-            val x = left + col * i
+        val big = text(64f, ink, bold)
+        val small = text(28f, ink)
+        val caption = text(28f, soft)
+        // 按实际宽度排：第一个贴左边、最后一个贴右边，中间空隙一样大；超过一小时的时间也不会压到旁边
+        val widths = stats.map { (value, label) ->
             val number = value.substringBefore(' ')
             val unit = value.substringAfter(' ', "")
-            val big = text(64f, ink, bold)
+            maxOf(big.measureText(number) + if (unit.isEmpty()) 0f else small.measureText(" $unit"), caption.measureText(label))
+        }
+        val gap = ((WIDTH - 2 * left) - widths.sum()) / (stats.size - 1)
+        var x = left
+        stats.forEachIndexed { i, (value, label) ->
+            val number = value.substringBefore(' ')
+            val unit = value.substringAfter(' ', "")
             c.drawText(number, x, y, big)
-            if (unit.isNotEmpty()) c.drawText(" $unit", x + big.measureText(number), y, text(28f, ink))
-            c.drawText(label, x, y + 50f, text(28f, soft))
+            if (unit.isNotEmpty()) c.drawText(" $unit", x + big.measureText(number), y, small)
+            c.drawText(label, x, y + 50f, caption)
+            x += widths[i] + gap
         }
         c.drawText("Rando", WIDTH - 72f, HEIGHT - 48f, text(34f, green, bold).apply { textAlign = Paint.Align.RIGHT })
         return out
@@ -184,5 +251,7 @@ object ShareCard {
     }
 
     private val DATE = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
+    private val DAY = SimpleDateFormat("yyyy年M月d日 EEE", Locale.CHINA)
+    private val CLOCK = SimpleDateFormat("HH:mm", Locale.CHINA)
     private const val SNAPSHOT_TIMEOUT_MS = 15_000L
 }
