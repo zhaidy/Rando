@@ -103,7 +103,9 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
     var make by remember { mutableStateOf<(suspend (Boolean, List<SharePhoto>) -> ShareCard.Card?)?>(null) }
     // 每次打开都默认隐藏，免得上次关掉忘了开
     var hide by remember { mutableStateOf(true) }
-    var darkCard by remember { mutableStateOf(ShareCard.dark) }
+    // 上次选的深色 / 浅色记下来
+    val uiPrefs = UiPrefs(LocalContext.current)
+    var darkCard by remember { mutableStateOf(uiPrefs.shareDark.also { ShareCard.dark = it }) }
     var privacyLabel by remember { mutableStateOf(tr("隐藏家附近", "Hide near home")) }
     var rides by remember { mutableStateOf(emptyList<Ride>()) }
     // 找到的和自己挑的照片；选上的按选的先后
@@ -267,7 +269,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                         Row(Modifier.align(Alignment.CenterHorizontally), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(true to tr("深色", "Dark"), false to tr("浅色", "Light")).forEach { (d, label) ->
                                 GlassButton(
-                                    onClick = { if (darkCard != d) { darkCard = d; ShareCard.dark = d; draw() } },
+                                    onClick = { if (darkCard != d) { darkCard = d; ShareCard.dark = d; uiPrefs.shareDark = d; draw() } },
                                     tone = if (darkCard == d) GlassTone.Tinted(RandoAccent) else GlassTone.Light,
                                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
                                 ) {
