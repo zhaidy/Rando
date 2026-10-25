@@ -16,7 +16,7 @@ class RouteParserTest {
               "track-length": "15863",
               "filtered ascend": "40",
               "total-time": "2794",
-              "voicehints": [[1, 4, 0, 139.0, -125], [2, 14, 2, 24.0, 29], [2, 13, 0, 0.0, 0], [9, 2, 0, 10.0, -90]],
+              "voicehints": [[1, 4, 0, 139.0, -125], [2, 14, -2, 24.0, 29], [2, 13, 0, 0.0, 0], [9, 2, 0, 10.0, -90]],
               "messages": [
                 ["Longitude", "Latitude", "Elevation", "Distance", "CostPerKm", "ElevCost", "TurnCost", "NodeCost", "InitialCost", "WayTags", "NodeTags", "Time", "Energy"],
                 ["103826931", "1353220", "44", "860", "9050", "321", "73", "0", "0", "reversedirection=yes highway=path surface=dirt bicycle=no", "highway=crossing crossing=zebra", "119", "10756"],
@@ -69,7 +69,7 @@ class RouteParserTest {
     }
 
     @Test
-    fun `读出路口动作，不认识的代码和越界的序号跳过`() {
+    fun `读出路口动作，不认识的代码和越界的序号跳过；左行地方环岛的负出口号也认`() {
         val maneuvers = RouteParser.parse(sample).maneuvers
         assertEquals(
             listOf(

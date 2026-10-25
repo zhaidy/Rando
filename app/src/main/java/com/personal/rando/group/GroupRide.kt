@@ -175,6 +175,8 @@ class GroupRide(
         // 先关直连：要趁连接还在把 bye 发给队友，不然对方要干等到超时
         local.stop()
         rtc.stop()
+        // 求助还挂着就撤掉：服务器上的求助断线也留着，不撤的话后来进队的人会看到一条过时的
+        if (mySos != null) socket?.send(GroupProtocol.SOS_CLEAR)
         socket?.close(1000, "bye")
         socket = null
         lastSent = null

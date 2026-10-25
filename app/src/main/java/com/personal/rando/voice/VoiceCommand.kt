@@ -82,8 +82,9 @@ object VoiceParser {
 
         if (has("^(stop|end|cancel|quit|exit)( the)?( navigation| navigating| route| ride)?$|^stop navigat")) return VoiceCommand.StopNavigation
         if (has("how (far|long|much (further|farther|longer))|time left|distance left|^eta$")) return VoiceCommand.Remaining
-        if (has("weather|rain|hot is it|air quality|forecast")) return VoiceCommand.Weather
         if (has("(take|by|ride|catch)( the)? (mrt|train|subway|metro) home")) return VoiceCommand.MrtHome
+        // 按整词认：「train」「Rainforest」里也有 rain
+        if (has("\\b(weather|rain(s|ing|y)?|forecast)\\b|hot is it|air quality")) return VoiceCommand.Weather
 
         when {
             has("closed|blocked") -> return VoiceCommand.Report(HazardType.CLOSED)

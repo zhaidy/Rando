@@ -88,11 +88,17 @@ class UpdateChecker(private val context: Context) {
             }
             val sessionId = installer.createSession(params)
             installer.openSession(sessionId).use { session ->
-                file.inputStream().use { input ->
-                    session.openWrite("rando.apk", 0, file.length()).use { output ->
-                        input.copyTo(output)
-                        session.fsync(output)
+                // 写到一半出错（存储满了）：放弃这次会话，不然系统里一直留着个没装完的
+                try {
+                    file.inputStream().use { input ->
+                        session.openWrite("rando.apk", 0, file.length()).use { output ->
+                            input.copyTo(output)
+                            session.fsync(output)
+                        }
                     }
+                } catch (e: Exception) {
+                    runCatching { session.abandon() }
+                    throw e
                 }
                 // FLAG_MUTABLE：系统要往里面填安装结果
                 val callback = PendingIntent.getBroadcast(

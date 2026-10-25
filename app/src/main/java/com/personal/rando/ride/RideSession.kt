@@ -166,6 +166,8 @@ class RideSession(
     /** 中途存盘和结束保存排着来，不会结束后又被一份旧的中途存盘盖回去 */
     private val checkpointLock = Mutex()
     private var lastCheckpointAt = 0L
+    /** 中途存盘里是一段结束了却没存上的骑行（存储满了），下一段不能直接盖掉它 */
+    private var unsavedCheckpoint = false
 
     init {
         recoverRide()
@@ -211,10 +213,11 @@ class RideSession(
     }
 
     fun onFix(fix: Fix) {
-        // GPS 和网络定位一起听：有了准的点，几秒内来的明显更不准的就不要，免得蓝点来回跳
+        // GPS 和网络定位一起听：有了准的点，几秒内来的不准的（网络定位）就不要，免得蓝点来回跳；
+        // GPS 自己从 3 米变到 7 米这种还是准的，照样用，不然进树荫底下好几秒都不更新
         val last = _fix.value
         if (last != null && fix.accuracy != null && last.accuracy != null &&
-            fix.accuracy > last.accuracy * 2 && fix.time - last.time < KEEP_PRECISE_MS
+            fix.accuracy > NAV_MAX_ACCURACY_METERS && fix.accuracy > last.accuracy * 2 && fix.time - last.time < KEEP_PRECISE_MS
         ) {
             return
         }
@@ -413,6 +416,8 @@ class RideSession(
             checkpointLock.withLock {
                 // 排队期间已经结束或者换了一段：不要再写，免得留下一份结束过的
                 if (recorder !== r) return@withLock
+                // 上一段结束时没存上，中途存盘还是它的：先把它存起来，存不上就别盖掉
+                if (unsavedCheckpoint && !saveCheckpointedRide()) return@withLock
                 runCatching { rides.checkpoint(ride) }
             }
         }
@@ -421,18 +426,25 @@ class RideSession(
     /** 上次骑到一半 App 没了：把存下的那段当成一次结束的骑行存起来 */
     private fun recoverRide() {
         scope.launch {
-            checkpointLock.withLock {
-                val ride = rides.readCheckpoint() ?: return@withLock
-                val ended = ride.copy(endedAt = ride.points.lastOrNull()?.time ?: ride.endedAt)
-                // 已经存过同一条（结束保存了但还没来得及删中途存盘）就不要用不全的那份盖掉
-                val saved = ended.distanceMeters < MIN_RIDE_METERS || rides.get(ended.id) != null ||
-                    runCatching { rides.save(ended) }.isSuccess
-                if (saved) {
-                    rides.clearCheckpoint()
-                    RideWidget.refresh(app)
-                }
-            }
+            checkpointLock.withLock { saveCheckpointedRide() }
         }
+    }
+
+    /** 把中途存盘的那段当成结束的骑行存起来、删掉中途存盘；存不上返回 false。要在 [checkpointLock] 里调 */
+    private suspend fun saveCheckpointedRide(): Boolean {
+        val ride = rides.readCheckpoint()
+        // 已经存过同一条（结束保存了但还没来得及删中途存盘）就不要用不全的那份盖掉
+        val saved = ride == null || ride.copy(endedAt = ride.points.lastOrNull()?.time ?: ride.endedAt).let { ended ->
+            ended.distanceMeters < MIN_RIDE_METERS || rides.get(ended.id) != null || runCatching { rides.save(ended) }.isSuccess
+        }
+        if (saved) {
+            runCatching { rides.clearCheckpoint() }
+            unsavedCheckpoint = false
+            if (ride != null) RideWidget.refresh(app)
+        } else {
+            unsavedCheckpoint = true
+        }
+        return saved
     }
 
     /** [auto]：认出在骑车自动开始的；停下来很久没动就自动结束保存 */
@@ -465,14 +477,22 @@ class RideSession(
         stopWatchingWeather()
         val ride = r.toRide(endedAt)
         if (ride.distanceMeters < MIN_RIDE_METERS) {
-            scope.launch { checkpointLock.withLock { runCatching { rides.clearCheckpoint() } } }
+            // 中途存盘还是上一段没存上的那条就留着
+            scope.launch { checkpointLock.withLock { if (!unsavedCheckpoint) runCatching { rides.clearCheckpoint() } } }
             return null
         }
         (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
             // 手机存储满了存不上：说一声，不要整个 App 闪退；中途存盘的留着，下次打开再试
             val ok = checkpointLock.withLock {
-                runCatching { rides.save(ride) }.isSuccess.also { if (it) runCatching { rides.clearCheckpoint() } }
+                runCatching { rides.save(ride) }.isSuccess.also { saved ->
+                    when {
+                        !saved -> unsavedCheckpoint = true
+                        // 中途存盘还是上一段没存上的：这回存得下了，把它也存了
+                        unsavedCheckpoint -> saveCheckpointedRide()
+                        else -> runCatching { rides.clearCheckpoint() }
+                    }
+                }
             }
             if (!ok) {
                 speaker.say(tr("手机存储空间不够，这次骑行没存上", "Phone storage is full, this ride wasn't saved"))

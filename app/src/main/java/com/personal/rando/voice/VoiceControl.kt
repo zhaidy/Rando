@@ -30,7 +30,7 @@ sealed interface VoiceState {
 
 /**
  * 语音指令：点麦克风按钮或者按耳机上的键，「嘀」一声后说话，听完交给 [handler] 去做。
- * 用手机自带的语音识别（有离线包就离线认）；开着对讲时先停一下对讲的麦克风，听完再开。
+ * 用手机自带的语音识别（有离线包就离线认）；开着对讲时先借用一下对讲的麦克风，听完还回去。
  * 默认的识别服务一直忙、连不上时，换手机上装的别的识别服务（谷歌 App 的优先），都不行再弹系统的语音输入框
  */
 class VoiceControl(context: Context, private val walkie: Walkie) {
@@ -75,13 +75,9 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         services = order(installedServices()) { it.packageName }
         attempt = 0
         offline = true
-        if (walkie.state.value.on) {
-            resumeWalkie = true
-            // 等对讲真正放开麦克风再开始认，不然语音识别抢不到麦克风
-            walkie.turnOff { if (_state.value is VoiceState.Listening) start() }
-        } else {
-            start()
-        }
+        // 开着对讲：等对讲真正放开麦克风再开始认，不然语音识别抢不到麦克风
+        resumeWalkie = walkie.pauseMic { if (_state.value is VoiceState.Listening) start() }
+        if (!resumeWalkie) start()
     }
 
     /** 轮着试的识别服务（null 是系统默认的）、现在试到第几个；先离线认，认不了（没有中文离线包）再联网认 */
@@ -153,7 +149,7 @@ class VoiceControl(context: Context, private val walkie: Walkie) {
         recognizer = null
         if (resumeWalkie) {
             resumeWalkie = false
-            walkie.turnOn()
+            walkie.resumeMic()
         }
     }
 

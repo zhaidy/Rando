@@ -277,7 +277,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     val mapView = rememberMapView(textureMode = true)
-    // 跟着系统深色模式换地图样式；系统切换时 Activity 会重建，这里读一次就行
+    // 跟着深色模式换地图样式
     val styleUrl = MapLayers.styleUrl(LocalPalette.current.dark)
     // 规划页上下两摞挡住了哪里，镜头框路线、框某一段时避开
     var plannerInsets by remember { mutableStateOf(PlannerInsets()) }
@@ -303,12 +303,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 if (home) notices.show(tr("家的位置设好了", "Home is set"))
                 true
             }
-            m.setStyle(styleUrl) { s ->
-                MapLayers.install(s)
-                style = s
-                metersPerDp = metersPerDp(m, density.density)
-            }
             map = m
+        }
+    }
+    // 换深浅色（设置里改的不会重建 Activity）就换一套底图；各图层都跟着 style 重画
+    LaunchedEffect(map, styleUrl) {
+        val m = map ?: return@LaunchedEffect
+        style = null
+        m.setStyle(styleUrl) { s ->
+            MapLayers.install(s)
+            style = s
+            metersPerDp = metersPerDp(m, density.density)
         }
     }
 
@@ -1209,8 +1214,8 @@ private fun LocationUpdates(enabled: Boolean, onFix: (Fix) -> Unit) {
         val manager = context.getSystemService(LocationManager::class.java)
         if (!enabled || manager == null) return@DisposableEffect onDispose {}
         val listener = Fix.listener(onFix)
+        // 定位关着也要注册上：打开定位以后注册过的才会开始收到点
         listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-            .filter { manager.isProviderEnabled(it) }
             .forEach { provider ->
                 // 只给了大概位置时 Android 12 以下不让听 GPS，跳过它只用网络定位
                 runCatching {
