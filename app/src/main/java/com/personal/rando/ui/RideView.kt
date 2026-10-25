@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextAlign
+import com.personal.rando.R
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassShapes
@@ -178,7 +179,7 @@ fun RideView(
                     if (timeline != null && progress != null && !progress.arrived) {
                         RoadAhead(timeline, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 8.dp))
                     }
-                    Extras(weather, climate?.warning, amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
+                    Extras(weather, briefly(climate?.warning), amenities.takeIf { progress != null }.orEmpty(), along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp))
                     teammates?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                     walkie?.let { TeammatesRow(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp)) }
                     listening?.let {
@@ -454,6 +455,20 @@ private fun BigStat(value: String, label: String, modifier: Modifier) {
     }
 }
 
+/** 天气提醒一整趟都不变，开头念过了，屏幕上只亮一会儿；变了再亮 */
+@Composable
+private fun briefly(warning: String?): String? {
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(warning) {
+        shown = warning
+        delay(WARNING_SHOWN_MS)
+        shown = null
+    }
+    return shown
+}
+
+private const val WARNING_SHOWN_MS = 30_000L
+
 /** 前方最近的补给（五公里内，最多三种）和要下的雨 */
 @Composable
 private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<AmenityOnRoute>, along: Double, modifier: Modifier) {
@@ -485,7 +500,7 @@ private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<Ame
         warning?.let {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot("#F2A93B")
-                // 一整趟都不变，占一行就够了，长了字缩小
+                // 占一行就够了，长了字缩小
                 Text(
                     it,
                     color = Color(0xFFFFD08A),
@@ -579,12 +594,14 @@ fun RideMap(
             m.uiSettings.isLogoEnabled = false
             m.setStyle(Style.Builder().fromJson(RideMapStyle.JSON)) { s ->
                 MapLayers.install(s, dark = true)
+                // 骑着是绿箭头，朝前进方向；停着是白边绿点，外面的小三角指手机朝向。
+                // 不用 foregroundTintColor：它把骑行时那张图整个染绿，箭头就看不见了
                 val puck = LocationComponentOptions.builder(context)
-                    // 黑底上要亮一点、大一点，晃着也一眼找到自己
-                    .foregroundTintColor(android.graphics.Color.parseColor("#3DDC84"))
+                    .gpsDrawable(R.drawable.ride_puck_arrow)
+                    .foregroundDrawable(R.drawable.ride_puck_dot)
                     .bearingTintColor(android.graphics.Color.parseColor("#3DDC84"))
-                    .minZoomIconScale(1.3f)
-                    .maxZoomIconScale(1.6f)
+                    .minZoomIconScale(1f)
+                    .maxZoomIconScale(1.2f)
                     .accuracyAlpha(0f)
                     .build()
                 // 定位用导航自己收到的，不另外开一路：两边一致，信号差时也不会一个有一个没有
