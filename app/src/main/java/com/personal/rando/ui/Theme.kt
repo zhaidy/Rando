@@ -18,20 +18,20 @@ val RandoOrange = Color(0xFFE0672B)
 val RandoAmber = Color(0xFFC98A1B)
 val RandoRed = Color(0xFFC0392B)
 
-/** 主色。按钮、选中的胶囊、链接都用它；绿色只留给「不上马路」「不会下雨」这种好消息 */
-val RandoAccent = Color(0xFF0899AB)
+/** 主色：深石油青。按钮、选中的胶囊、链接都用它；绿色只留给「不上马路」「不会下雨」这种好消息 */
+val RandoAccent = Color(0xFF17707C)
 /** 主色偏亮的一档：渐变的亮端、深色背景上的细线 */
-val RandoAccentBright = Color(0xFF2FD3E2)
+val RandoAccentBright = Color(0xFF3E949F)
 /** 主色当字用（白天）：比 [RandoAccent] 深，白底上才看得清 */
-val AccentDeep = Color(0xFF087E8D)
+val AccentDeep = Color(0xFF145F69)
 /** 更深一档：浅色底块上的字 */
-val AccentDeeper = Color(0xFF06606B)
+val AccentDeeper = Color(0xFF0F4951)
 /** 主色当字用（夜里、骑行视图的黑底上） */
-val AccentGlow = Color(0xFF5EE0EC)
+val AccentGlow = Color(0xFF7CC3CB)
 /** 主色的浅底块（白天）和深底块（夜里），以及深底块上的字 */
-val AccentWash = Color(0xFFDDF7FA)
-val AccentNight = Color(0xFF123D44)
-val AccentMist = Color(0xFFD3F4F8)
+val AccentWash = Color(0xFFE1EEF0)
+val AccentNight = Color(0xFF133F45)
+val AccentMist = Color(0xFFD4EBEE)
 /** 点缀色：黄色，「当前」「这一周」这种要一眼看到的地方 */
 val RandoYellow = Color(0xFFFFC83D)
 

@@ -370,7 +370,7 @@ object ShareCard {
 
         // 最底下：Rando 和地图版权，快拍的回复栏会盖住也没关系
         val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(left, HEIGHT - 120f, left + 28f, HEIGHT - 92f, Color.parseColor("#2FD3E2"), Color.parseColor("#0899AB"), Shader.TileMode.CLAMP)
+            shader = LinearGradient(left, HEIGHT - 120f, left + 28f, HEIGHT - 92f, Color.parseColor("#3E949F"), Color.parseColor("#17707C"), Shader.TileMode.CLAMP)
         }
         c.drawCircle(left + 14f, HEIGHT - 106f, 14f, dot)
         c.drawText("Rando", left + 40f, HEIGHT - 92f, text(44f, ink, heavy))
