@@ -40,7 +40,7 @@ fun RouteChoices(options: List<RouteOption>, chosen: Int, onChoose: (Int) -> Uni
                 Modifier
                     .width(172.dp)
                     .clip(GlassShapes.Card)
-                    .liquidGlass(GlassShapes.Card, if (selected) GlassTone.Tinted(RandoGreen) else GlassTone.Light)
+                    .liquidGlass(GlassShapes.Card, if (selected) GlassTone.Tinted(RandoAccent) else GlassTone.Light)
                     .clickable { onChoose(i) }
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {

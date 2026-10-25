@@ -139,7 +139,7 @@ fun RideList(
                 Spacer(Modifier.width(4.dp))
                 Text(tr("骑行记录", "Rides"), Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                 if (today.isNotEmpty()) {
-                    GlassButton(onClick = { onShareToday(today) }, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                    GlassButton(onClick = { onShareToday(today) }, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                         Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(tr("分享今天", "Share today"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -148,7 +148,7 @@ fun RideList(
             }
             when {
                 rides == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = RandoGreen)
+                    CircularProgressIndicator(color = RandoAccent)
                 }
                 rides.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
@@ -180,7 +180,7 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
     val totals = remember(rides, period, now) { RideStats.recent(rides, period, if (period == Period.WEEK) 8 else 6, now) }
     val current = totals.last()
     val previous = totals.getOrNull(totals.size - 2)
-    GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoGreen)) {
+    GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoAccent)) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(period.unit, Modifier.weight(1f), color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
@@ -193,7 +193,7 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                             .background(if (selected) Color.White.copy(alpha = 0.9f) else Color.Transparent)
                             .clickable { period = p }
                             .padding(horizontal = 14.dp, vertical = 5.dp),
-                        color = if (selected) RandoGreenDeep else Color.White,
+                        color = if (selected) Color(0xFF06606B) else Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -214,11 +214,11 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                 )
                 // 在绿色卡片上：白底按钮，白天夜里都一样
                 GlassButton(onClick = onReview, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text(tr("回顾", "Review"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("回顾", "Review"), color = Color(0xFF06606B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
                 GlassButton(onClick = onRiddenMap, tone = GlassTone.Tinted(Color.White), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text(tr("骑过的路", "Ridden roads"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("骑过的路", "Ridden roads"), color = Color(0xFF06606B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -345,7 +345,7 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
                 TextButton(onClick = {
                     asking = false
                     preview(day) { hide, photos -> ShareCard.dayCard(context, day, hide, photos) }
-                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = RandoGreen.onGlass()) }
+                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = AccentInk) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -563,7 +563,7 @@ fun RiddenMap(
                                     m.label,
                                     Modifier
                                         .clip(GlassShapes.Pill)
-                                        .background(if (selected) RandoGreen else Color.Transparent)
+                                        .background(if (selected) RandoAccent else Color.Transparent)
                                         .clickable { onMode(m) }
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                     color = if (selected) Color.White else Ink,
@@ -735,7 +735,7 @@ fun ReviewPage(
                         s.label,
                         Modifier
                             .clip(GlassShapes.Pill)
-                            .background(if (selected) RandoGreen else Color.Transparent)
+                            .background(if (selected) RandoAccent else Color.Transparent)
                             .clickable { onSpan(s) }
                             .padding(horizontal = 14.dp, vertical = 5.dp),
                         color = if (selected) Color.White else Ink,
@@ -782,7 +782,7 @@ fun ReviewPage(
 
 @Composable
 private fun ReviewTotals(r: Review) {
-    GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoGreen)) {
+    GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoAccent)) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
                 TotalStat(Format.distance(r.meters.toInt()), tr("${r.rides} 次", ridesEn(r.rides)))
@@ -843,7 +843,7 @@ private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> U
             Text(label, color = InkSoft, fontSize = 13.sp)
             Text("${DATE.format(Date(ride.startedAt))} ${ride.title}", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
-        Text(value, color = RandoGreenDeep.onGlass(), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = AccentInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 

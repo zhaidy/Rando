@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -27,7 +28,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.innerShadow
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.personal.rando.ui.LocalPalette
@@ -45,16 +53,24 @@ import dev.chrisbanes.haze.glass.hazeGlass
  */
 val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
 
+/** 在不透明的浅灰卡片里面：默认那种玻璃换成新拟态的凸起，不去模糊后面的地图 */
+val LocalOnSolid = staticCompositionLocalOf { false }
+
 object GlassShapes {
     val Sheet = RoundedCornerShape(32.dp)
     val Card = RoundedCornerShape(24.dp)
     val Pill = RoundedCornerShape(percent = 50)
+    /** 主按钮、新拟态的小卡片 */
+    val Button = RoundedCornerShape(20.dp)
+    val Tile = RoundedCornerShape(18.dp)
 }
 
 /** 玻璃的底色：白玻璃、深色玻璃，或者带一点颜色（选中、导航条） */
 sealed interface GlassTone {
     data object Light : GlassTone
     data object Dark : GlassTone
+    /** 不透明的浅灰底（底部卡片这种大面积的），上面放新拟态的凸起卡片 */
+    data object Solid : GlassTone
     data class Tinted(val color: Color) : GlassTone
 }
 
@@ -68,6 +84,7 @@ object Motion {
 private fun GlassTone.fill(palette: Palette): Color = when (this) {
     GlassTone.Light -> palette.glass
     GlassTone.Dark -> Color(0xFF0E1110).copy(alpha = 0.50f)
+    GlassTone.Solid -> palette.card
     is GlassTone.Tinted -> color.copy(alpha = 0.86f)
 }
 
@@ -75,6 +92,7 @@ private fun GlassTone.fill(palette: Palette): Color = when (this) {
 private fun GlassTone.fallback(palette: Palette): Color = when (this) {
     GlassTone.Light -> palette.glassFallback
     GlassTone.Dark -> Color(0xFF15191A).copy(alpha = 0.92f)
+    GlassTone.Solid -> palette.card
     is GlassTone.Tinted -> color.copy(alpha = 0.94f)
 }
 
@@ -94,7 +112,8 @@ fun Modifier.liquidGlass(
     tone: GlassTone = GlassTone.Light,
     interactionSource: InteractionSource? = null,
 ): Modifier {
-    val haze = LocalHazeState.current
+    if (LocalOnSolid.current && tone == GlassTone.Light) return this.neu(shape).clip(shape)
+    val haze = LocalHazeState.current.takeUnless { LocalOnSolid.current }
     val palette = LocalPalette.current
     val fill = tone.fill(palette)
     val style = remember(shape, fill) {
@@ -104,7 +123,7 @@ fun Modifier.liquidGlass(
             optics(refractionStrength = 0.75f, refractionDisplacement = 22.dp, blurRadius = 18.dp)
         }
     }
-    val material = if (haze != null) {
+    val material = if (haze != null && tone != GlassTone.Solid) {
         Modifier
             .hazeGlass(HazeInput.Sources(haze), style, interactionSource = interactionSource)
             .background(fill, shape)
@@ -135,7 +154,9 @@ fun GlassPanel(
     tone: GlassTone = GlassTone.Light,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(modifier.liquidGlass(shape, tone), content = content)
+    Box(modifier.liquidGlass(shape, tone)) {
+        if (tone == GlassTone.Solid) CompositionLocalProvider(LocalOnSolid provides true) { content() } else content()
+    }
 }
 
 /** 玻璃按钮：胶囊形，按下缩一下 */
@@ -181,7 +202,7 @@ fun GlassIconButton(
     )
 }
 
-/** 主操作按钮：实心的绿色胶囊，上半部分一层高光，像一颗糖 */
+/** 主操作按钮：圆角的实心按钮，左上亮、右下深，底下一圈同色的柔和投影 */
 @Composable
 fun PrimaryButton(
     onClick: () -> Unit,
@@ -190,16 +211,67 @@ fun PrimaryButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
+    val shape = GlassShapes.Button
     Row(
         modifier
             .pressScale(interaction, pressed = 0.96f)
-            .clip(GlassShapes.Pill)
-            .background(Brush.verticalGradient(listOf(color.lighten(0.18f), color)))
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.05f))), GlassShapes.Pill)
+            .dropShadow(shape, Shadow(radius = 18.dp, color = color.copy(alpha = 0.35f), offset = DpOffset(0.dp, 8.dp)))
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(color.lighten(0.3f), color)))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.0f))), shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        content = content,
+    )
+}
+
+/**
+ * 新拟态的凸起：和底色一样的面，左上一道白色高光、右下一道灰蓝色投影，像从底板里压出来的。
+ * 只放在 [GlassTone.Solid] 那种不透明的浅灰底上，压在地图上的东西还是用玻璃
+ */
+@Composable
+fun Modifier.neu(shape: Shape = GlassShapes.Tile, distance: Dp = 6.dp): Modifier {
+    val palette = LocalPalette.current
+    val dark = if (palette.dark) Color.Black.copy(alpha = 0.55f) else Color(0xFFA3B1C6).copy(alpha = 0.6f)
+    val light = if (palette.dark) Color.White.copy(alpha = 0.06f) else Color.White
+    return this
+        .dropShadow(shape, Shadow(radius = distance * 2, color = light, offset = DpOffset(-distance, -distance)))
+        .dropShadow(shape, Shadow(radius = distance * 2, color = dark, offset = DpOffset(distance, distance)))
+        .background(palette.card, shape)
+}
+
+/** 新拟态的凹槽：输入框、分段选择的底槽 */
+@Composable
+fun Modifier.neuInset(shape: Shape = GlassShapes.Tile): Modifier {
+    val palette = LocalPalette.current
+    val dark = if (palette.dark) Color.Black.copy(alpha = 0.6f) else Color(0xFFA3B1C6).copy(alpha = 0.55f)
+    val light = if (palette.dark) Color.White.copy(alpha = 0.05f) else Color.White
+    return this
+        .background(palette.card, shape)
+        .innerShadow(shape, Shadow(radius = 8.dp, color = dark, offset = DpOffset(4.dp, 4.dp)))
+        .innerShadow(shape, Shadow(radius = 8.dp, color = light, offset = DpOffset((-4).dp, (-4).dp)))
+}
+
+/** 新拟态的按钮：凸起的面，按下缩一下 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun NeuButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = GlassShapes.Tile,
+    onLongClick: (() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier
+            .pressScale(interaction, pressed = 0.95f)
+            .neu(shape)
+            .clip(shape)
+            .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onLongClick = onLongClick),
+        contentAlignment = Alignment.Center,
         content = content,
     )
 }
