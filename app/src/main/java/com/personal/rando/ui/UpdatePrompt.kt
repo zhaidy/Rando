@@ -2,7 +2,6 @@ package com.personal.rando.ui
 
 import android.Manifest
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -39,6 +38,7 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     val context = LocalContext.current
     val updater = remember { UpdateChecker(context.applicationContext) }
     val scope = rememberCoroutineScope()
+    val notices = LocalNotices.current ?: rememberNotices()
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
     var updating by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -53,12 +53,12 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
             if (info != null) {
                 update = info
             } else if (manual) {
-                Toast.makeText(context, tr("已是最新版本（build ${updater.currentBuild()}）", "You're on the latest version (build ${updater.currentBuild()})"), Toast.LENGTH_SHORT).show()
+                notices.show(tr("已是最新版本（build ${updater.currentBuild()}）", "You're on the latest version (build ${updater.currentBuild()})"))
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (manual) Toast.makeText(context, tr("检查更新失败：${e.message}", "Update check failed: ${e.message}"), Toast.LENGTH_SHORT).show()
+            if (manual) notices.show(tr("检查更新失败：${e.message}", "Update check failed: ${e.message}"))
         }
     }
 
@@ -67,7 +67,7 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     AlertDialog(
         onDismissRequest = { if (!updating) update = null },
         shape = com.personal.rando.ui.glass.GlassShapes.Sheet,
-        containerColor = androidx.compose.ui.graphics.Color(0xF7F7FAF8),
+        containerColor = DialogColor,
         title = { Text(tr("发现新版本 build ${info.build}", "New version available: build ${info.build}")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

@@ -50,6 +50,10 @@ object MapLayers {
 
     /** OpenFreeMap 的免费矢量地图，不需要 key */
     const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+    /** 同一套瓦片的深色样式，夜间模式用；离线地图存的瓦片两种样式通用 */
+    const val DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
+
+    fun styleUrl(dark: Boolean) = if (dark) DARK_STYLE_URL else STYLE_URL
 
     private const val TRACK = "rando-track"
     private const val ROUTE = "rando-route"

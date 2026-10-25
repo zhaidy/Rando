@@ -1,6 +1,13 @@
 package com.personal.rando
 
 import android.Manifest
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import com.personal.rando.ui.rememberNotices
+import com.personal.rando.ui.NoticeHost
+import com.personal.rando.ui.LocalNotices
+import androidx.compose.material3.SnackbarHostState
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -66,7 +73,10 @@ class MainActivity : ComponentActivity() {
                 var updateChecks by remember { mutableIntStateOf(0) }
                 // 液态玻璃：地图登记成取景来源，上面所有玻璃面板都从这里取
                 val haze = rememberHazeState()
-                CompositionLocalProvider(LocalHazeState provides haze) {
+                // 提示条（代替 Toast）：各个界面都往这里发，浮在最上面
+                val noticeHost = remember { SnackbarHostState() }
+                val notices = rememberNotices(noticeHost)
+                CompositionLocalProvider(LocalHazeState provides haze, LocalNotices provides notices) {
                     // 地图一直留着（来回切不用重新加载），记录页盖在上面，从下面浮上来
                     MapScreen(vm, onOpenRides = { screen = -1L }, onCheckUpdate = { updateChecks++ })
                     AnimatedContent(
@@ -102,9 +112,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    val navigation by vm.session.navigation.collectAsStateWithLifecycle()
+                    UpdatePrompt(navigating = navigation != null, manualChecks = updateChecks)
+                    Box(Modifier.fillMaxSize()) { NoticeHost(noticeHost) }
                 }
-                val navigation by vm.session.navigation.collectAsStateWithLifecycle()
-                UpdatePrompt(navigating = navigation != null, manualChecks = updateChecks)
             }
         }
     }
