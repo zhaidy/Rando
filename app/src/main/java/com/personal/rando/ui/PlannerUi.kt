@@ -1488,12 +1488,20 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
-/** 设置：体重（算卡路里）、骑车自动开始记录、主页显示骑过的路、播报声音 */
+/** 设置：家、体重（算卡路里）、骑车自动开始记录、主页显示骑过的路、播报声音 */
 @Composable
 fun SettingsDialog(
     settings: Settings,
     onSave: (Settings) -> Unit,
     onDismiss: () -> Unit,
+    /** 收藏的家；改了马上生效，不用点保存 */
+    home: LatLon? = null,
+    /** 我现在的位置，算离家多远 */
+    here: LatLon? = null,
+    onHomeHere: () -> Unit = {},
+    /** 关掉设置，去搜索或长按地图选 */
+    onPickHome: () -> Unit = {},
+    onRemoveHome: () -> Unit = {},
     /** 定位已经是「始终允许」 */
     backgroundLocation: Boolean = false,
     onAskBackgroundLocation: () -> Unit = {},
@@ -1516,7 +1524,16 @@ fun SettingsDialog(
         containerColor = Color(0xF7F7FAF8),
         title = { Text("设置") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column {
+                    Text("家", color = Ink, fontSize = 16.sp)
+                    Text(homeLabel(home, here), color = InkSoft, fontSize = 13.sp)
+                    Row {
+                        LinkText("用现在的位置", onHomeHere)
+                        LinkText("搜索或在地图上选", onPickHome)
+                        if (home != null) LinkText("删掉", onRemoveHome)
+                    }
+                }
                 OutlinedTextField(
                     value = weight,
                     onValueChange = { weight = it.filter(Char::isDigit).take(3) },
@@ -1578,6 +1595,14 @@ fun SettingsDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/** 「已设好，离这里 3.2 km」：只有坐标，没有地址可显示 */
+private fun homeLabel(home: LatLon?, here: LatLon?): String = when {
+    home == null -> "还没设：设好后能一键回家、说「回家」、坐 MRT 回家"
+    here == null -> "已设好"
+    Geo.distance(here, home) < 100 -> "已设好，就在这里"
+    else -> "已设好，离这里 ${Format.distance(Geo.distance(here, home).toInt())}"
 }
 
 /** 「自动 · 很高音质」「声音 2：高音质 · 要联网」 */

@@ -80,6 +80,8 @@ data class PlannerState(
     val via: List<Place> = emptyList(),
     /** 下一次长按地图或搜索选的是途经点 */
     val pickingVia: Boolean = false,
+    /** 下一次长按地图或搜索选的是家（从设置里点进来的），不算路 */
+    val pickingHome: Boolean = false,
     /** 不去哪儿，骑一圈回到起点 */
     val loop: LoopRequest? = null,
     val query: String = "",
@@ -202,11 +204,13 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun choosePlace(place: Place) {
         searchJob?.cancel()
+        if (_state.value.pickingHome) return saveHome(place.location)
         _state.update { it.copy(query = "", results = emptyList()).with(place) }
         planRoute()
     }
 
     fun onMapLongPress(point: LatLon) {
+        if (_state.value.pickingHome) return saveHome(point)
         _state.update { it.with(Place(name = "地图上的点", detail = "", location = point)) }
         planRoute()
     }
@@ -232,7 +236,15 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         return s.via.toMutableList().apply { add(best, place) }
     }
 
-    fun startPickingVia() = _state.update { it.copy(pickingVia = true, pickingStart = false) }
+    fun startPickingVia() = _state.update { it.copy(pickingVia = true, pickingStart = false, pickingHome = false) }
+
+    /** 从设置里点「在地图上选」：下一次搜索或长按地图的地方存成家 */
+    fun startPickingHome() = _state.update { it.copy(pickingHome = true, pickingStart = false, pickingVia = false) }
+
+    private fun saveHome(location: LatLon) {
+        savedPlaces.save(SavedPlace(SavedPlace.HOME, location))
+        _state.update { it.copy(pickingHome = false, query = "", results = emptyList()) }
+    }
 
     fun removeVia(place: Place) {
         _state.update { it.copy(via = it.via - place) }
@@ -326,12 +338,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         planRoute()
     }
 
-    fun startPickingStart() = _state.update { it.copy(pickingStart = true, pickingVia = false) }
+    fun startPickingStart() = _state.update { it.copy(pickingStart = true, pickingVia = false, pickingHome = false) }
 
-    /** 不选起点 / 途经点了，路线照旧 */
+    /** 不选起点 / 途经点 / 家了，路线照旧 */
     fun cancelPicking() {
         searchJob?.cancel()
-        _state.update { it.copy(pickingStart = false, pickingVia = false, query = "", results = emptyList()) }
+        _state.update { it.copy(pickingStart = false, pickingVia = false, pickingHome = false, query = "", results = emptyList()) }
     }
 
     fun useMyLocationAsStart() {
