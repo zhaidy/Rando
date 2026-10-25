@@ -267,7 +267,7 @@ object ShareCard {
             c.drawText(label, x, y + 50f, caption)
             x += widths[i] + gap
         }
-        if (map != null) c.drawText("地图 © OpenStreetMap", left, HEIGHT - 48f, text(20f, Color.parseColor("#A3AAA6")))
+        if (map != null) c.drawText("地图 © OpenStreetMap", left, HEIGHT - 52f, text(16f, Color.parseColor("#C6CAC7")))
         c.drawText("Rando", WIDTH - 72f, HEIGHT - 48f, text(34f, green, bold).apply { textAlign = Paint.Align.RIGHT })
         return out
     }
