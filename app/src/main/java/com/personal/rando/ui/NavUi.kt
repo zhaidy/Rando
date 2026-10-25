@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.i18n.tr
@@ -85,13 +86,15 @@ fun NavigationOverlay(
                 .navigationBarsPadding()
                 .padding(12.dp),
         ) {
-            // 一行：剩余、还要，右边骑行视图、结束
+            // 一行：剩余多远、下面一行小字还要多久，右边骑行视图、结束。
+            // 两个按钮占掉大半行，剩余和还要并排放不下（还要会被挤成一字一行），所以叠起来
             Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (progress != null) {
-                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        RollingStat(Format.distance(progress.remainingMeters.toInt()), tr("剩余", "Left"))
-                        RollingStat(Format.duration(progress.remainingSeconds), tr("还要", "ETA"))
-                    }
+                    RollingStat(
+                        Format.distance(progress.remainingMeters.toInt()),
+                        tr("还要 ${Format.duration(progress.remainingSeconds)}", "${Format.duration(progress.remainingSeconds)} left"),
+                        Modifier.weight(1f).padding(end = 8.dp),
+                    )
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
@@ -109,14 +112,14 @@ fun NavigationOverlay(
 
 /** 数字变化时往上滚一格 */
 @Composable
-private fun RollingStat(value: String, label: String) {
-    Column {
+private fun RollingStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
         AnimatedContent(
             targetState = value,
             transitionSpec = { rollUp() },
             label = "roll",
         ) { v -> Text(v, color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 1) }
-        Text(label, color = InkSoft, fontSize = 13.sp)
+        Text(label, color = InkSoft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
