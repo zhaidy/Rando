@@ -270,7 +270,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             m.cameraPosition = CameraPosition.Builder().target(SINGAPORE).zoom(11.0).build()
             m.uiSettings.isRotateGesturesEnabled = false
             m.addOnMapLongClickListener { latLng ->
+                val home = vm.state.value.pickingHome
                 vm.onMapLongPress(LatLon(latLng.latitude, latLng.longitude))
+                if (home) Toast.makeText(context, "家的位置设好了", Toast.LENGTH_SHORT).show()
                 true
             }
             m.setStyle(MapLayers.STYLE_URL) { s ->
@@ -607,6 +609,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             hint = when {
                                 state.pickingStart -> "搜索起点"
                                 state.pickingVia -> "搜索途经点"
+                                state.pickingHome -> "搜索家的地址"
                                 else -> "去哪儿骑？"
                             },
                             results = state.results,
@@ -614,7 +617,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             onQuery = vm::onQueryChange,
                             onPick = {
                                 focusManager.clearFocus()
+                                val home = state.pickingHome
                                 vm.choosePlace(it)
+                                if (home) Toast.makeText(context, "家设在「${it.name}」", Toast.LENGTH_SHORT).show()
                             },
                             onOpenRides = onOpenRides,
                             onCheckUpdate = onCheckUpdate,
@@ -628,17 +633,22 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         PrefsRow(state.prefs, vm::setPrefs)
                         (voiceState as? VoiceState.Listening)?.let { HintPill("正在听：${it.partial.ifEmpty { "请说…" }}", onCancel = voice::cancel) }
                         AnimatedVisibility(
-                            state.pickingStart || state.pickingVia,
+                            state.pickingStart || state.pickingVia || state.pickingHome,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
                             exit = fadeOut() + slideOutVertically { -it },
                         ) {
-                            HintPill("长按地图选${if (state.pickingVia) "途经点" else "起点"}，或者在上面搜一个地方", onCancel = {
+                            val what = when {
+                                state.pickingVia -> "途经点"
+                                state.pickingHome -> "家的位置"
+                                else -> "起点"
+                            }
+                            HintPill("长按地图选$what，或者在上面搜一个地方", onCancel = {
                                 focusManager.clearFocus()
                                 vm.cancelPicking()
                             })
                         }
                     }
-                    if (state.pickingStart || state.pickingVia) BackHandler { vm.cancelPicking() }
+                    if (state.pickingStart || state.pickingVia || state.pickingHome) BackHandler { vm.cancelPicking() }
 
                     Column(
                         Modifier
@@ -820,8 +830,22 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     }
     if (settingsDialog) {
         val voiceOptions by context.rando.session.voiceOptions.collectAsStateWithLifecycle()
+        val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
+        val here by vm.session.location.collectAsStateWithLifecycle()
+        val home = saved.firstOrNull { it.name == SavedPlace.HOME }
         SettingsDialog(
             settings,
+            home = home?.location,
+            here = here,
+            onHomeHere = {
+                here?.let { vm.savedPlaces.save(SavedPlace(SavedPlace.HOME, it)) }
+                    ?: Toast.makeText(context, "还没定位到", Toast.LENGTH_SHORT).show()
+            },
+            onPickHome = {
+                settingsDialog = false
+                vm.startPickingHome()
+            },
+            onRemoveHome = { home?.let(vm.savedPlaces::remove) },
             onSave = {
                 settingsStore.update(it)
                 settingsDialog = false
