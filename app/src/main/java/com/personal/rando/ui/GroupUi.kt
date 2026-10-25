@@ -207,6 +207,10 @@ fun walkieText(w: WalkieState): String = when {
     else -> "在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}"
 }
 
+/** 骑行视图上只在有事时说对讲：有人在说、你在说、出问题；平常在听就不占一行 */
+fun rideWalkieText(w: WalkieState): String? =
+    walkieText(w).takeIf { w.problem != null || w.talking.isNotEmpty() || w.sending || w.testing }
+
 /** 麦克风音量：▁▃▅▇ 亮几格 */
 private fun micBars(n: Int): String = "▁▃▅▇".mapIndexed { i, c -> if (i < n) c else '·' }.joinToString("")
 

@@ -52,6 +52,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
+import org.maplibre.android.camera.CameraUpdateFactory
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -123,21 +129,33 @@ fun RideView(
     onMrt: () -> Unit = {},
     /** 正在听语音指令：听到的字（还没听到是「请说…」）；没在听是 null */
     listening: String? = null,
-    map: @Composable (Modifier) -> Unit,
+    /** 地图；第二个参数是上下两块玻璃挡住的地方，镜头要避开 */
+    map: @Composable (Modifier, PaddingValues) -> Unit,
 ) {
     val progress = navigation?.progress
     val timeline = remember(navigation?.route) { navigation?.route?.let(::RouteTimeline) }
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
+    val density = LocalDensity.current
+    // 上面那块的下沿、下面那块的上沿、整个屏幕的高，都是像素
+    var topEdge by remember { mutableIntStateOf(0) }
+    var bottomEdge by remember { mutableIntStateOf(0) }
+    var height by remember { mutableIntStateOf(0) }
+    val cover = with(density) {
+        val gap = (bottomEdge - topEdge).coerceAtLeast(0)
+        // 人放在露出来那块的偏下面，前方的路多看一些
+        PaddingValues(top = (topEdge + gap * 0.4f).toDp(), bottom = (height - bottomEdge).coerceAtLeast(0).toDp())
+    }
     CompositionLocalProvider(LocalHazeState provides haze) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged { height = it.height }) {
             // 地图铺满，上下两块深色玻璃浮在上面
-            map(Modifier.fillMaxSize().hazeSource(haze))
+            map(Modifier.fillMaxSize().hazeSource(haze), cover)
             GlassPanel(
                 Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(10.dp),
+                    .padding(10.dp)
+                    .onGloballyPositioned { topEdge = it.boundsInParent().bottom.toInt() },
                 shape = GlassShapes.Card,
                 tone = GlassTone.Dark,
             ) {
@@ -169,7 +187,8 @@ fun RideView(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(10.dp),
+                    .padding(10.dp)
+                    .onGloballyPositioned { bottomEdge = it.boundsInParent().top.toInt() },
                 tone = GlassTone.Dark,
             ) {
                 Column(Modifier.padding(vertical = 14.dp)) {
@@ -445,7 +464,15 @@ private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<Ame
         warning?.let {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot("#F2A93B")
-                Text(it, color = Color(0xFFFFD08A), fontSize = 16.sp, maxLines = 2)
+                // 一整趟都不变，占一行就够了，长了字缩小
+                Text(
+                    it,
+                    color = Color(0xFFFFD08A),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 16.sp),
+                )
             }
         }
     }
@@ -512,6 +539,8 @@ fun RideMap(
     teammates: List<Teammate>,
     modifier: Modifier,
     hazards: List<Hazard> = emptyList(),
+    /** 被上下玻璃挡住的地方，跟着人走时把人放在露出来的那块里 */
+    cover: PaddingValues = PaddingValues(),
 ) {
     val context = LocalContext.current
     // 盖在主地图上面，要用 TextureView
@@ -546,6 +575,13 @@ fun RideMap(
                 map = m
             }
         }
+    }
+    val density = LocalDensity.current
+    LaunchedEffect(map, cover) {
+        val m = map ?: return@LaunchedEffect
+        val top = with(density) { cover.calculateTopPadding().toPx() }.toDouble()
+        val bottom = with(density) { cover.calculateBottomPadding().toPx() }.toDouble()
+        m.moveCamera(CameraUpdateFactory.paddingTo(0.0, top, 0.0, bottom))
     }
     LaunchedEffect(map, fix) {
         val m = map ?: return@LaunchedEffect
