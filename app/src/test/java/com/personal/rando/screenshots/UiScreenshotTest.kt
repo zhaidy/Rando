@@ -34,6 +34,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import com.personal.rando.ride.Ride
 import com.personal.rando.ride.TrackPoint
+import com.personal.rando.ui.PlannerFrame
 import com.personal.rando.ui.RandoTheme
 import com.personal.rando.ui.RideDetail
 import com.personal.rando.ui.RideList
@@ -128,25 +129,30 @@ class UiScreenshotTest {
         finished: Ride? = null,
         climate: com.personal.rando.weather.Climate? = null,
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {}, {})
-            PrefsRow(prefs, {})
-            if (picking) HintPill("长按地图选起点，或者在上面搜一个地方", onCancel = {})
-        }
-        Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
-            group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, device = "蓝牙耳机 AirPods", talking = setOf("小红"))) }
-            finished?.let { FinishedCard(it, {}, {}) }
-            recording?.let { RecordingPill(it, {}, {}) }
-            PlannerSheet(
-                state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities, climate = climate),
-                saved = saved,
-                actions = PlannerActions(),
-                savedRoutes = savedRoutes,
-                parked = com.personal.rando.places.ParkedBike(LatLon(1.29, 103.85), System.currentTimeMillis() - 2 * 3_600_000L),
-                here = LatLon(1.30, 103.85),
-            )
-        }
+        PlannerFrame(
+            top = {
+                SearchBar(query, if (picking) "搜索起点" else "去哪儿骑？", results, 42, {}, {}, {})
+                PrefsRow(prefs, {})
+                if (picking) HintPill("长按地图选起点，或者在上面搜一个地方", onCancel = {})
+            },
+            bottom = {
+                SideRail(showLocation = true, showRecord = recording == null, {}, {}, {}, onGroup = {}.takeIf { group == null }, modifier = Modifier.align(Alignment.End))
+                group?.let { GroupPill(it, {}, {}, walkie = WalkieState(on = true, device = "蓝牙耳机 AirPods", talking = setOf("小红"))) }
+                finished?.let { FinishedCard(it, {}, {}) }
+                recording?.let { RecordingPill(it, {}, {}) }
+            },
+            sheet = { modifier ->
+                PlannerSheet(
+                    state = PlannerState(prefs = prefs, destination = destination, pickingStart = picking, route = routeState, via = via, loop = loop, weather = weather, amenities = amenities, climate = climate),
+                    saved = saved,
+                    actions = PlannerActions(),
+                    modifier = modifier,
+                    savedRoutes = savedRoutes,
+                    parked = com.personal.rando.places.ParkedBike(LatLon(1.29, 103.85), System.currentTimeMillis() - 2 * 3_600_000L),
+                    here = LatLon(1.30, 103.85),
+                )
+            },
+        )
     }
 
     @Test fun plannerEmpty() = shot("1_planner_empty") { Planner() }
@@ -238,6 +244,31 @@ class UiScreenshotTest {
             recording = RecordingState(startedAt = 0, distanceMeters = 5320.0, movingSeconds = 1234, currentSpeed = 5.2),
             group = GroupState("K7PX3M", connected = true, teammates = listOf(Teammate("a", "小红"), Teammate("b", "阿明"))),
         )
+    }
+
+    /** 小屏手机上队伍、记录、路线卡片都在：下面那摞不能盖住搜索框 */
+    @Config(qualifiers = "w360dp-h640dp-xxhdpi")
+    @Test fun groupRideSmallScreen() = shot("6d_group_small") {
+        Planner(
+            destination = mbs,
+            routeState = RouteState.Ready(route, emptyList()),
+            recording = RecordingState(startedAt = 0, distanceMeters = 5320.0, movingSeconds = 1234, currentSpeed = 5.2),
+            group = GroupState("K7PX3M", connected = true, teammates = listOf(Teammate("a", "小红"), Teammate("b", "阿明"))),
+        )
+    }
+
+    @Test fun notice() = shot("14_notice") {
+        Planner()
+        val host = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+        val notices = com.personal.rando.ui.rememberNotices(host)
+        androidx.compose.runtime.LaunchedEffect(Unit) { notices.show("导航失败：连不上算路服务器", action = "重试") }
+        com.personal.rando.ui.NoticeHost(host)
+    }
+
+    @Test fun crash() {
+        compose.setContent { com.personal.rando.ui.CrashDialog(com.personal.rando.ride.CrashAlert(deadline = System.currentTimeMillis() + 23_000), {}, {}) }
+        compose.mainClock.advanceTimeBy(1_000)
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/13_crash.png")
     }
 
     @Test fun finished() = shot("6c_finished") { Planner(finished = rides[0]) }

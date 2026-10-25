@@ -1,5 +1,11 @@
 package com.personal.rando.ui
 
+import androidx.compose.ui.unit.Density
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.graphicsLayer
+import com.personal.rando.ui.glass.GlassIconButton
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -23,7 +29,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.speech.RecognizerIntent
-import android.widget.Toast
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
@@ -89,6 +94,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -121,6 +127,7 @@ import com.personal.rando.ride.RecordingState
 import com.personal.rando.ride.RideSession
 import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.LatLon
+import com.personal.rando.group.SharedRoute
 import com.personal.rando.routing.Crossing
 import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RoadKind
@@ -169,6 +176,7 @@ private val SINGAPORE = LatLng(1.3521, 103.8198)
 @Composable
 fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheckUpdate: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val notices = LocalNotices.current ?: rememberNotices()
     val navigation by vm.session.navigation.collectAsStateWithLifecycle()
     val recording by vm.session.recording.collectAsStateWithLifecycle()
     val saved by vm.savedPlaces.places.collectAsStateWithLifecycle()
@@ -194,7 +202,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             AutoStart.apply(photoAppContext, true)
         } else {
             settingsStore.update(settingsStore.settings.value.copy(autoStart = false))
-            Toast.makeText(photoAppContext, "没有「身体活动」权限，认不出在骑车", Toast.LENGTH_LONG).show()
+            notices.show("没有「身体活动」权限，认不出在骑车", long = true)
         }
     }
     val backgroundPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -209,9 +217,9 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         val here = vm.session.location.value
         when {
             home == null -> vm.session.say("先把家收藏起来，才知道坐到哪个站").also {
-                Toast.makeText(mrtContext, "先把「家」收藏起来", Toast.LENGTH_LONG).show()
+                notices.show("先把「家」收藏起来", long = true)
             }
-            here == null -> Toast.makeText(mrtContext, "还没定位到", Toast.LENGTH_SHORT).show()
+            here == null -> notices.show("还没定位到")
             else -> {
                 val plan = MrtHome.plan(mrtContext.rando.mrt, here, home.location)
                 if (plan == null) {
@@ -228,12 +236,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) {
             parking.photoTaken()
-            Toast.makeText(photoContext, "车位照片存好了", Toast.LENGTH_SHORT).show()
+            notices.show("车位照片存好了")
         }
     }
     val photoParking = {
         val uri = FileProvider.getUriForFile(photoContext, "${photoContext.packageName}.files", parking.photoFile)
-        runCatching { takePhoto.launch(uri) }.onFailure { Toast.makeText(photoContext, "打不开相机", Toast.LENGTH_SHORT).show() }
+        runCatching { takePhoto.launch(uri) }.onFailure { notices.show("打不开相机") }
         Unit
     }
     val voice = LocalContext.current.rando.voice
@@ -265,15 +273,21 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     val mapView = rememberMapView(textureMode = true)
+    // 规划页上下两摞挡住了哪里，镜头框路线、框某一段时避开
+    var plannerInsets by remember { mutableStateOf(PlannerInsets()) }
+    // 地图转了多少度（0 是正北朝上）
+    var bearing by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             m.cameraPosition = CameraPosition.Builder().target(SINGAPORE).zoom(11.0).build()
-            m.uiSettings.isRotateGesturesEnabled = false
+            // 规划时可以两指转地图对着前方看；转了以后右边出现指北针，点一下转回正北
+            m.uiSettings.isCompassEnabled = false
+            m.addOnCameraMoveListener { bearing = m.cameraPosition.bearing.toFloat() }
             m.addOnMapLongClickListener { latLng ->
                 val home = vm.state.value.pickingHome
                 vm.onMapLongPress(LatLon(latLng.latitude, latLng.longitude))
-                if (home) Toast.makeText(context, "家的位置设好了", Toast.LENGTH_SHORT).show()
+                if (home) notices.show("家的位置设好了")
                 true
             }
             m.setStyle(MapLayers.STYLE_URL) { s ->
@@ -309,7 +323,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             walkie.turnOn()
             RideService.start(context)
         } else {
-            Toast.makeText(context, "没有麦克风权限，开不了对讲", Toast.LENGTH_SHORT).show()
+            notices.show("没有麦克风权限，开不了对讲")
         }
     }
     val toggleTalk = {
@@ -377,7 +391,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         }
     }
     val voicePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) voice.listen() else Toast.makeText(context, "没有麦克风权限，用不了语音指令", Toast.LENGTH_SHORT).show()
+        if (granted) voice.listen() else notices.show("没有麦克风权限，用不了语音指令")
     }
     val listen = {
         if (voice.hasMicPermission()) voice.listen() else voicePermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -390,11 +404,13 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     var finished by remember { mutableStateOf<Ride?>(null) }
     // 骑完还留在队里（比如在终点等队友），要走了在小队面板上点「退出」
     val finishRide = {
-        finished = finishRide(context, vm.session)
+        finished = finishRide(notices, vm.session)
     }
     // 「结束」按钮先问一句：骑车时手套一蹭就把导航和记录都停了
     var confirmFinish by remember { mutableStateOf(false) }
     val askFinish = { confirmFinish = true }
+    // 「退出」紧挨着「分享」，点错就退队、关对讲，也先问一句
+    var confirmLeave by remember { mutableStateOf(false) }
     // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
     val joinGroup = { code: String, name: String ->
         groupDialog = false
@@ -405,11 +421,21 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     LaunchedEffect(style, teammates) {
         style?.let { MapLayers.showTeam(it, teammates) }
     }
-    val returnTrip = { ride: Ride ->
+    fun returnTrip(ride: Ride) {
         finished = null
-        Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
+        notices.show("正在算原路返回的路线…")
         askNotifications()
-        vm.returnTrip(ride.points.map { it.location }) { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
+        vm.returnTrip(ride.points.map { it.location }) { notices.show("原路返回失败：$it", action = "重试") { returnTrip(ride) } }
+    }
+    // 导航去某个地方（MRT 站、摔车的队友）；失败了提示条上可以重试
+    fun navigateTo(to: LatLon, name: String) {
+        askNotifications()
+        vm.navigateTo(to, name) { notices.show("导航失败：$it", action = "重试") { navigateTo(to, name) } }
+    }
+    fun followShared(offer: SharedRoute) {
+        askNotifications()
+        notices.show("正在算${offer.name}的路线…")
+        vm.followShared(offer) { notices.show("跟着骑失败：$it", action = "重试") { followShared(offer) } }
     }
 
     // 以前骑过的路垫在底下；存了、删了记录就重画，设置里可以关
@@ -489,12 +515,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             val bounds = LatLngBounds.Builder()
                 .includes(route.points.map { LatLng(it.lat, it.lon) })
                 .build()
+            // 等卡片换成算好的样子、高度定下来，再按它实际挡住的地方框
+            delay(400)
+            val (top, bottom) = cameraInsets(plannerInsets, density, fallbackTop = 200, fallbackBottom = 380)
             with(density) {
-                m.animateCamera(
-                    CameraUpdateFactory.newLatLngBounds(
-                        bounds, 48.dp.roundToPx(), 200.dp.roundToPx(), 48.dp.roundToPx(), 380.dp.roundToPx(),
-                    )
-                )
+                m.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 48.dp.roundToPx(), top, 72.dp.roundToPx(), bottom))
             }
         } else {
             state.destination?.let { m.animateCamera(CameraUpdateFactory.newLatLng(LatLng(it.location.lat, it.location.lon))) }
@@ -536,10 +561,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         with(density) {
             if (focused.points.size >= 2) {
                 val bounds = LatLngBounds.Builder().includes(focused.points.map { LatLng(it.lat, it.lon) }).build()
-                m.animateCamera(
-                    CameraUpdateFactory.newLatLngBounds(bounds, 80.dp.roundToPx(), 240.dp.roundToPx(), 80.dp.roundToPx(), 260.dp.roundToPx()),
-                    700,
-                )
+                val (top, bottom) = cameraInsets(plannerInsets, density, fallbackTop = 240, fallbackBottom = 260)
+                m.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 80.dp.roundToPx(), top, 80.dp.roundToPx(), bottom), 700)
             } else {
                 m.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(focused.location.lat, focused.location.lon), 17.5), 700)
             }
@@ -587,7 +610,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         weightKg = settings.weightKg,
                         onReport = { type ->
                             val ok = vm.session.reportHazard(type)
-                            Toast.makeText(context, if (ok) "已标记：${type.label}" else "还没定位到，标不了", Toast.LENGTH_SHORT).show()
+                            notices.show(if (ok) "已标记：${type.label}" else "还没定位到，标不了")
                         },
                     ) { modifier, cover -> RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, modifier, hazards, cover) }
                 }
@@ -601,13 +624,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         RecenterButton(follow, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp))
                     }
                 }
-                Layer.PLANNER -> Box(Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier
-                            .statusBarsPadding()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
+                Layer.PLANNER -> PlannerFrame(
+                    top = {
                         SearchBar(
                             query = state.query,
                             hint = when {
@@ -623,12 +641,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 focusManager.clearFocus()
                                 val home = state.pickingHome
                                 vm.choosePlace(it)
-                                if (home) Toast.makeText(context, "家设在「${it.name}」", Toast.LENGTH_SHORT).show()
+                                if (home) notices.show("家设在「${it.name}」")
                             },
-                            onOpenRides = onOpenRides,
                             onCheckUpdate = onCheckUpdate,
                             onSettings = { settingsDialog = true },
-                            onMrtHome = mrtHome,
                             onOfflineMaps = {
                                 offlineMaps.refresh()
                                 offlineDialog = true
@@ -651,16 +667,27 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 vm.cancelPicking()
                             })
                         }
-                    }
-                    if (state.pickingStart || state.pickingVia || state.pickingHome) BackHandler { vm.cancelPicking() }
-
-                    Column(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
+                        if (state.pickingStart || state.pickingVia || state.pickingHome) BackHandler { vm.cancelPicking() }
+                    },
+                    bottom = {
+                        val rotated = bearing in 1f..359f
+                        AnimatedVisibility(
+                            rotated,
+                            modifier = Modifier.align(Alignment.End),
+                            enter = fadeIn() + scaleIn(Motion.bouncy()),
+                            exit = fadeOut() + scaleOut(),
+                        ) {
+                            GlassIconButton(onClick = {
+                                map?.let { m -> m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(m.cameraPosition).bearing(0.0).build())) }
+                            }) {
+                                Icon(
+                                    NorthIcon,
+                                    contentDescription = "转回正北",
+                                    tint = RandoRed,
+                                    modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = -bearing },
+                                )
+                            }
+                        }
                         SideRail(
                             showLocation = hasLocation,
                             showRecord = recording == null,
@@ -684,7 +711,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 GroupPill(
                                     g,
                                     onShare = { shareTeamCode(context, g.code) },
-                                    onLeave = leaveGroup,
+                                    onLeave = { confirmLeave = true },
                                     walkie = walkieState,
                                     onToggleTalk = toggleTalk,
                                     onLevel = walkie::setLevel,
@@ -717,8 +744,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         ) {
                             recording?.let { RecordingPill(it, onRideView = { openRideView(true) }, onStop = askFinish) }
                         }
+                    },
+                    sheet = { sheetModifier ->
                         AnimatedContent(
                             targetState = focus,
+                            modifier = sheetModifier,
                             transitionSpec = {
                                 (fadeIn(tween(220)) + slideInVertically(Motion.bouncy()) { it / 3 })
                                     .togetherWith(fadeOut(tween(140)))
@@ -743,11 +773,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                         if (marked) vm.roadCorrections.removeCovering(item.points) else vm.roadCorrections.add(item.points)
                                         focus = null
                                         vm.retry()
-                                        Toast.makeText(
-                                            context,
-                                            if (marked) "已撤销，重新算路" else "记下了，这里按马路算；开「不上马路」会绕开",
-                                            Toast.LENGTH_LONG,
-                                        ).show()
+                                        notices.show(if (marked) "已撤销，重新算路" else "记下了，这里按马路算；开「不上马路」会绕开", long = true)
                                     },
                                 )
                             } else {
@@ -787,13 +813,15 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                             onChooseRoute = vm::chooseSavedRoute,
                                             onRemoveRoute = vm.savedRoutes::remove,
                                             onParked = { parkedDialog = true },
+                                            onMrtHome = mrtHome,
                                         )
                                     },
                                 )
                             }
                         }
-                    }
-                }
+                    },
+                    onInsets = { plannerInsets = it },
+                )
             }
         }
     }
@@ -826,8 +854,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             plan,
             onGo = {
                 mrtPlan = null
-                askNotifications()
-                vm.navigateTo(plan.boardExit.location, "${plan.board.zh}站") { Toast.makeText(context, "导航失败：$it", Toast.LENGTH_LONG).show() }
+                navigateTo(plan.boardExit.location, "${plan.board.zh}站")
             },
             onDismiss = { mrtPlan = null },
         )
@@ -843,7 +870,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             here = here,
             onHomeHere = {
                 here?.let { vm.savedPlaces.save(SavedPlace(SavedPlace.HOME, it)) }
-                    ?: Toast.makeText(context, "还没定位到", Toast.LENGTH_SHORT).show()
+                    ?: notices.show("还没定位到")
             },
             onPickHome = {
                 settingsDialog = false
@@ -864,7 +891,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onPreviewVoice = context.rando.session::previewVoice,
             onSystemVoices = {
                 runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    .onFailure { Toast.makeText(context, "打不开系统的文字转语音设置", Toast.LENGTH_SHORT).show() }
+                    .onFailure { notices.show("打不开系统的文字转语音设置") }
             },
             backgroundLocation = AutoStart.hasBackgroundLocation(context),
             onAskBackgroundLocation = {
@@ -889,7 +916,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onSave = { name ->
                 vm.saveRoute(name)
                 savingRoute = false
-                Toast.makeText(context, "已收藏「$name」", Toast.LENGTH_SHORT).show()
+                notices.show("已收藏「$name」")
             },
             onDismiss = { savingRoute = false },
         )
@@ -902,6 +929,22 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 hazardShown = null
             },
             onDismiss = { hazardShown = null },
+        )
+    }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            shape = GlassShapes.Sheet,
+            containerColor = Color(0xF7F7FAF8),
+            title = { Text("退出这个队伍？") },
+            text = { Text("对讲会关掉，队友也看不到你的位置了。" + if (recording != null) "记录不受影响，还会接着记。" else "", color = InkSoft) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmLeave = false
+                    leaveGroup()
+                }) { Text("退出", color = RandoRed, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("取消", color = Ink) } },
         )
     }
     if (confirmFinish) {
@@ -926,8 +969,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             me = fix?.location,
             onGo = {
                 group.dismissSos(alert.id)
-                askNotifications()
-                vm.navigateTo(alert.location, "${alert.name}的位置") { Toast.makeText(context, "导航失败：$it", Toast.LENGTH_LONG).show() }
+                navigateTo(alert.location, "${alert.name}的位置")
             },
             onDismiss = { group.dismissSos(alert.id) },
         )
@@ -938,9 +980,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             navigating = navigating,
             onFollow = {
                 group.answerOffer()
-                askNotifications()
-                Toast.makeText(context, "正在算${offer.name}的路线…", Toast.LENGTH_SHORT).show()
-                vm.followShared(offer) { Toast.makeText(context, "跟着骑失败：$it", Toast.LENGTH_LONG).show() }
+                followShared(offer)
             },
             onDecline = group::answerOffer,
         )
@@ -970,6 +1010,16 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onDismiss = { saving = null },
         )
     }
+}
+
+/**
+ * 镜头框东西时上下要留多少像素：量到了就按上面那摞、底部卡片实际挡住的地方再多留一点，
+ * 还没量到（刚打开）就用估计的 dp
+ */
+private fun cameraInsets(insets: PlannerInsets, density: Density, fallbackTop: Int, fallbackBottom: Int): Pair<Int, Int> = with(density) {
+    if (!insets.measured) return fallbackTop.dp.roundToPx() to fallbackBottom.dp.roundToPx()
+    val margin = 24.dp.roundToPx()
+    (insets.top + margin) to (insets.height - insets.sheetTop + margin)
 }
 
 /** 地图上叠的是哪一层 */
@@ -1109,10 +1159,10 @@ private fun shareTeamCode(context: Context, code: String) {
 }
 
 /** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */
-private fun finishRide(context: Context, session: RideSession): Ride? {
+private fun finishRide(notices: Notices, session: RideSession): Ride? {
     session.stopNavigation()
     val ride = session.stopRecording()
-    if (ride == null) Toast.makeText(context, "骑得太短，没有保存记录", Toast.LENGTH_SHORT).show()
+    if (ride == null) notices.show("骑得太短，没有保存记录")
     return ride
 }
 

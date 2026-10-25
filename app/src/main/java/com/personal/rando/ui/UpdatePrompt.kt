@@ -2,7 +2,6 @@ package com.personal.rando.ui
 
 import android.Manifest
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -38,6 +37,7 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
     val context = LocalContext.current
     val updater = remember { UpdateChecker(context.applicationContext) }
     val scope = rememberCoroutineScope()
+    val notices = LocalNotices.current ?: rememberNotices()
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
     var updating by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -52,12 +52,12 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
             if (info != null) {
                 update = info
             } else if (manual) {
-                Toast.makeText(context, "已是最新版本（build ${updater.currentBuild()}）", Toast.LENGTH_SHORT).show()
+                notices.show("已是最新版本（build ${updater.currentBuild()}）")
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (manual) Toast.makeText(context, "检查更新失败：${e.message}", Toast.LENGTH_SHORT).show()
+            if (manual) notices.show("检查更新失败：${e.message}")
         }
     }
 

@@ -1,5 +1,13 @@
 package com.personal.rando.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -55,7 +63,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -177,12 +184,10 @@ fun SearchBar(
     build: Long,
     onQuery: (String) -> Unit,
     onPick: (Place) -> Unit,
-    onOpenRides: () -> Unit,
     onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier,
     onOfflineMaps: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onMrtHome: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -217,12 +222,18 @@ fun SearchBar(
                         shape = GlassShapes.Card,
                         containerColor = Color(0xF7F7FAF8),
                     ) {
-                        DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
+                        // 骑行记录在右边竖条上、坐 MRT 回家在卡片的收藏那一行，这里只放不常用的
                         DropdownMenuItem(text = { Text("离线地图") }, onClick = { menuOpen = false; onOfflineMaps() })
-                        DropdownMenuItem(text = { Text("坐 MRT 回家") }, onClick = { menuOpen = false; onMrtHome() })
                         DropdownMenuItem(text = { Text("设置") }, onClick = { menuOpen = false; onSettings() })
-                        DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
-                        DropdownMenuItem(text = { Text("当前版本 build $build") }, onClick = {}, enabled = false)
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("检查更新")
+                                    Text("现在是 build $build", color = InkSoft, fontSize = 12.sp)
+                                }
+                            },
+                            onClick = { menuOpen = false; onCheckUpdate() },
+                        )
                     }
                 }
             }
@@ -404,18 +415,64 @@ fun SideRail(
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = RandoGreen) }
+        // 图标统一用墨色；只有「开始记录」是橙色（主操作），在听语音时麦克风变红
+        IconTap(onClick = onRides) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "骑行记录", tint = Ink) }
         if (showLocation && showRecord) {
             IconTap(onClick = onRecord) { Icon(Icons.Default.PlayArrow, contentDescription = "开始记录", tint = RandoOrange) }
         }
         onGroup?.let {
-            IconTap(onClick = it) { Icon(Icons.Default.Person, contentDescription = "一起骑", tint = Color(0xFF6A3FA0)) }
+            IconTap(onClick = it) { Icon(GroupIcon, contentDescription = "一起骑", tint = Ink) }
         }
         onVoice?.let {
-            IconTap(onClick = it) { Icon(MicIcon, contentDescription = "语音指令", tint = if (listening) RandoRed else RandoBlue) }
+            IconTap(onClick = it) { Icon(MicIcon, contentDescription = "语音指令", tint = if (listening) RandoRed else Ink) }
         }
         if (showLocation) {
-            IconTap(onClick = onLocate) { Icon(Icons.Default.LocationOn, contentDescription = "回到我的位置", tint = RandoGreen) }
+            IconTap(onClick = onLocate) { Icon(MyLocationIcon, contentDescription = "回到我的位置", tint = RandoBlue) }
+        }
+    }
+}
+
+// ───────────────────────── 整体排布 ─────────────────────────
+
+/** 规划页上下两摞东西挡住了地图哪里：上面那摞的下沿、底部卡片的上沿、整个高度，都是像素 */
+data class PlannerInsets(val top: Int = 0, val sheetTop: Int = 0, val height: Int = 0) {
+    val measured: Boolean get() = height > 0 && sheetTop > top
+}
+
+/**
+ * 规划页的排布：上面搜索框一摞，下面右侧竖条、各种胶囊、底部卡片一摞。
+ * 下面那摞最高只到上面那摞的下沿，放不下时卡片自己缩、里面上下滑，两摞不会叠在一起。
+ * [onInsets] 报告挡住的位置，镜头框路线时用
+ */
+@Composable
+fun PlannerFrame(
+    top: @Composable ColumnScope.() -> Unit,
+    bottom: @Composable ColumnScope.() -> Unit,
+    sheet: @Composable (Modifier) -> Unit,
+    onInsets: (PlannerInsets) -> Unit = {},
+) {
+    val density = LocalDensity.current
+    var insets by remember { mutableStateOf(PlannerInsets()) }
+    LaunchedEffect(insets) { onInsets(insets) }
+    Box(Modifier.fillMaxSize().onSizeChanged { insets = insets.copy(height = it.height) }) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .onGloballyPositioned { insets = insets.copy(top = it.boundsInParent().bottom.toInt()) },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = top,
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(top = with(density) { insets.top.toDp() })
+                .navigationBarsPadding()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            bottom()
+            sheet(Modifier.weight(1f, fill = false).onGloballyPositioned { insets = insets.copy(sheetTop = it.positionInRoot().y.toInt()) })
         }
     }
 }
@@ -446,6 +503,8 @@ class PlannerActions(
     val onRemoveRoute: (SavedRoute) -> Unit = {},
     /** 点了「我的车」 */
     val onParked: () -> Unit = {},
+    /** 骑累了坐 MRT 回家 */
+    val onMrtHome: () -> Unit = {},
 )
 
 /** 卡片顶上那行：还没选、去某个地方、骑一圈 */
@@ -679,7 +738,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
 @Composable
 private fun EmptyExtras(saved: List<SavedPlace>, routes: List<SavedRoute>, actions: PlannerActions) {
     Column {
-        if (saved.isNotEmpty()) SavedRow(saved, actions.onChooseSaved)
+        SavedRow(saved, actions.onChooseSaved, actions.onMrtHome)
         if (routes.isNotEmpty()) SavedRoutesRow(routes, actions.onChooseRoute, actions.onRemoveRoute)
         LoopRow(actions.onLoop)
     }
@@ -887,12 +946,15 @@ private fun StarButton(on: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
+private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit, onMrtHome: () -> Unit) {
+    // 「坐 MRT 回家」跟在「家」后面（没收藏家时放最前面，点了会提示先收藏），一行里滑不到最后也看得见
+    val homeFirst = saved.sortedByDescending { it.name == SavedPlace.HOME }
     Row(
         Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        saved.forEach { place ->
+        if (homeFirst.firstOrNull()?.name != SavedPlace.HOME) MrtHomeChip(onMrtHome)
+        homeFirst.forEach { place ->
             GlassButton(onClick = { onChoose(place) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
                 Icon(
                     if (place.name == SavedPlace.HOME) Icons.Default.Home else Icons.Default.Star,
@@ -903,7 +965,15 @@ private fun SavedRow(saved: List<SavedPlace>, onChoose: (SavedPlace) -> Unit) {
                 Spacer(Modifier.width(6.dp))
                 Text(place.name, color = Ink, fontSize = 15.sp)
             }
+            if (place.name == SavedPlace.HOME) MrtHomeChip(onMrtHome)
         }
+    }
+}
+
+@Composable
+private fun MrtHomeChip(onClick: () -> Unit) {
+    GlassButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)) {
+        Text("坐 MRT 回家", color = Ink, fontSize = 15.sp)
     }
 }
 

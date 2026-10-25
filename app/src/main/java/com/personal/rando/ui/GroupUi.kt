@@ -1,6 +1,16 @@
 package com.personal.rando.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -359,7 +369,10 @@ fun sharedRouteText(route: SharedRoute): String {
     return listOfNotNull(where, route.meters.takeIf { it > 0 }?.let { Format.distance(it) }, options).joinToString(" · ")
 }
 
-/** 检测到可能摔车：倒计时，我没事 / 马上通知队友 */
+/**
+ * 检测到可能摔车：整屏提醒，大字倒计时。刚摔完手在抖、可能还戴着手套，
+ * 所以两个按钮做得又大又隔得开：「我没事」在最下面拇指够得着的地方
+ */
 @Composable
 fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -370,22 +383,53 @@ fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
         }
     }
     val left = ((alert.deadline - now + 999) / 1000).coerceAtLeast(0)
-    AlertDialog(
+    Dialog(
         onDismissRequest = {},
-        shape = GlassShapes.Sheet,
-        containerColor = Color(0xF7F7FAF8),
-        title = { Text(if (alert.sent) "已经通知队友" else "你没事吧？") },
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(if (alert.sent) Color(0xFF7A1F16) else Color(0xFF1A0F0D))
+                .systemBarsPadding()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.weight(1f))
             Text(
-                if (alert.sent) "队友会看到你的位置。没事的话点「我没事」，队友那边会撤掉。"
-                else "检测到你可能摔车了，$left 秒后把位置发给队友。",
-                color = Ink,
-                fontSize = 16.sp,
+                if (alert.sent) "已经通知队友" else "你没事吧？",
+                color = Color.White,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
             )
-        },
-        confirmButton = { TextButton(onClick = onOk) { Text("我没事", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = if (alert.sent) null else ({ TextButton(onClick = onSendNow) { Text("马上通知队友", color = RandoRed) } }),
-    )
+            Spacer(Modifier.height(16.dp))
+            if (!alert.sent) {
+                Text("$left", color = Color(0xFFFF8A7A), fontSize = 120.sp, fontWeight = FontWeight.Bold)
+                Text("秒后把位置发给队友", color = Color.White.copy(alpha = 0.85f), fontSize = 20.sp)
+            } else {
+                Text(
+                    "队友会看到你的位置。\n没事的话点「我没事」，队友那边会撤掉。",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 20.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            if (!alert.sent) {
+                OutlinedButton(
+                    onClick = onSendNow,
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    border = BorderStroke(2.dp, Color(0xFFFF8A7A)),
+                ) { Text("马上通知队友", color = Color(0xFFFF8A7A), fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.height(40.dp))
+            }
+            Button(
+                onClick = onOk,
+                modifier = Modifier.fillMaxWidth().height(96.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RandoGreen),
+            ) { Text("我没事", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
 }
 
 /** 队友可能摔车了：离我多远，导航过去 / 知道了 */
