@@ -63,6 +63,7 @@ import com.personal.rando.i18n.tr
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassTone
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -240,7 +241,12 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                             Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                         GlassButton(
-                            onClick = { if (c != null) scope.launch { ShareCard.send(context, c, if (withOriginals) chosen.sortedBy { it.takenAt ?: Long.MAX_VALUE } else emptyList()) } },
+                            onClick = {
+                                if (c != null) scope.launch {
+                                    runCatching { ShareCard.send(context, c, if (withOriginals) chosen.sortedBy { it.takenAt ?: Long.MAX_VALUE } else emptyList()) }
+                                        .onFailure { e -> if (e !is CancellationException) Toast.makeText(context, tr("分享不了，可能手机存储空间不够", "Couldn't share, phone storage may be full"), Toast.LENGTH_SHORT).show() }
+                                }
+                            },
                             modifier = Modifier.weight(1f),
                             tone = GlassTone.Tinted(if (c == null) Color(0xFF9FB8A8) else RandoGreen),
                         ) {

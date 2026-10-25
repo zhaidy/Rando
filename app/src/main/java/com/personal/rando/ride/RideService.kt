@@ -181,7 +181,7 @@ class RideService : Service() {
         // GPS 刚开要等一会儿才有第一个点：先用一分钟内的上一个 GPS 点顶上，
         // 网络定位也听着，至少地图上先有个大概位置（太不准的不拿来导航）
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { manager.isProviderEnabled(it) }
-        val l = LocationListener { session.onFix(Fix.of(it)) }
+        val l = Fix.listener(session::onFix)
         try {
             manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 ?.takeIf { System.currentTimeMillis() - it.time < FRESH_FIX_MS }
