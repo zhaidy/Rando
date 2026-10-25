@@ -178,6 +178,32 @@ test("可能摔车了告诉队友，后来加入的也能收到，我没事就�
   for (const x of [a, b, c, d]) x.ws.close();
 });
 
+test("求助的人断线了，后来加入的也能收到；他重新连上时旧的求助撤掉", async () => {
+  const a = join("TEST09", "aaaaaaaa-21", "阿明");
+  await a.opened;
+  await a.next("roster");
+  const b = join("TEST09", "bbbbbbbb-22", "小红");
+  await b.opened;
+  await b.next("roster");
+  await a.next("join");
+  a.send({ t: "sos", lat: 1.3, lon: 103.8 });
+  await b.next("sos");
+  a.ws.close();
+  await b.next("leave");
+
+  const c = join("TEST09", "cccccccc-23", "小李");
+  await c.opened;
+  await c.next("roster");
+  assert.equal((await c.next("sos")).id, "aaaaaaaa-21");
+
+  const a2 = join("TEST09", "aaaaaaaa-21", "阿明");
+  await a2.opened;
+  await a2.next("roster");
+  assert.equal((await b.next("sos_clear")).id, "aaaaaaaa-21");
+  await c.next("sos_clear");
+  for (const x of [a2, b, c]) x.ws.close();
+});
+
 test("标的路况转给队友", async () => {
   const a = join("TEST04", "aaaaaaaa-12", "阿明");
   const b = join("TEST04", "bbbbbbbb-13", "小红");

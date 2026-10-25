@@ -427,7 +427,7 @@ fun sharedRouteText(route: SharedRoute): String {
     ).joinToString(tr("、", ", "))
     // 标题是队友手机按 TA 的语言起的，两种都认
     val loopOrBack = route.title.startsWith("骑一圈") || route.title == "原路返回" ||
-        route.title.startsWith("Loop") || route.title == "Back the way you came"
+        route.title.endsWith(" km loop") || route.title == "Return the same way"
     val where = if (loopOrBack) route.title else tr("去 ${route.title}", "To ${route.title}")
     return listOfNotNull(where, route.meters.takeIf { it > 0 }?.let { Format.distance(it) }, options).joinToString(" · ")
 }

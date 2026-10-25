@@ -1,6 +1,7 @@
 package com.personal.rando
 
 import android.app.Application
+import android.app.NotificationManager
 import android.content.Context
 import com.personal.rando.i18n.Lang
 import com.personal.rando.places.HazardStore
@@ -31,6 +32,8 @@ class RandoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Lang.apply(settings.settings.value.language)
+        // 以前「自动开始记录」的通知渠道：功能删了，系统设置里也不要再留着
+        getSystemService(NotificationManager::class.java)?.deleteNotificationChannel("auto_start")
     }
 
     /** 跟着进程走的协程；导航、记录在界面关掉后也要继续 */

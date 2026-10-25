@@ -121,10 +121,16 @@ export class Room extends DurableObject {
 
     const others = this.members().filter((m) => m.id !== id);
     server.send(JSON.stringify({ t: "roster", members: others }));
-    // 队友已经分享的路线、还没撤掉的求助
-    const keys = others.flatMap((m) => [`route:${m.id}`, `sos:${m.id}`]);
-    const saved = await this.ctx.storage.get(keys);
-    for (const msg of saved.values()) server.send(JSON.stringify(msg));
+    // 自己上次留下的求助：可能是 app 被杀了没来得及撤；还要求助的话客户端连上会重新发
+    if (await this.ctx.storage.get(`sos:${id}`)) {
+      await this.ctx.storage.delete(`sos:${id}`);
+      this.broadcast({ t: "sos_clear", id }, id);
+    }
+    // 队友已经分享的路线；还没撤掉的求助连断了线的人的也要给（摔了车手机可能就没信号了）
+    const routes = await this.ctx.storage.get(others.map((m) => `route:${m.id}`));
+    for (const msg of routes.values()) server.send(JSON.stringify(msg));
+    const sos = await this.ctx.storage.list({ prefix: "sos:" });
+    for (const msg of sos.values()) server.send(JSON.stringify(msg));
     this.broadcast({ t: "join", id, name }, id);
     return new Response(null, { status: 101, webSocket: client });
   }

@@ -534,9 +534,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     LaunchedEffect(style, amenities) {
         style?.let { MapLayers.showAmenities(it, amenities.map { a -> a.amenity }) }
     }
-    LaunchedEffect(style, route, state.start, state.destination, via) {
+    // 导航中的起终点也以导航那条为准（去队友那、坐地铁回家、跟队友的路线都不是规划里的那条）
+    val start = if (navigation != null) null else state.start?.location
+    val end = navigation?.destination ?: state.destination?.location
+    LaunchedEffect(style, route, start, end, via) {
         val s = style ?: return@LaunchedEffect
-        MapLayers.show(s, route, state.start?.location, state.destination?.location, via)
+        MapLayers.show(s, route, start, end, via)
         val m = map ?: return@LaunchedEffect
         // 导航中重新算路时镜头还跟着人，不要跳去看全程
         if (navigating) return@LaunchedEffect

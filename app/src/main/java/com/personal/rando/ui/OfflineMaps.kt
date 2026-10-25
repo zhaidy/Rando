@@ -87,7 +87,7 @@ class OfflineMaps(context: Context) {
                         override fun onError(error: String) = Unit
                     })
                     region = offlineRegion
-                    offlineRegion.setObserver(observer(offlineRegion))
+                    offlineRegion.setObserver(observer(offlineRegion, gen))
                     offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
                 }
 
@@ -134,8 +134,10 @@ class OfflineMaps(context: Context) {
         deleteThen { _state.value = OfflineMapState() }
     }
 
-    private fun observer(r: OfflineRegion) = object : OfflineRegion.OfflineRegionObserver {
+    /** 取消、删掉以后还会晚到几个进度：不认，不然弹窗一直显示在下、再也点不了下载 */
+    private fun observer(r: OfflineRegion, gen: Int) = object : OfflineRegion.OfflineRegionObserver {
         override fun onStatusChanged(status: OfflineRegionStatus) {
+            if (gen != generation) return
             val total = status.requiredResourceCount.coerceAtLeast(1)
             if (status.isComplete) {
                 r.setDownloadState(OfflineRegion.STATE_INACTIVE)
@@ -147,11 +149,13 @@ class OfflineMaps(context: Context) {
         }
 
         override fun onError(error: OfflineRegionError) {
+            if (gen != generation) return
             // 单个瓦片出错 MapLibre 会自己重试；只记下来给人看
             _state.update { it.copy(error = error.message) }
         }
 
         override fun mapboxTileCountLimitExceeded(limit: Long) {
+            if (gen != generation) return
             r.setDownloadState(OfflineRegion.STATE_INACTIVE)
             _state.update { it.copy(progress = null, error = tr("瓦片太多（上限 $limit）", "Too many tiles (limit $limit)")) }
         }

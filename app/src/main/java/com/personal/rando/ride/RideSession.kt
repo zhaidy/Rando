@@ -233,7 +233,8 @@ class RideSession(
         group?.let { g ->
             g.onFix(fix)
             if (precise && recorder != null) g.stragglerAlert(fix.location)?.let(speaker::say)
-            fix.speed?.let { crashDetector.onSpeed(fix.time, it.toDouble()) }
+            // 用手机的钟，和加速度那边对得上（GPS 的时间可能和手机差好几秒，刚开时还会喂一个旧定位）
+            fix.speed?.let { crashDetector.onSpeed(System.currentTimeMillis(), it.toDouble()) }
         }
         recorder?.let {
             if (it.add(fix)) checkpoint(it)

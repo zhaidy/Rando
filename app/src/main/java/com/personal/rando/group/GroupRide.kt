@@ -381,14 +381,19 @@ class GroupRide(
 
     private fun apply(event: GroupEvent) {
         when (event) {
-            is GroupEvent.Roster -> _state.update { it?.copy(teammates = event.members) }
+            is GroupEvent.Roster -> {
+                _state.update { it?.copy(teammates = event.members) }
+                // 刚连上（重连）：断线时撤掉的求助、路线收不到了，以服务器接着发来的为准
+                _sos.value = emptyList()
+                _offer.value = null
+            }
             is GroupEvent.Joined -> _state.update { s ->
                 s?.copy(teammates = s.teammates.filterNot { it.id == event.id } + Teammate(event.id, event.name))
             }
             is GroupEvent.Left -> {
                 _state.update { s -> s?.copy(teammates = s.teammates.filterNot { it.id == event.id }) }
                 if (_offer.value?.id == event.id) _offer.value = null
-                _sos.update { list -> list.filterNot { it.id == event.id } }
+                // 求助不撤：好好离队的会先发 sos_clear；这是断线，摔了车手机没信号的时候正要看
             }
             is GroupEvent.Sos -> if (event.alert.id != myId) {
                 _sos.update { list -> list.filterNot { it.id == event.alert.id } + event.alert }

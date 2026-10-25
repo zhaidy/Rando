@@ -97,6 +97,8 @@ class Walkie(
     private var micPaused = false
     /** 每个正在说话的队友一路播放 */
     private val players = mutableMapOf<String, Player>()
+    /** 每个队友上一句话的编号：新的一句开始后，旧的那句晚到的段（直连丢了、服务器那份才到）不再拿来新开一路 */
+    private val retired = mutableMapOf<String, Int>()
     /** 服务器、直连各来一份，只放先到的 */
     private val dedup = VoiceDedup()
 
@@ -150,6 +152,7 @@ class Walkie(
         listenJob = null
         players.values.forEach { it.close() }
         players.clear()
+        retired.clear()
         route.stop()
         group.stopLocal()
         _state.update { it.copy(on = false, sending = false, device = null, micBars = 0, testing = false, muted = false) }
@@ -427,9 +430,14 @@ class Walkie(
 
     private fun receive(voice: GroupEvent.Voice) {
         if (!dedup.accept(voice.id, voice.stream, voice.seq)) return
+        if (retired[voice.id] == voice.stream) return
         val player = players[voice.id]?.takeIf { it.stream == voice.stream }
             ?: Player(voice.id, voice.name, voice.stream).also { new ->
-                players.put(voice.id, new)?.close()
+                // 同一个人接着说下一句（一句说太长会被切开）：上一句不掐掉，让它把攒着的放完
+                players.put(voice.id, new)?.let { old ->
+                    retired[voice.id] = old.stream
+                    old.finish()
+                }
             }
         player.offer(voice)
     }
@@ -449,6 +457,11 @@ class Walkie(
         fun close() {
             inbox.close()
             job.cancel()
+        }
+
+        /** 不会再有新的段了：排着的放完再收 */
+        fun finish() {
+            inbox.close()
         }
 
         private suspend fun run() {
@@ -477,13 +490,14 @@ class Walkie(
                 var done = false
                 while (!done) {
                     val got = withTimeoutOrNull(if (pending.isEmpty()) SILENCE_MS else REORDER_WAIT_MS) { inbox.receiveCatching() }
-                    if (got == null) {
+                    // 没等到，或者已经开始说下一句了（不会再来了）：等着前面段的这几段直接接着放
+                    val incoming = got?.getOrNull()
+                    if (incoming == null) {
                         if (pending.isEmpty()) break
                         next = pending.firstKey()
                     } else {
-                        val voice = got.getOrNull() ?: break
-                        if (voice.seq < next) continue
-                        pending[voice.seq] = voice
+                        if (incoming.seq < next) continue
+                        pending[incoming.seq] = incoming
                         if (pending.size > REORDER_MAX) next = pending.firstKey()
                     }
                     while (!done && pending.isNotEmpty() && pending.firstKey() == next) {

@@ -74,4 +74,12 @@ class RideHeatTest {
         val back = ride + ride.asReversed()
         assertEquals(back, RideHeat.trimStill(back))
     }
+
+    @Test
+    fun `正着有一截够直、倒着一截都不够直也不崩`() {
+        // 单位米：倒着第一截 100 米只走出去 59 米，剩下的又不够一截
+        val track = listOf(0.0 to 0.0, 41.0 to -39.0, 66.0 to -24.0, 48.0 to -98.0)
+            .map { (x, y) -> LatLon(1.3 + y / 111_320, 103.8 + x / 111_320) }
+        assertEquals(track, RideHeat.trimStill(track))
+    }
 }
