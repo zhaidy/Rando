@@ -4,8 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.RadialGradient
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
@@ -44,13 +48,17 @@ import kotlin.math.abs
 import kotlin.math.cos
 
 /**
- * 骑完的分享图：上面是地图和轨迹，下面是距离、时间、爬升、均速。
- * 1080 × 1350（4:5，朋友圈、小红书都不裁）
+ * 骑完的分享图：9:16（1080 × 1920），正好铺满 Instagram 快拍。
+ * 地图铺满上大半张、四周渐隐到底色，轨迹橙到黄带光晕；下面是标题、大号距离和其余数据。
+ * 快拍顶上（头像、进度条）和底下（回复栏）会被盖住，字和数都放在中间
  */
 object ShareCard {
     const val WIDTH = 1080
-    const val HEIGHT = 1350
-    const val MAP_HEIGHT = 900
+    const val HEIGHT = 1920
+    const val MAP_HEIGHT = 1440
+
+    /** 深色（默认，快拍里更显眼）还是浅色；预览里能切 */
+    @Volatile var dark: Boolean = true
 
     /**
      * 画好的分享图：先给人看一眼，再分享或者存到相册。
@@ -113,12 +121,14 @@ object ShareCard {
         // 地图只框住画出来的那些，不框到家
         val framed = pieces.flatten()
         // 选照片时一张张重画，地图还是那张就不再拍
-        val snapshot = lastSnapshot?.takeIf { it.first == framed }?.second
-            ?: withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, framed) }?.also { lastSnapshot = framed to it }
+        val theme = dark
+        val snapshot = lastSnapshot?.takeIf { it.first == (framed to theme) }?.second
+            ?: withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, framed, theme) }?.also { lastSnapshot = (framed to theme) to it }
         val (bitmap, trackPx, pins) = withContext(Dispatchers.Default) {
             // 照片的点和轨迹一起缩放，没地图时也对得上
             val places = pinned.map { listOf(it.at!!) }
-            val allPx = snapshot?.second?.let { project -> (pieces + places).map { it.map(project) } } ?: fitAll(pieces + places, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
+            val allPx = snapshot?.second?.let { project -> (pieces + places).map { it.map(project) } }
+                ?: fitAll(pieces + places, WIDTH.toFloat(), TRACK_HEIGHT - TRACK_TOP).map { t -> t.map { PointF(it.x, it.y + TRACK_TOP) } }
             val piecesPx = allPx.subList(0, pieces.size)
             var from = 0
             val ridesPx = rideTracks.map { r -> piecesPx.subList(from, from + r.size).also { from += r.size } }
@@ -190,21 +200,22 @@ object ShareCard {
     }
 
     /** 上次拍的地图和它框住的点 */
-    private var lastSnapshot: Pair<List<LatLon>, Pair<Bitmap, (LatLon) -> PointF>>? = null
+    private var lastSnapshot: Pair<Pair<List<LatLon>, Boolean>, Pair<Bitmap, (LatLon) -> PointF>>? = null
 
     /** 地图快照：框住整条轨迹；拍不到（没网）返回 null，就画在纯色底上 */
-    private suspend fun snapshot(context: Context, track: List<LatLon>): Pair<Bitmap, (LatLon) -> PointF>? {
+    private suspend fun snapshot(context: Context, track: List<LatLon>, dark: Boolean): Pair<Bitmap, (LatLon) -> PointF>? {
         if (track.size < 2) return null
         val bounds = LatLngBounds.Builder().includes(track.map { LatLng(it.lat, it.lon) }).build()
-        // 四周留点边：轨迹不贴着图的边
+        // 四周留点边，下面多留一些：轨迹放在图的上半部分，下面渐隐的地方写字
         val padLat = (bounds.latitudeSpan * 0.18).coerceAtLeast(0.002)
         val padLon = (bounds.longitudeSpan * 0.18).coerceAtLeast(0.002)
+        val span = TRACK_HEIGHT - TRACK_TOP
         val region = LatLngBounds.from(
-            bounds.latitudeNorth + padLat, bounds.longitudeEast + padLon,
-            bounds.latitudeSouth - padLat, bounds.longitudeWest - padLon,
+            bounds.latitudeNorth + padLat + bounds.latitudeSpan * TRACK_TOP / span, bounds.longitudeEast + padLon,
+            bounds.latitudeSouth - padLat - bounds.latitudeSpan * (MAP_HEIGHT - TRACK_HEIGHT) / span, bounds.longitudeWest - padLon,
         )
         val options = MapSnapshotter.Options(WIDTH, MAP_HEIGHT)
-            .withStyleBuilder(Style.Builder().fromUri(MapLayers.STYLE_URL))
+            .withStyleBuilder(Style.Builder().fromUri(if (dark) MapLayers.DARK_STYLE_URL else MapLayers.STYLE_URL))
             .withRegion(region)
             .withPixelRatio(1f)
             .withLogo(false)
@@ -282,69 +293,98 @@ object ShareCard {
         ascendMeters: Double,
         pins: List<Pin> = emptyList(),
     ): Bitmap {
+        val dark = dark
+        val bg = if (dark) Color.parseColor("#0E1116") else Color.parseColor("#F3F1EC")
+        val ink = if (dark) Color.WHITE else Color.parseColor("#1C2330")
+        val soft = if (dark) Color.parseColor("#AEB6C2") else Color.parseColor("#5E6878")
+        val green = if (dark) Color.parseColor("#6FE3A0") else Color.parseColor("#1B7F3B")
         val out = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
-        c.drawColor(Color.parseColor("#F2F0EB"))
+        c.drawColor(bg)
+        val w = WIDTH.toFloat()
+        val mapH = MAP_HEIGHT.toFloat()
         if (map != null) {
-            c.drawBitmap(map, null, RectF(0f, 0f, WIDTH.toFloat(), MAP_HEIGHT.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
-        } else {
-            c.drawRect(0f, 0f, WIDTH.toFloat(), MAP_HEIGHT.toFloat(), Paint().apply { color = Color.parseColor("#E4EDE6") })
+            // 地图压淡一些，突出轨迹
+            val faded = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+                colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(if (dark) 0.35f else 0.4f) })
+                alpha = if (dark) 200 else 235
+            }
+            c.drawBitmap(map, null, RectF(0f, 0f, w, mapH), faded)
         }
-        // 地图底下渐变到卡片的底色，接得自然
-        c.drawRect(
-            0f, MAP_HEIGHT - 120f, WIDTH.toFloat(), MAP_HEIGHT.toFloat(),
-            Paint().apply {
-                shader = LinearGradient(0f, MAP_HEIGHT - 120f, 0f, MAP_HEIGHT.toFloat(), Color.TRANSPARENT, Color.parseColor("#F2F0EB"), Shader.TileMode.CLAMP)
-            },
-        )
-        tracksPx.forEach { drawTrack(c, it) }
+        // 四周和上下渐隐到底色：地图像是融在图里
+        val clear = bg and 0x00FFFFFF
+        c.drawRect(0f, 0f, w, mapH, Paint().apply {
+            shader = RadialGradient(w / 2, mapH * 0.42f, w * 0.85f, intArrayOf(clear, clear, bg), floatArrayOf(0f, 0.62f, 1f), Shader.TileMode.CLAMP)
+        })
+        c.drawRect(0f, 0f, w, 360f, Paint().apply { shader = LinearGradient(0f, 0f, 0f, 360f, bg, clear, Shader.TileMode.CLAMP) })
+        c.drawRect(0f, mapH - 520f, w, mapH, Paint().apply { shader = LinearGradient(0f, mapH - 520f, 0f, mapH, clear, bg, Shader.TileMode.CLAMP) })
+        tracksPx.forEach { drawTrack(c, it, bg) }
         drawPins(c, pins, tracksPx.flatten().flatten())
 
-        val ink = Color.parseColor("#1F2A24")
-        val soft = Color.parseColor("#6B756F")
-        val green = Color.parseColor("#2E7D4F")
         val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val heavy = if (Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.DEFAULT, 900, false) else bold
         val left = 72f
-        var y = MAP_HEIGHT + 40f
-        c.drawText(title, left, y, text(56f, ink, bold))
-        c.drawText(date, WIDTH - 72f, y, text(32f, soft).apply { textAlign = Paint.Align.RIGHT })
+        // 顶上一行小字：快拍的头像那条下面一点
+        c.drawText("RANDO", left, 290f, text(32f, ink, bold).apply { letterSpacing = 0.25f })
+        c.drawText(date, WIDTH - 72f, 290f, text(32f, soft, bold).apply { textAlign = Paint.Align.RIGHT })
+
+        var y = 1180f
+        c.drawText(title, left, y, text(68f, ink, heavy).also { fitWidth(it, title, WIDTH - 2 * left) })
         if (note != null) {
-            y += 62f
-            c.drawText(note, left, y, text(34f, green, bold))
+            y += 64f
+            c.drawText(note, left, y, text(36f, green, bold).also { fitWidth(it, note, WIDTH - 2 * left) })
         }
-        y += 140f
+        // 大号距离：橙到黄的渐变字
+        val distance = Format.distance(meters.toInt())
+        val number = distance.substringBefore(' ')
+        val unit = distance.substringAfter(' ', "")
+        y += 250f
+        val big = text(250f, ink, heavy).apply {
+            letterSpacing = -0.04f
+            shader = LinearGradient(left, 0f, left + measureText(number), 0f, Color.parseColor("#FF6A1A"), Color.parseColor("#FFB020"), Shader.TileMode.CLAMP)
+        }
+        c.drawText(number, left, y, big)
+        c.drawText(" $unit", left + big.measureText(number), y, text(58f, ink, bold))
+
+        // 其余三项一排，中间细线隔开
+        y += 120f
         val stats = listOf(
-            Format.distance(meters.toInt()) to tr("距离", "Distance"),
             Format.clock(movingSeconds) to tr("骑行时间", "Moving time"),
             tr("${ascendMeters.toInt()} 米", "${ascendMeters.toInt()} m") to tr("爬升", "Climb"),
             Format.speed(if (movingSeconds > 0) meters / movingSeconds else 0.0) to tr("均速", "Avg speed"),
         )
-        val big = text(64f, ink, bold)
-        val small = text(28f, ink)
-        val caption = text(28f, soft)
-        // 按实际宽度排：第一个贴左边、最后一个贴右边，中间空隙一样大；超过一小时的时间也不会压到旁边
-        val widths = stats.map { (value, label) ->
-            val number = value.substringBefore(' ')
-            val unit = value.substringAfter(' ', "")
-            maxOf(big.measureText(number) + if (unit.isEmpty()) 0f else small.measureText(" $unit"), caption.measureText(label))
+        val value = text(64f, ink, heavy)
+        val small = text(30f, ink, bold)
+        val caption = text(30f, soft, bold)
+        val col = (WIDTH - 2 * left) / stats.size
+        val rule = Paint().apply { color = if (dark) Color.argb(46, 255, 255, 255) else Color.argb(38, 28, 35, 48); strokeWidth = 3f }
+        stats.forEachIndexed { i, (v, label) ->
+            val x = left + i * col + if (i == 0) 0f else 32f
+            val n = v.substringBefore(' ')
+            val u = v.substringAfter(' ', "")
+            c.drawText(n, x, y, value)
+            if (u.isNotEmpty()) c.drawText(" $u", x + value.measureText(n), y, small)
+            c.drawText(label, x, y + 48f, caption)
+            if (i > 0) c.drawLine(left + i * col, y - 60f, left + i * col, y + 56f, rule)
         }
-        val gap = ((WIDTH - 2 * left) - widths.sum()) / (stats.size - 1)
-        var x = left
-        stats.forEachIndexed { i, (value, label) ->
-            val number = value.substringBefore(' ')
-            val unit = value.substringAfter(' ', "")
-            c.drawText(number, x, y, big)
-            if (unit.isNotEmpty()) c.drawText(" $unit", x + big.measureText(number), y, small)
-            c.drawText(label, x, y + 50f, caption)
-            x += widths[i] + gap
+
+        // 最底下：Rando 和地图版权，快拍的回复栏会盖住也没关系
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(left, HEIGHT - 120f, left + 28f, HEIGHT - 92f, Color.parseColor("#2FD3E2"), Color.parseColor("#0899AB"), Shader.TileMode.CLAMP)
         }
-        if (map != null) c.drawText(tr("地图 © OpenStreetMap", "Map © OpenStreetMap"), left, HEIGHT - 52f, text(16f, Color.parseColor("#C6CAC7")))
-        c.drawText("Rando", WIDTH - 72f, HEIGHT - 48f, text(34f, green, bold).apply { textAlign = Paint.Align.RIGHT })
+        c.drawCircle(left + 14f, HEIGHT - 106f, 14f, dot)
+        c.drawText("Rando", left + 40f, HEIGHT - 92f, text(44f, ink, heavy))
+        if (map != null) c.drawText(tr("地图 © OpenStreetMap", "Map © OpenStreetMap"), WIDTH - 72f, HEIGHT - 96f, text(22f, soft).apply { textAlign = Paint.Align.RIGHT })
         return out
     }
 
-    /** 一次骑行：几段线，起点终点各一个圆点（中间断开的地方不加点） */
-    private fun drawTrack(c: Canvas, pieces: List<List<PointF>>) {
+    /** 字太长就缩小，放得进 [max] 宽 */
+    private fun fitWidth(p: Paint, s: String, max: Float) {
+        while (p.measureText(s) > max && p.textSize > 20f) p.textSize -= 2f
+    }
+
+    /** 一次骑行：几段线（橙到黄，外面一圈光晕），起点绿点、终点橙点（中间断开的地方不加点） */
+    private fun drawTrack(c: Canvas, pieces: List<List<PointF>>, bg: Int) {
         val drawn = pieces.filter { it.size >= 2 }
         if (drawn.isEmpty()) return
         val path = Path().apply {
@@ -358,21 +398,33 @@ object ShareCard {
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        c.drawPath(path, stroke.apply { color = Color.WHITE; strokeWidth = 16f })
-        c.drawPath(path, stroke.apply { color = Color.parseColor("#E0672B"); strokeWidth = 9f })
+        val all = drawn.flatten()
+        val first = all.first()
+        val last = all.last()
+        c.drawPath(path, Paint(stroke).apply {
+            color = Color.parseColor("#FF8A3D"); alpha = 120; strokeWidth = 44f
+            maskFilter = BlurMaskFilter(22f, BlurMaskFilter.Blur.NORMAL)
+        })
+        c.drawPath(path, Paint(stroke).apply { color = bg; strokeWidth = 24f })
+        c.drawPath(path, Paint(stroke).apply {
+            strokeWidth = 13f
+            shader = LinearGradient(first.x, first.y, last.x, last.y, Color.parseColor("#FF6A1A"), Color.parseColor("#FFC83D"), Shader.TileMode.CLAMP)
+        })
         val dot = Paint(Paint.ANTI_ALIAS_FLAG)
         fun pin(p: PointF, color: String) {
-            c.drawCircle(p.x, p.y, 16f, dot.apply { this.color = Color.WHITE })
-            c.drawCircle(p.x, p.y, 11f, dot.apply { this.color = Color.parseColor(color) })
+            c.drawCircle(p.x, p.y, 22f, dot.apply { this.color = Color.WHITE })
+            c.drawCircle(p.x, p.y, 15f, dot.apply { this.color = Color.parseColor(color) })
         }
-        pin(drawn.first().first(), "#2E7D4F")
-        pin(drawn.last().last(), "#E0672B")
+        pin(drawn.first().first(), "#22B07D")
+        pin(drawn.last().last(), "#FF6A1A")
     }
 
     /** 照片做成带白边的小卡片，一根细线连到拍的地方 */
     private fun drawPins(c: Canvas, pins: List<Pin>, track: List<PointF>) {
         if (pins.isEmpty()) return
-        val centers = PhotoPins.layout(pins.map { it.at.x to it.at.y }, WIDTH.toFloat(), MAP_HEIGHT.toFloat(), track.map { it.x to it.y })
+        // 照片只摆在顶上那行字下面、标题上面那块里
+        val centers = PhotoPins.layout(pins.map { it.at.x to it.at.y - TRACK_TOP }, WIDTH.toFloat(), TRACK_HEIGHT - TRACK_TOP, track.map { it.x to it.y - TRACK_TOP })
+            .map { (x, y) -> x to y + TRACK_TOP }
         pins.forEachIndexed { i, p -> p.center = PointF(centers[i].first, centers[i].second) }
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeWidth = 5f; strokeCap = Paint.Cap.ROUND }
         pins.forEachIndexed { i, p -> c.drawLine(p.at.x, p.at.y, centers[i].first, centers[i].second, line) }
@@ -415,4 +467,8 @@ object ShareCard {
     private val DAY get() = SimpleDateFormat(tr("yyyy年M月d日 EEE", "EEE d MMM yyyy"), Lang.locale)
     private val CLOCK get() = SimpleDateFormat("HH:mm", Lang.locale)
     private const val SNAPSHOT_TIMEOUT_MS = 15_000L
+    /** 轨迹画在地图上面这么高的一块里，下面渐隐的地方留给字 */
+    private const val TRACK_HEIGHT = 1060f
+    /** 轨迹、照片从这儿往下画，上面留给快拍的头像和那行小字 */
+    private const val TRACK_TOP = 340f
 }

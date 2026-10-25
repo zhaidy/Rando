@@ -41,6 +41,7 @@ import com.personal.rando.ride.Ride
 import com.personal.rando.ride.RidePhotos
 import com.personal.rando.ride.SharePrivacy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -102,6 +103,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
     var make by remember { mutableStateOf<(suspend (Boolean, List<SharePhoto>) -> ShareCard.Card?)?>(null) }
     // 每次打开都默认隐藏，免得上次关掉忘了开
     var hide by remember { mutableStateOf(true) }
+    var darkCard by remember { mutableStateOf(ShareCard.dark) }
     var privacyLabel by remember { mutableStateOf(tr("隐藏家附近", "Hide near home")) }
     var rides by remember { mutableStateOf(emptyList<Ride>()) }
     // 找到的和自己挑的照片；选上的按选的先后
@@ -219,9 +221,11 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
             Box(Modifier.onGloballyPositioned { overlayOrigin = it.positionInRoot() }) {
                 GlassPanel(Modifier.fillMaxWidth()) {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(14.dp)) {
+                        // 9:16 的竖图，不占满宽，下面的选项不用滑很远
                         Box(
                             Modifier
-                                .fillMaxWidth()
+                                .fillMaxWidth(0.62f)
+                                .align(Alignment.CenterHorizontally)
                                 .aspectRatio(ShareCard.WIDTH.toFloat() / ShareCard.HEIGHT)
                                 .clip(RoundedCornerShape(14.dp))
                                 .onGloballyPositioned { previewBounds = it.boundsInRoot() }
@@ -260,6 +264,18 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                             }
                         }
                         Spacer(Modifier.height(10.dp))
+                        Row(Modifier.align(Alignment.CenterHorizontally), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(true to tr("深色", "Dark"), false to tr("浅色", "Light")).forEach { (d, label) ->
+                                GlassButton(
+                                    onClick = { if (darkCard != d) { darkCard = d; ShareCard.dark = d; draw() } },
+                                    tone = if (darkCard == d) GlassTone.Tinted(RandoAccent) else GlassTone.Light,
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                                ) {
+                                    Text(label, color = if (darkCard == d) Color.White else Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
                         PhotoRow(
                             photos = photos,
                             chosen = chosen,
