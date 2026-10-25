@@ -39,4 +39,15 @@ class SavedRoutesTest {
         assertFalse(loop.same(loop.stops, mine))
         assertFalse(loop.same(loop.stops.take(2), prefs))
     }
+
+    @Test
+    fun `收藏的是备选那条：记下来，换一条备选就不算已收藏`() {
+        val other = loop.copy(alternative = 1)
+        assertEquals(listOf(other), SavedRoutesJson.decode(SavedRoutesJson.encode(listOf(other))))
+        val prefs = loop.prefs(RoutePrefs())
+        assertTrue(other.same(other.stops, prefs, alternative = 1))
+        assertFalse(other.same(other.stops, prefs))
+        // 旧版本存的没有这个字段：当成第一条
+        assertEquals(0, SavedRoutesJson.decode("""[{"name":"x","stops":[[1.3,103.9],[1.31,103.93]]}]""").single().alternative)
+    }
 }

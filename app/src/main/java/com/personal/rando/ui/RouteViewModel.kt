@@ -14,6 +14,7 @@ import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.RouteOption
 import com.personal.rando.routing.RouteOptions
+import com.personal.rando.routing.RouteVariant
 import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.weather.RouteWind
 import com.personal.rando.places.Covered
@@ -76,9 +77,13 @@ sealed interface RouteState {
         val stops: List<LatLon>,
         val options: List<RouteOption> = emptyList(),
         val chosen: Int = 0,
+        /** [route]（第一条）是 BRouter 的第几条备选：再骑收藏的备选路线时不是 0 */
+        val alternative: Int = 0,
     ) : RouteState {
         /** 选中的那条是按什么偏好算的；null 就是按现在的偏好 */
         val chosenPrefs: RoutePrefs? get() = options.getOrNull(chosen)?.prefs
+        /** 选中的那条是第几条备选 */
+        val chosenAlternative: Int get() = options.getOrNull(chosen)?.alternative ?: alternative
     }
     data class Failed(val message: String) : RouteState
 }
@@ -289,6 +294,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     /** 语音说的：路线一算好就开始导航 */
     private var startWhenReady = false
+        set(value) {
+            field = value
+            // 记下是在哪次「结束」之后要的：算好前点了结束就不再自己开始
+            if (value) startWhenReadyAfter = session.finishCount
+        }
+    private var startWhenReadyAfter = 0
 
     /** 语音「去某个地方」：收藏的地方优先，没有就搜，取第一个结果；算好路直接开始导航 */
     fun goTo(name: String, onFailed: (String) -> Unit) {
@@ -344,14 +355,19 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             SavedRoute(
                 name = name, stops = ready.stops, profile = prefs.profile, avoidRoads = prefs.avoidRoads,
                 avoidBridges = prefs.avoidBridges, meters = ready.route.distanceMeters, savedAt = System.currentTimeMillis(),
+                alternative = ready.chosenAlternative,
             )
         )
     }
+
+    /** 正在再骑的收藏路线；改了点或配置就对不上了，按普通的规划算 */
+    private var riding: SavedRoute? = null
 
     /** 再骑一次收藏的路线：人在起点附近就从我的位置出发，不然从收藏的起点出发 */
     fun chooseSavedRoute(r: SavedRoute) {
         searchJob?.cancel()
         routeJob?.cancel()
+        riding = r
         val first = r.stops.first()
         val nearStart = myLocation?.let { Geo.distance(it, first) <= NEAR_START_METERS } == true
         val via = r.stops.drop(1).dropLast(1).mapIndexed { i, p -> Place(tr("途经点 ${i + 1}", "Stop ${i + 1}"), "", p) }
@@ -469,14 +485,17 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         routeJob = viewModelScope.launch {
             // 去某个地方时另外算几条不同的，先把按偏好算的那条显示出来，其余的算好再给选
             val stops = listOf(from) + s.via.map { it.location } + (s.destination?.location ?: from)
-            val others = if (s.loop != null) emptyList() else RouteOptions.variants(s.prefs).drop(1).map { v ->
-                async { quietly { router.route(stops, v.prefs, v.alternative) }?.let { it to v.prefs } }
+            // 再骑收藏的备选路线：第一条就按那条备选算（起点可能是我的位置，只比后面的点）
+            val alt = riding?.takeIf { s.loop == null && it.same(listOf(it.stops.first()) + stops.drop(1), s.prefs, it.alternative) }?.alternative ?: 0
+            val variants = RouteOptions.variants(s.prefs).drop(1).map { if (it == RouteVariant(s.prefs, alt)) RouteVariant(s.prefs) else it }
+            val others = if (s.loop != null) emptyList() else variants.map { v ->
+                async { quietly { router.route(stops, v.prefs, v.alternative) }?.let { Triple(it, v.prefs, v.alternative) } }
             }
             val next = try {
                 if (s.loop != null) {
                     planLoop(from, s.loop, s.prefs)
                 } else {
-                    RouteState.Ready(router.route(stops, s.prefs), stops)
+                    RouteState.Ready(router.route(stops, s.prefs, alt), stops, alternative = alt)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -487,11 +506,14 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             _state.update { it.copy(route = next) }
             if (startWhenReady) {
                 startWhenReady = false
-                if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say(tr("算路失败，${next.message}", "Routing failed, ${next.message}"))
+                if (startWhenReadyAfter != session.finishCount) Unit
+                else if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say(tr("算路失败，${next.message}", "Routing failed, ${next.message}"))
             }
             if (next is RouteState.Ready && others.isNotEmpty()) launch {
-                val found = others.awaitAll().filterNotNull()
-                val options = withContext(Dispatchers.Default) { RouteOptions.pick(listOf(next.route to s.prefs) + found) }
+                val found = listOf(Triple(next.route, s.prefs, alt)) + others.awaitAll().filterNotNull()
+                val options = withContext(Dispatchers.Default) {
+                    RouteOptions.pick(found.map { it.first to it.second }).map { o -> o.copy(alternative = found.first { it.first === o.route }.third) }
+                }
                 if (options.size > 1) _state.update { st ->
                     val ready = st.route as? RouteState.Ready
                     if (ready?.route === next.route) st.copy(route = ready.copy(options = options)) else st

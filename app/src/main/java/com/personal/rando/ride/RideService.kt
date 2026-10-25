@@ -69,7 +69,12 @@ class RideService : Service() {
             runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, shown, types) }.isSuccess
         }
         if (!started) {
-            // 定位权限被收回之类的，系统不让开定位前台服务
+            // 定位权限被收回、在后台不让开定位类型之类的：startForegroundService 答应过要调 startForeground，
+            // 一次都没调成就停掉，系统会让整个 App 闪退。Android 14 起用不要权限的 shortService 先应付过去再停
+            if (Build.VERSION.SDK_INT >= 34) {
+                runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, shown, ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE) }
+            }
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }

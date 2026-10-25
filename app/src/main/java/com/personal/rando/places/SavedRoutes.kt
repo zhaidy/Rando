@@ -23,15 +23,18 @@ data class SavedRoute(
     val avoidBridges: Boolean,
     val meters: Int,
     val savedAt: Long,
+    /** 收藏时选的是 BRouter 的第几条备选；0 是按偏好最好的那条 */
+    val alternative: Int = 0,
 ) {
     /** 起点终点差不多是一个地方：骑一圈回来的 */
     val loop: Boolean get() = stops.size >= 2 && Geo.distance(stops.first(), stops.last()) < SAME_STOP_METERS
 
     fun prefs(mine: RoutePrefs): RoutePrefs = mine.copy(profile = profile, avoidRoads = avoidRoads, avoidBridges = avoidBridges)
 
-    /** 同样的点、同样的配置就是同一条 */
-    fun same(stops: List<LatLon>, prefs: RoutePrefs): Boolean =
+    /** 同样的点、同样的配置、同一条备选就是同一条 */
+    fun same(stops: List<LatLon>, prefs: RoutePrefs, alternative: Int = 0): Boolean =
         profile == prefs.profile && avoidRoads == prefs.avoidRoads && avoidBridges == prefs.avoidBridges &&
+            this.alternative == alternative &&
             this.stops.size == stops.size && this.stops.zip(stops).all { (a, b) -> Geo.distance(a, b) < SAME_STOP_METERS }
 
     companion object {
@@ -51,6 +54,7 @@ object SavedRoutesJson {
                     .put("avoidBridges", r.avoidBridges)
                     .put("meters", r.meters)
                     .put("savedAt", r.savedAt)
+                    .put("alternative", r.alternative)
             )
         }
     }.toString()
@@ -69,6 +73,7 @@ object SavedRoutesJson {
                     avoidBridges = o.optBoolean("avoidBridges"),
                     meters = o.optInt("meters"),
                     savedAt = o.optLong("savedAt"),
+                    alternative = o.optInt("alternative"),
                 )
             }.getOrNull()
         }

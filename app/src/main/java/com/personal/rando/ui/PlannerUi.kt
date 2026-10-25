@@ -761,7 +761,7 @@ fun PlannerSheet(
                                 expanded = size == SheetSize.FULL,
                                 onToggleDetails = { size = if (size == SheetSize.FULL) SheetSize.HALF else SheetSize.FULL },
                                 onPace = actions.onPace,
-                                routeSaved = savedRoutes.any { it.same(r.stops, prefs) },
+                                routeSaved = savedRoutes.any { it.same(r.stops, prefs, r.chosenAlternative) },
                                 onSaveRoute = actions.onSaveRoute,
                             )
                         }

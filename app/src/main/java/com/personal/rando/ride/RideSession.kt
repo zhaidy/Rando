@@ -49,6 +49,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -161,7 +163,12 @@ class RideSession(
     private var shared: SharedRoute? = null
     private var autoStopJob: Job? = null
 
+    /** 中途存盘和结束保存排着来，不会结束后又被一份旧的中途存盘盖回去 */
+    private val checkpointLock = Mutex()
+    private var lastCheckpointAt = 0L
+
     init {
+        recoverRide()
         // 队友标的路况存下来；删掉的也跟着删
         if (group != null && hazards != null) {
             scope.launch {
@@ -227,7 +234,7 @@ class RideSession(
             fix.speed?.let { crashDetector.onSpeed(fix.time, it.toDouble()) }
         }
         recorder?.let {
-            it.add(fix)
+            if (it.add(fix)) checkpoint(it)
             val state = it.state()
             _recording.value = state
             hydration.next(System.currentTimeMillis(), state.startedAt, _climate.value?.hot == true, waterAhead())?.let(speaker::say)
@@ -348,11 +355,25 @@ class RideSession(
         _crash.value = null
     }
 
+    /**
+     * 停导航、结束记录一次就加一。算路要好几秒，这期间点了「结束」的话，
+     * 算好回来对不上就不要再自己开始导航（又开记录、又开前台服务）
+     */
+    var finishCount = 0
+        private set
+
+    /** 算好 [route] 再开始导航；算的时候已经结束了就算了 */
+    private suspend fun routeThenStart(stopsAt: List<LatLon>, prefs: RoutePrefs, title: String, share: Boolean) {
+        val asked = finishCount
+        val route = router.route(stopsAt, prefs)
+        if (asked != finishCount) return
+        startNavigation(route, stopsAt, prefs, title, share)
+    }
+
     /** 导航到 [target]（比如摔车的队友那儿），不分享给队友 */
     suspend fun navigateTo(target: LatLon, prefs: RoutePrefs, title: String) {
         val from = _location.value ?: throw IllegalStateException(tr("还没定位到", "No location yet"))
-        val stops = listOf(from, target)
-        startNavigation(router.route(stops, prefs), stops, prefs, title, share = false)
+        routeThenStart(listOf(from, target), prefs, title, share = false)
     }
 
     /** 导航中路线经过的有顶棚的路 */
@@ -382,11 +403,44 @@ class RideSession(
         return _amenities.value.filter { it.amenity.type == AmenityType.WATER && it.alongMeters > along }.minOfOrNull { it.alongMeters - along }
     }
 
+    /** 隔 [CHECKPOINT_MS] 把还在记的这段存一份 */
+    private fun checkpoint(r: RideRecorder) {
+        val now = System.currentTimeMillis()
+        if (now - lastCheckpointAt < CHECKPOINT_MS) return
+        lastCheckpointAt = now
+        val ride = r.toRide(now)
+        scope.launch {
+            checkpointLock.withLock {
+                // 排队期间已经结束或者换了一段：不要再写，免得留下一份结束过的
+                if (recorder !== r) return@withLock
+                runCatching { rides.checkpoint(ride) }
+            }
+        }
+    }
+
+    /** 上次骑到一半 App 没了：把存下的那段当成一次结束的骑行存起来 */
+    private fun recoverRide() {
+        scope.launch {
+            checkpointLock.withLock {
+                val ride = rides.readCheckpoint() ?: return@withLock
+                val ended = ride.copy(endedAt = ride.points.lastOrNull()?.time ?: ride.endedAt)
+                // 已经存过同一条（结束保存了但还没来得及删中途存盘）就不要用不全的那份盖掉
+                val saved = ended.distanceMeters < MIN_RIDE_METERS || rides.get(ended.id) != null ||
+                    runCatching { rides.save(ended) }.isSuccess
+                if (saved) {
+                    rides.clearCheckpoint()
+                    RideWidget.refresh(app)
+                }
+            }
+        }
+    }
+
     /** [auto]：认出在骑车自动开始的；停下来很久没动就自动结束保存 */
     fun startRecording(auto: Boolean = false) {
         if (recorder != null) return
         val r = RideRecorder(System.currentTimeMillis())
         recorder = r
+        lastCheckpointAt = 0L
         autoStopJob?.cancel()
         if (auto) watchAutoStop()
         hydration.reset(r.state().startedAt)
@@ -402,6 +456,7 @@ class RideSession(
     fun stopRecording(endedAt: Long = System.currentTimeMillis()): Ride? {
         val r = recorder ?: return null
         recorder = null
+        finishCount++
         autoStopJob?.cancel()
         _recording.value = null
         // 都结束骑行了，人肯定没事
@@ -409,11 +464,17 @@ class RideSession(
         RideWidget.refresh(app)
         stopWatchingWeather()
         val ride = r.toRide(endedAt)
-        if (ride.distanceMeters < MIN_RIDE_METERS) return null
+        if (ride.distanceMeters < MIN_RIDE_METERS) {
+            scope.launch { checkpointLock.withLock { runCatching { rides.clearCheckpoint() } } }
+            return null
+        }
         (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
-            // 手机存储满了存不上：说一声，不要整个 App 闪退
-            if (runCatching { rides.save(ride) }.isFailure) {
+            // 手机存储满了存不上：说一声，不要整个 App 闪退；中途存盘的留着，下次打开再试
+            val ok = checkpointLock.withLock {
+                runCatching { rides.save(ride) }.isSuccess.also { if (it) runCatching { rides.clearCheckpoint() } }
+            }
+            if (!ok) {
                 speaker.say(tr("手机存储空间不够，这次骑行没存上", "Phone storage is full, this ride wasn't saved"))
                 return@launch
             }
@@ -455,20 +516,18 @@ class RideSession(
      * 轨迹上每隔一段取一个点当途经点，BRouter 就会走回同样的路
      */
     suspend fun startReturnTrip(track: List<LatLon>, prefs: RoutePrefs) {
-        val stops = ReturnTrip.stops(track) ?: throw IllegalStateException(tr("还没骑多远，没有路可以原路返回", "Haven't ridden far enough to retrace the route"))
-        val route = router.route(stops, prefs)
-        startNavigation(route, stops, prefs, title = tr("原路返回", "Return the same way"))
+        val back = ReturnTrip.stops(track) ?: throw IllegalStateException(tr("还没骑多远，没有路可以原路返回", "Haven't ridden far enough to retrace the route"))
+        routeThenStart(back, prefs, title = tr("原路返回", "Return the same way"), share = true)
     }
 
     /** 跟着队友分享的路线骑：按同样的点和配置算，预计时间还按我的速度 */
     suspend fun followShared(shared: SharedRoute, mine: RoutePrefs) {
-        val prefs = shared.prefs(mine)
-        val route = router.route(shared.stops, prefs)
-        startNavigation(route, shared.stops, prefs, title = shared.title, share = false)
+        routeThenStart(shared.stops, shared.prefs(mine), title = shared.title, share = false)
     }
 
     /** 停掉导航；RideService 看到没事可做了会自己退出 */
     fun stopNavigation() {
+        finishCount++
         shared = null
         group?.clearRoute()
         navigator = null
@@ -616,6 +675,8 @@ class RideSession(
     private companion object {
         const val REROUTE_INTERVAL_MS = 15_000L
         const val MIN_RIDE_METERS = 100.0
+        /** 骑行中多久存一次盘 */
+        const val CHECKPOINT_MS = 30_000L
         const val WEATHER_INTERVAL_MS = 10 * 60_000L
         /** 下雨时前方这么远以内有地方躲才说 */
         const val SHELTER_MENTION_METERS = 1_000.0

@@ -15,15 +15,13 @@ enum class Measure(private val zh: String, private val en: String, val enough: I
 
     fun of(route: Route): Int = when (this) {
         TIME -> route.durationSeconds
-        ROAD -> route.roadMeters()
+        // 跟路线卡片上「有多少米要在马路上骑」用同一个数，不然选了「马路最少」反而显示马路更多
+        ROAD -> route.roadOnTheWay()
         CROSSINGS -> route.crossings().size
         DISTANCE -> route.distanceMeters
         CLIMB -> route.ascendMeters
     }
 }
-
-/** 骑在马路上的米数，马路边有人行道的也算 */
-fun Route.roadMeters(): Int = breakdown().filterKeys { it in ROAD_KINDS }.values.sum()
 
 /** 一种算法：按什么偏好算，要 BRouter 的第几条备选 */
 data class RouteVariant(val prefs: RoutePrefs, val alternative: Int = 0)
@@ -38,6 +36,8 @@ data class RouteOption(
     val best: List<Measure> = emptyList(),
     val better: Map<Measure, Int> = emptyMap(),
     val worse: Map<Measure, Int> = emptyMap(),
+    /** BRouter 的第几条备选（[RouteVariant.alternative]）；收藏时记下，再骑才是同一条 */
+    val alternative: Int = 0,
 )
 
 object RouteOptions {

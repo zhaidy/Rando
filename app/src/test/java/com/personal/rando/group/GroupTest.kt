@@ -171,6 +171,21 @@ class GroupTest {
     }
 
     @Test
+    fun `直连丢了一段，服务器那份晚到还能补上`() {
+        val d = VoiceDedup()
+        assertTrue(d.accept("a", 1, 0))
+        // 直连上 1 丢了、2 先到
+        assertTrue(d.accept("a", 1, 2))
+        // 服务器的 1 晚到：收下补上；2 再来一份就丢
+        assertTrue(d.accept("a", 1, 1))
+        assertFalse(d.accept("a", 1, 1))
+        assertFalse(d.accept("a", 1, 2))
+        // 太旧的（早就放过去了）不要
+        assertTrue(d.accept("a", 1, 100))
+        assertFalse(d.accept("a", 1, 3))
+    }
+
+    @Test
     fun `附近的队伍`() {
         val teams = NearbyTeam.parse(
             """{"teams":[{"code":"K7PX3M","names":["阿明","小红","阿强","小李"],"members":4,"meters":120},{"code":"AB12CD","names":[],"members":0,"meters":800}]}"""

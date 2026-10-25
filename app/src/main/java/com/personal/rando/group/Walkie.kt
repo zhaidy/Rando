@@ -448,33 +448,50 @@ class Walkie(
                     _state.update { it.copy(problem = tr("喇叭打不开，放不了声音", "Can't open the speaker, no sound can play")) }
                     return
                 }
-                while (true) {
-                    val voice = withTimeoutOrNull(SILENCE_MS) { inbox.receiveCatching().getOrNull() } ?: break
-                    // 整句发来的（一段就说完）先嘀一声，像对讲机
-                    if (first && voice.seq == 0 && voice.end) beep()
-                    first = false
-                    val frames = AacCodec.splitAdts(Base64.decode(voice.data, Base64.DEFAULT))
-                    // 最后一段：把解码器里剩下的也倒出来，句尾不丢
-                    val pcm = decoder.decode(frames).let { if (voice.end) it + decoder.finish() else it }
-                    if (pcm.isNotEmpty()) {
-                        waiting += pcm
-                        buffered += pcm.size
+                // 直连不保证顺序：按段号排好再解码，缺的那段等一小会儿（服务器那份可能还在路上），等不到就跳过
+                val pending = sortedMapOf<Int, GroupEvent.Voice>()
+                var next = 0
+                var done = false
+                while (!done) {
+                    val got = withTimeoutOrNull(if (pending.isEmpty()) SILENCE_MS else REORDER_WAIT_MS) { inbox.receiveCatching() }
+                    if (got == null) {
+                        if (pending.isEmpty()) break
+                        next = pending.firstKey()
+                    } else {
+                        val voice = got.getOrNull() ?: break
+                        if (voice.seq < next) continue
+                        pending[voice.seq] = voice
+                        if (pending.size > REORDER_MAX) next = pending.firstKey()
                     }
-                    if (!playing && (buffered >= PREBUFFER_SAMPLES || voice.end)) {
-                        track.play()
-                        playing = true
-                    }
-                    if (playing) {
-                        // 在放的时候写，缓冲满了会等着放出去一些再写，一句长话也不会丢。
-                        // 网络卡了一下、攒着的一下子全到：音轨里排着的超过 MAX_LAG_SAMPLES 就丢掉这段，
-                        // 不然这句话后面每个字都慢那么多
-                        for (chunk in waiting) {
-                            if (written - played(track) > MAX_LAG_SAMPLES) continue
-                            written += track.write(chunk, 0, chunk.size).coerceAtLeast(0)
+                    while (!done && pending.isNotEmpty() && pending.firstKey() == next) {
+                        val voice = pending.remove(next)!!
+                        next++
+                        // 整句发来的（一段就说完）先嘀一声，像对讲机
+                        if (first && voice.seq == 0 && voice.end) beep()
+                        first = false
+                        val frames = AacCodec.splitAdts(Base64.decode(voice.data, Base64.DEFAULT))
+                        // 最后一段：把解码器里剩下的也倒出来，句尾不丢
+                        val pcm = decoder.decode(frames).let { if (voice.end) it + decoder.finish() else it }
+                        if (pcm.isNotEmpty()) {
+                            waiting += pcm
+                            buffered += pcm.size
                         }
-                        waiting.clear()
+                        if (!playing && (buffered >= PREBUFFER_SAMPLES || voice.end)) {
+                            track.play()
+                            playing = true
+                        }
+                        if (playing) {
+                            // 在放的时候写，缓冲满了会等着放出去一些再写，一句长话也不会丢。
+                            // 网络卡了一下、攒着的一下子全到：音轨里排着的超过 MAX_LAG_SAMPLES 就丢掉这段，
+                            // 不然这句话后面每个字都慢那么多
+                            for (chunk in waiting) {
+                                if (written - played(track) > MAX_LAG_SAMPLES) continue
+                                written += track.write(chunk, 0, chunk.size).coerceAtLeast(0)
+                            }
+                            waiting.clear()
+                        }
+                        if (voice.end) done = true
                     }
-                    if (voice.end) break
                 }
                 // 说完了，或者一秒多没新数据（最后一段丢了）：攒着没放的也放掉，等放完再关
                 if (!playing && waiting.isNotEmpty()) track.play()
@@ -586,6 +603,9 @@ class Walkie(
         const val MAX_LAG_SAMPLES = Vox.SAMPLE_RATE * 3 / 5
         /** 一秒半没收到这个人的声音就当他说完了（网络断了、最后一段丢了） */
         const val SILENCE_MS = 1_500L
+        /** 缺了一段：最多等这么久、或者后面攒了这么多段，就不等了 */
+        const val REORDER_WAIT_MS = 150L
+        const val REORDER_MAX = 3
         const val TAIL_MS = 200L
         /** 试一下录 3 秒 */
         const val TEST_SAMPLES = Vox.SAMPLE_RATE * 3
