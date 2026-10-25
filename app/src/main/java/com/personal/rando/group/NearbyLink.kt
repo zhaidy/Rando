@@ -216,19 +216,39 @@ class NearbyLink(context: Context, private val onMessage: (String) -> Unit) {
 
 /**
  * 同一段语音会从服务器、直连各来一份：记住最近收过的（谁、哪句、第几段），重复的丢掉。
- * 也记着每句话放到第几段了，晚到的旧段（另一条路慢了一拍）也丢掉，不倒回去放
+ * 直连（WebRTC）不保证顺序、丢了不重发：后一段先到了，服务器那份前一段晚点到还要收下来补上，
+ * 所以按「收过哪几段」记，不按「最大到第几段」；排顺序交给放的那边（Walkie 的 Player）
  */
 class VoiceDedup(private val capacity: Int = 256) {
-    private val latest = object : LinkedHashMap<Pair<String, Int>, Int>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Int>, Int>?) = size > capacity
+    /** 每句话：收到的最大段号，和它前面 [WINDOW] 段各收没收过（第 i 位是 max - i） */
+    private class Seen(var max: Int, var bits: Long)
+
+    private val seen = object : LinkedHashMap<Pair<String, Int>, Seen>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Int>, Seen>?) = size > capacity
     }
 
-    /** 这段没收过、也不比收过的旧，要放就返回 true */
+    /** 这段没收过、也不是早就放过去的旧段，要放就返回 true */
     fun accept(id: String, stream: Int, seq: Int): Boolean {
         val key = id to stream
-        val last = latest[key]
-        if (last != null && seq <= last) return false
-        latest[key] = seq
+        val s = seen[key] ?: run {
+            seen[key] = Seen(seq, 1L)
+            return true
+        }
+        if (seq > s.max) {
+            val shift = seq - s.max
+            s.bits = if (shift >= WINDOW) 1L else (s.bits shl shift) or 1L
+            s.max = seq
+            return true
+        }
+        val back = s.max - seq
+        if (back >= WINDOW) return false
+        val bit = 1L shl back
+        if (s.bits and bit != 0L) return false
+        s.bits = s.bits or bit
         return true
+    }
+
+    private companion object {
+        const val WINDOW = 64
     }
 }

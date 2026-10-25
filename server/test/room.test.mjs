@@ -252,8 +252,11 @@ test("WebRTC 信令：指定了人只发给他，没指定发给所有人；/ice
   // 大伟收不到发给阿明的
   await assert.rejects(c.next("rtc"));
 
-  const ice = await (await fetch(`http://127.0.0.1:${PORT}/ice`)).json();
+  const ice = await (await fetch(`http://127.0.0.1:${PORT}/ice?room=RTC001&id=aaaaaaaa-30`)).json();
   assert.ok(ice.iceServers.some((s) => s.urls.some((u) => u.startsWith("stun:"))));
+  // 不在队里的拿不到
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/ice?room=RTC001&id=zzzzzzzz-99`)).status, 403);
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/ice`)).status, 400);
   a.ws.close();
   b.ws.close();
   c.ws.close();

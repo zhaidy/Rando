@@ -21,7 +21,8 @@
 //          分享的路线、求助存在房间里，后来加入的人连上就能收到；本人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
 //
-// WebRTC 直连用的服务器：GET /ice，返回 {"iceServers":[{urls,username?,credential?}...]}。
+// WebRTC 直连用的服务器：GET /ice?room=<队伍码>&id=<队员 id>，返回 {"iceServers":[{urls,username?,credential?}...]}。
+// 只给正连在这个房间里的人（TURN 按流量收费，不能谁都能拿去中转）。
 // 一直有 STUN；配了 Cloudflare TURN（Secrets：TURN_KEY_ID、TURN_KEY_API_TOKEN）再加上 TURN，打不通直连时中转
 //
 // 附近的队伍：GET /nearby?lat=..&lon=..，返回 {"teams":[{code,names,members,meters}...]}，近的在前。
@@ -31,6 +32,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 const CODE = /^[A-Z0-9]{4,12}$/;
+const ID = /^[A-Za-z0-9-]{8,64}$/;
 const MAX_MEMBERS = 20;
 const MAX_NAME = 20;
 // 对讲一小段只有几百字节，这个上限只是防止乱发
@@ -60,7 +62,14 @@ export default {
       const teams = await lobby(env).nearby(lat, lon);
       return Response.json({ teams });
     }
-    if (url.pathname === "/ice") return Response.json({ iceServers: await iceServers(env) });
+    if (url.pathname === "/ice") {
+      const code = (url.searchParams.get("room") ?? "").toUpperCase();
+      const id = url.searchParams.get("id") ?? "";
+      if (!CODE.test(code) || !ID.test(id)) return new Response("缺少队伍码或队员 id", { status: 400 });
+      const member = await env.ROOMS.get(env.ROOMS.idFromName(code)).hasMember(id);
+      if (!member) return new Response("不在这个队伍里", { status: 403 });
+      return Response.json({ iceServers: await iceServers(env) });
+    }
     const match = url.pathname.match(/^\/room\/([^/]+)$/);
     if (!match) {
       return new Response("rando-group ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -74,7 +83,7 @@ export default {
     if (!CODE.test(code)) return new Response("队伍码不对", { status: 400 });
     if (request.headers.get("Upgrade") !== "websocket") return new Response("要用 WebSocket 连接", { status: 426 });
     const id = url.searchParams.get("id") ?? "";
-    if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return new Response("缺少队员 id", { status: 400 });
+    if (!ID.test(id)) return new Response("缺少队员 id", { status: 400 });
     const room = env.ROOMS.get(env.ROOMS.idFromName(code));
     // 房间自己不知道队伍码（Durable Object 只知道 id），带过去
     const forward = new URL(request.url);
@@ -117,6 +126,11 @@ export class Room extends DurableObject {
     for (const msg of saved.values()) server.send(JSON.stringify(msg));
     this.broadcast({ t: "join", id, name }, id);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** [id] 现在连在这个房间里（给 /ice 用） */
+  hasMember(id) {
+    return this.ctx.getWebSockets(id).length > 0;
   }
 
   async webSocketMessage(ws, message) {
@@ -244,8 +258,12 @@ export class Room extends DurableObject {
 }
 
 /** STUN 加上 Cloudflare TURN 的临时账号；TURN 没配或者拿不到就只有 STUN */
+let cachedIce = null;
+
 async function iceServers(env) {
   if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return STUN;
+  // 同一份临时账号用到有效期过半再换，不要每次都去调 Cloudflare 的接口
+  if (cachedIce && Date.now() - cachedIce.at < (TURN_TTL_S * 1000) / 2) return cachedIce.servers;
   try {
     const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
       method: "POST",
@@ -256,7 +274,9 @@ async function iceServers(env) {
     const { iceServers } = await res.json();
     // 返回的有时是一个对象，有时是数组
     const turn = Array.isArray(iceServers) ? iceServers : [iceServers];
-    return [...STUN, ...turn.filter((s) => s && s.urls)];
+    const servers = [...STUN, ...turn.filter((s) => s && s.urls)];
+    cachedIce = { at: Date.now(), servers };
+    return servers;
   } catch {
     return STUN;
   }

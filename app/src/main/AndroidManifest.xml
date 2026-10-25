@@ -86,7 +86,7 @@
         <service
             android:name=".ride.RideService"
             android:exported="false"
-            android:foregroundServiceType="location|microphone" />
+            android:foregroundServiceType="location|microphone|shortService" />
 
         <!-- 骑行视图上显示正在放的歌、切歌：要用户在系统里给「通知使用权」，只读媒体会话，不读通知内容 -->
         <service

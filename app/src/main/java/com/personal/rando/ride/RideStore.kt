@@ -18,17 +18,34 @@ class RideStore(context: Context) {
     val changes: StateFlow<Int> = _changes
 
     suspend fun save(ride: Ride) = withContext(Dispatchers.IO) {
+        write(ride, File(dir, "${ride.id}.json"))
+        _changes.value++
+    }
+
+    /** 骑行中隔一会儿存一份，App 半路被杀（没电、被系统清掉、闪退）下次打开还能找回来 */
+    suspend fun checkpoint(ride: Ride) = withContext(Dispatchers.IO) { write(ride, checkpointFile) }
+
+    suspend fun clearCheckpoint() = withContext(Dispatchers.IO) { checkpointFile.delete() }
+
+    /** 上次没正常结束的那段骑行；没有或读不了返回 null */
+    suspend fun readCheckpoint(): Ride? = withContext(Dispatchers.IO) {
+        checkpointFile.takeIf { it.exists() }?.let { runCatching { RideJson.decode(it.readText()) }.getOrNull() }
+    }
+
+    private fun write(ride: Ride, file: File) {
         dir.mkdirs()
         // 先写临时文件再改名，写到一半被杀也不会留下坏文件
-        val tmp = File(dir, "${ride.id}.json.tmp")
+        val tmp = File(dir, "${file.name}.tmp")
         // 先落盘再改名：只改名不 sync，断电后可能剩个空文件；改名失败要报出来，不然这次骑行就没了
         tmp.outputStream().use { out ->
             out.write(RideJson.encode(ride).toByteArray())
             out.fd.sync()
         }
-        if (!tmp.renameTo(File(dir, "${ride.id}.json"))) throw IOException("rename ${tmp.name}")
-        _changes.value++
+        if (!tmp.renameTo(file)) throw IOException("rename ${tmp.name}")
     }
+
+    /** 不以 .json 结尾，[list] 不会把它当成一条记录 */
+    private val checkpointFile get() = File(dir, "recording.part")
 
     /** 新的在前；读不出来的文件跳过 */
     suspend fun list(): List<Ride> = withContext(Dispatchers.IO) {

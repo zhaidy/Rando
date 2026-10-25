@@ -41,7 +41,8 @@ import java.nio.ByteBuffer
 class RtcLink(
     context: Context,
     private val scope: CoroutineScope,
-    private val iceUrl: String,
+    /** 拿 STUN / TURN 的地址；要带上队伍码和自己的 id，服务器只给队里的人 */
+    private val iceUrl: () -> String?,
     private val http: OkHttpClient,
     /** 发信令：[to] 是 null 就发给所有人 */
     private val signal: (to: String?, data: JSONObject) -> Unit,
@@ -108,7 +109,12 @@ class RtcLink(
 
     /** 服务器重连上了：可能有人在断线的时候开了对讲，没打通的再打一遍 */
     fun hello() {
-        if (running) signal(null, JSONObject().put("k", "hi"))
+        if (!running) return
+        scope.launch {
+            // 开对讲时可能还没连上服务器，/ice 只给连在房间里的人：连上了再拿一次，免得只有 STUN
+            fetchIce()?.let { iceServers = it }
+            if (running) signal(null, JSONObject().put("k", "hi"))
+        }
     }
 
     /** 队里现在有谁（不算自己）：离队的关掉 */
@@ -254,7 +260,8 @@ class RtcLink(
     private suspend fun fetchIce(): List<IceSpec>? = withContext(Dispatchers.IO) {
         withTimeoutOrNull(ICE_TIMEOUT_MS) {
             runCatching {
-                http.newCall(Request.Builder().url(iceUrl).build()).execute().use { r ->
+                val url = iceUrl() ?: return@runCatching null
+                http.newCall(Request.Builder().url(url).build()).execute().use { r ->
                     if (r.isSuccessful) parseIceServers(r.body.string()) else null
                 }
             }.onFailure { Log.w(TAG, "ice servers", it) }.getOrNull()

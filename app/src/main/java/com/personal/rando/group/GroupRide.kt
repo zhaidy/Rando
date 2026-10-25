@@ -102,7 +102,13 @@ class GroupRide(
 
     /** 跟队友手机 WebRTC 直连，开着对讲时才开；也只用来传对讲，信令借服务器的房间转 */
     private val rtc = RtcLink(
-        context, scope, "$serverUrl/ice", http,
+        context, scope,
+        iceUrl = {
+            _state.value?.code?.let { code ->
+                "$serverUrl/ice".toHttpUrl().newBuilder().addQueryParameter("room", code).addQueryParameter("id", myId).build().toString()
+            }
+        },
+        http = http,
         signal = { to, data -> socket?.send(GroupProtocol.rtc(to, data)) },
     ) { from, text ->
         // 只认对方自己的声音
