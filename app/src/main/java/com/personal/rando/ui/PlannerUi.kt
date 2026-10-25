@@ -103,6 +103,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.personal.rando.places.ParkedBike
 import androidx.compose.ui.graphics.asImageBitmap
 import com.personal.rando.nav.Geo
+import com.personal.rando.nav.VoiceChoice
+import com.personal.rando.nav.VoiceOption
 import com.personal.rando.routing.LatLon
 import androidx.compose.material3.Switch
 import com.personal.rando.places.MrtHome
@@ -1455,7 +1457,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
-/** 设置：体重（算卡路里）、骑车自动开始记录 */
+/** 设置：体重（算卡路里）、骑车自动开始记录、播报声音 */
 @Composable
 fun SettingsDialog(
     settings: Settings,
@@ -1464,9 +1466,17 @@ fun SettingsDialog(
     /** 定位已经是「始终允许」 */
     backgroundLocation: Boolean = false,
     onAskBackgroundLocation: () -> Unit = {},
+    /** 手机上的普通话声音，好的排前面 */
+    voices: List<VoiceOption> = emptyList(),
+    /** 试听；null 是自动挑的那个 */
+    onPreviewVoice: (String?) -> Unit = {},
+    /** 打开系统的文字转语音设置（换引擎、下载声音） */
+    onSystemVoices: () -> Unit = {},
 ) {
     var weight by remember { mutableStateOf(settings.weightKg.toInt().toString()) }
     var autoStart by remember { mutableStateOf(settings.autoStart) }
+    var voice by remember { mutableStateOf(settings.voice) }
+    var voiceMenu by remember { mutableStateOf(false) }
     val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1494,13 +1504,48 @@ fun SettingsDialog(
                     Text("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", color = InkSoft, fontSize = 13.sp)
                     LinkText("去设成始终允许", onAskBackgroundLocation)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("播报声音", color = Ink, fontSize = 16.sp)
+                        Text(voiceLabel(voices, voice), color = InkSoft, fontSize = 13.sp)
+                    }
+                    Box {
+                        LinkText("换一个") { voiceMenu = true }
+                        DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("自动（不联网里音质最好的）") },
+                                onClick = { voice = null; voiceMenu = false; onPreviewVoice(null) },
+                            )
+                            voices.forEachIndexed { i, v ->
+                                DropdownMenuItem(
+                                    text = { Text("声音 ${i + 1}：${VoiceChoice.describe(v)}") },
+                                    onClick = { voice = v.name; voiceMenu = false; onPreviewVoice(v.name) },
+                                )
+                            }
+                        }
+                    }
+                }
+                Row {
+                    LinkText("试听") { onPreviewVoice(voice) }
+                    LinkText("下载更多声音", onSystemVoices)
+                }
+                if (voices.none { it.quality >= 400 }) {
+                    Text("手机上没有高音质的中文声音：在系统的文字转语音里把引擎换成 Google，再下载中文语音。", color = InkSoft, fontSize = 13.sp)
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart)) }) { Text("保存") }
+            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice)) }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/** 「自动 · 很高音质」「声音 2：高音质 · 要联网」 */
+private fun voiceLabel(voices: List<VoiceOption>, name: String?): String {
+    if (name == null) return VoiceChoice.best(voices)?.let { "自动 · ${VoiceChoice.describe(it)}" } ?: "自动"
+    val i = voices.indexOfFirst { it.name == name }
+    return if (i < 0) "选的声音不在了，用自动挑的" else "声音 ${i + 1}：${VoiceChoice.describe(voices[i])}"
 }
 
 /** 坐 MRT 回家的方案：骑到哪个站、怎么坐、再骑多远；可以直接导航到站 */
