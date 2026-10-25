@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rando</string>
-    <string name="widget_description">本周骑了多少，一键开始记录</string>
+    <!-- 默认英文，系统是中文时用 values-zh；和 Lang「跟系统时，中文以外都用英文」一致 -->
+    <string name="widget_description">This week\'s riding, and one tap to start recording</string>
+    <!-- 小组件刚放上桌面、还没刷新时显示的字；刷新后按应用里选的语言重新设 -->
+    <string name="widget_week_title">This week</string>
+    <string name="widget_row_title">Week</string>
+    <string name="widget_km_unit">km</string>
+    <string name="widget_no_rides">No rides yet</string>
+    <string name="widget_start">Start recording</string>
 </resources>

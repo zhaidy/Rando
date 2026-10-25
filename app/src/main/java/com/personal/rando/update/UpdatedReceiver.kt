@@ -1,5 +1,6 @@
 package com.personal.rando.update
 
+import com.personal.rando.i18n.tr
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -20,7 +21,7 @@ class UpdatedReceiver : BroadcastReceiver() {
         // 新系统（以及小米等 ROM）多半会拦住后台打开界面，而且拦了也不报错，
         // 所以没法根据 relaunch 的结果决定要不要发通知，一律发
         val build = PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
-        UpdateNotifications.show(context, "Rando 已更新到 build $build", "点这里打开", UpdateNotifications.UPDATED_ID)
+        UpdateNotifications.show(context, tr("Rando 已更新到 build $build", "Rando updated to build $build"), tr("点这里打开", "Tap to open"), UpdateNotifications.UPDATED_ID)
     }
 
     /**

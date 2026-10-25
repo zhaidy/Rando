@@ -1,5 +1,6 @@
 package com.personal.rando.group
 
+import com.personal.rando.i18n.tr
 import android.content.Context
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
@@ -25,7 +26,7 @@ class AudioRoute(context: Context, private val onChanged: (String) -> Unit) {
 
     /** 进入通话线路；返回现在用的是什么，比如「蓝牙耳机 AirPods」 */
     fun start(): String {
-        val am = audio ?: return "手机"
+        val am = audio ?: return tr("手机", "Phone")
         active = true
         am.mode = AudioManager.MODE_IN_COMMUNICATION
         am.registerAudioDeviceCallback(callback, handler)
@@ -83,8 +84,8 @@ class AudioRoute(context: Context, private val onChanged: (String) -> Unit) {
     }
 
     private fun describe(device: AudioDeviceInfo?): String = when (device?.type) {
-        null -> "手机喇叭和麦克风"
-        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_USB_HEADSET -> "有线耳机"
-        else -> "蓝牙耳机 ${device.productName}".trim()
+        null -> tr("手机喇叭和麦克风", "Phone speaker and mic")
+        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_USB_HEADSET -> tr("有线耳机", "Wired headset")
+        else -> tr("蓝牙耳机 ${device.productName}", "Bluetooth headset ${device.productName}").trim()
     }
 }

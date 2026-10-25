@@ -1,13 +1,16 @@
 package com.personal.rando.group
 
+import com.personal.rando.i18n.tr
 import kotlin.math.log10
 import kotlin.math.sqrt
 
 /** 声控灵敏度：比背景噪音（风声、车声）高出多少分贝才算在说话 */
-enum class VoxLevel(val label: String, val marginDb: Double) {
-    SENSITIVE("灵敏", 9.0),
-    NORMAL("一般", 13.0),
-    WINDY("风大", 18.0),
+enum class VoxLevel(private val zh: String, private val en: String, val marginDb: Double) {
+    SENSITIVE("灵敏", "Sensitive", 9.0),
+    NORMAL("一般", "Normal", 13.0),
+    WINDY("风大", "Windy", 18.0);
+
+    val label: String get() = tr(zh, en)
 }
 
 /**

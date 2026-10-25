@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.personal.rando.i18n.tr
 import com.personal.rando.places.SavedPlace
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.rando
@@ -111,6 +112,13 @@ data class PlannerState(
     /** 路线经过的有顶棚的路 */
     val covered: List<CoveredStretch> = emptyList(),
 )
+
+/** 长按地图选的点的名字；不是搜到的地方，收藏、存路线时不拿它当名字 */
+private const val MAP_POINT = "地图上的点"
+private const val MAP_POINT_EN = "Map point"
+
+/** 名字是不是「地图上的点 / 起点 / 途经点」（中英文都算，切过语言也认得） */
+fun isMapPlaceName(name: String): Boolean = name.startsWith("地图上") || name.startsWith("Map ")
 
 /** 骑一圈：大约多远，第几次换方向 */
 data class LoopRequest(val targetMeters: Int, val attempt: Int = 0)
@@ -224,18 +232,18 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     fun onMapLongPress(point: LatLon) {
         if (_state.value.pickingHome) return saveHome(point)
-        _state.update { it.with(Place(name = "地图上的点", detail = "", location = point)) }
+        _state.update { it.with(Place(name = tr(MAP_POINT, MAP_POINT_EN), detail = "", location = point)) }
         planRoute()
     }
 
     /** 选中的地方按现在在选什么放进去：起点、途经点，或者目的地 */
     private fun PlannerState.with(place: Place): PlannerState = when {
-        pickingStart -> copy(start = if (place.isMapPoint) place.copy(name = "地图上的起点") else place, pickingStart = false)
-        pickingVia -> copy(via = insertVia(this, if (place.isMapPoint) place.copy(name = "地图上的途经点") else place), pickingVia = false)
+        pickingStart -> copy(start = if (place.isMapPoint) place.copy(name = tr("地图上的起点", "Map start")) else place, pickingStart = false)
+        pickingVia -> copy(via = insertVia(this, if (place.isMapPoint) place.copy(name = tr("地图上的途经点", "Map stop")) else place), pickingVia = false)
         else -> copy(destination = place, loop = null)
     }
 
-    private val Place.isMapPoint get() = detail.isEmpty() && name == "地图上的点"
+    private val Place.isMapPoint get() = detail.isEmpty() && (name == MAP_POINT || name == MAP_POINT_EN)
 
     /** 插在最顺路的位置：加进去后直线总长增加最少的那个空当 */
     private fun insertVia(s: PlannerState, place: Place): List<Place> {
@@ -276,7 +284,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         planRoute()
     }
 
-    fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.name, "", place.location))
+    fun chooseSaved(place: SavedPlace) = choosePlace(Place(place.label, "", place.location))
 
     /** 语音说的：路线一算好就开始导航 */
     private var startWhenReady = false
@@ -297,7 +305,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 null
             }
             if (place == null) {
-                onFailed("没找到$name")
+                onFailed(tr("没找到$name", "Couldn't find ${SavedPlace.label(name)}"))
                 return@launch
             }
             startWhenReady = true
@@ -339,12 +347,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         routeJob?.cancel()
         val first = r.stops.first()
         val nearStart = myLocation?.let { Geo.distance(it, first) <= NEAR_START_METERS } == true
-        val via = r.stops.drop(1).dropLast(1).mapIndexed { i, p -> Place("途经点 ${i + 1}", "", p) }
+        val via = r.stops.drop(1).dropLast(1).mapIndexed { i, p -> Place(tr("途经点 ${i + 1}", "Stop ${i + 1}"), "", p) }
         _state.update {
             it.copy(
                 query = "", results = emptyList(), loop = null, pickingStart = false, pickingVia = false,
-                start = if (nearStart) null else Place("${r.name}的起点", "", first),
-                destination = Place(if (r.loop) "${r.name}（回到起点）" else r.name, "", r.stops.last()),
+                start = if (nearStart) null else Place(tr("${r.name}的起点", "Start of ${r.name}"), "", first),
+                destination = Place(if (r.loop) tr("${r.name}（回到起点）", "${r.name} (back to start)") else r.name, "", r.stops.last()),
                 via = via,
                 prefs = r.prefs(it.prefs),
             )
@@ -381,7 +389,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val s = _state.value
         val ready = s.route as? RouteState.Ready ?: return
         _state.update { it.copy(results = emptyList(), query = "") }
-        val title = s.destination?.name ?: s.loop?.let { "骑一圈 ${it.targetMeters / 1000} 公里" } ?: "路线"
+        val title = s.destination?.name ?: s.loop?.let { tr("骑一圈 ${it.targetMeters / 1000} 公里", "${it.targetMeters / 1000} km loop") } ?: tr("路线", "Route")
         session.startNavigation(ready.route, ready.stops, ready.chosenPrefs ?: s.prefs, title)
     }
 
@@ -408,7 +416,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onFailed(e.message ?: "算路失败")
+                onFailed(e.message ?: tr("算路失败", "Routing failed"))
             }
         }
     }
@@ -422,7 +430,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onFailed(e.message ?: "算路失败")
+                onFailed(e.message ?: tr("算路失败", "Routing failed"))
             }
         }
     }
@@ -436,7 +444,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onFailed(e.message ?: "算路失败")
+                onFailed(e.message ?: tr("算路失败", "Routing failed"))
             }
         }
     }
@@ -467,12 +475,12 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 throw e
             } catch (e: Exception) {
                 others.forEach { it.cancel() }
-                RouteState.Failed(e.message ?: "算路失败")
+                RouteState.Failed(e.message ?: tr("算路失败", "Routing failed"))
             }
             _state.update { it.copy(route = next) }
             if (startWhenReady) {
                 startWhenReady = false
-                if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say("算路失败，${next.message}")
+                if (next is RouteState.Ready) startNavigation() else if (next is RouteState.Failed) session.say(tr("算路失败，${next.message}", "Routing failed, ${next.message}"))
             }
             if (next is RouteState.Ready && others.isNotEmpty()) launch {
                 val found = others.awaitAll().filterNotNull()
@@ -496,10 +504,10 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         val shapes = (0 until LOOP_CANDIDATES)
             .mapNotNull { LoopPlanner.plan(from, target, loop.attempt * LOOP_CANDIDATES + it) }
             .distinct()
-        if (shapes.isEmpty()) return@coroutineScope RouteState.Failed("附近画不下这么大的圈，换个距离试试")
+        if (shapes.isEmpty()) return@coroutineScope RouteState.Failed(tr("附近画不下这么大的圈，换个距离试试", "Can't fit a loop that size around here, try another distance"))
         val tried = shapes.map { shape -> async { tryLoop(from, shape, target, prefs) } }.awaitAll()
         val best = tried.mapNotNull { it.getOrNull() }.minByOrNull { (route, _) -> LoopScore.of(route, target) }
-            ?: return@coroutineScope RouteState.Failed(tried.firstNotNullOfOrNull { it.exceptionOrNull()?.message } ?: "算路失败")
+            ?: return@coroutineScope RouteState.Failed(tried.firstNotNullOfOrNull { it.exceptionOrNull()?.message } ?: tr("算路失败", "Routing failed"))
         // 先逆风出去、顺风回来：回来的路上累了，别再顶风
         val wind = windAt(from)
         if (wind != null && wind.along(best.first.points).betterReversed()) {

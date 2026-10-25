@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import android.content.Context
 import com.personal.rando.nav.NavProgress
 import com.personal.rando.nav.Navigator
@@ -67,8 +68,8 @@ data class NavigationState(
     /** 还没对上路线时显示的话：信号太差就说出误差，免得以为卡住了 */
     val waitingText: String
         get() = gpsAccuracy?.takeIf { it > NAV_MAX_ACCURACY_METERS }
-            ?.let { "GPS 信号弱，误差约 ${Math.round(it)} 米，到空旷处会好些" }
-            ?: "等待 GPS 定位…"
+            ?.let { tr("GPS 信号弱，误差约 ${Math.round(it)} 米，到空旷处会好些", "Weak GPS signal (±${Math.round(it)} m), try somewhere more open") }
+            ?: tr("等待 GPS 定位…", "Waiting for GPS…")
 }
 
 /** 可能摔车了：[deadline] 前没点「我没事」就告诉队友；[sent] 已经告诉了 */
@@ -186,15 +187,15 @@ class RideSession(
                 g.sos.collect { list ->
                     val here = _location.value
                     list.filter { "${it.id}:${it.ts}" !in known }.forEach { s ->
-                        val far = here?.let { "，离你 ${Format.distance(Geo.distance(it, s.location).toInt())}" }.orEmpty()
-                        speaker.say("注意，${s.name}可能摔车了$far")
+                        val far = here?.let { tr("，离你 ${Format.distance(Geo.distance(it, s.location).toInt())}", ", ${Format.distance(Geo.distance(it, s.location).toInt())} from you") }.orEmpty()
+                        speaker.say(tr("注意，${s.name}可能摔车了$far", "Warning, ${s.name} may have crashed$far"))
                     }
                     known = list.map { "${it.id}:${it.ts}" }.toSet()
                 }
             }
             // 队友分享了路线：骑车时不一定看屏幕，念一声
             scope.launch {
-                g.offer.filterNotNull().distinctUntilChanged().collect { speaker.say("${it.name}分享了路线，${it.title}，要跟着骑吗") }
+                g.offer.filterNotNull().distinctUntilChanged().collect { speaker.say(tr("${it.name}分享了路线，${it.title}，要跟着骑吗", "${it.name} shared a route, ${it.title}. Want to follow?")) }
             }
         }
     }
@@ -273,7 +274,7 @@ class RideSession(
                     lastChange = now
                 } else if (now - lastChange >= AUTO_STOP_MS) {
                     val ride = stopRecording()
-                    speaker.say(ride?.let { "停了一会儿，已经结束记录，骑了 ${Format.distance(it.distanceMeters.toInt())}" } ?: "停了一会儿，已经结束记录")
+                    speaker.say(ride?.let { tr("停了一会儿，已经结束记录，骑了 ${Format.distance(it.distanceMeters.toInt())}", "Stopped for a while, recording ended. You rode ${Format.distance(it.distanceMeters.toInt())}") } ?: tr("停了一会儿，已经结束记录", "Stopped for a while, recording ended"))
                     return@launch
                 }
             }
@@ -286,6 +287,9 @@ class RideSession(
     /** 设置里能选的播报声音 */
     val voiceOptions get() = speaker.options
 
+    /** 设置里换了语言：播报和能选的声音马上跟着换 */
+    fun languageChanged() = speaker.followLanguage()
+
     /** 设置里试听；null 是自动挑的那个 */
     fun previewVoice(name: String?) = speaker.preview(name)
 
@@ -295,15 +299,18 @@ class RideSession(
     /** 「还有 3.2 公里，大约 11 分钟」；没在导航时说骑了多远 */
     fun remainingText(): String {
         val p = _navigation.value?.progress
-        if (p != null) return "还有 ${Format.distance(p.remainingMeters.toInt())}，大约 ${(p.remainingSeconds + 59) / 60} 分钟"
-        val r = _recording.value ?: return "现在没在导航"
-        return "已经骑了 ${Format.distance(r.distanceMeters.toInt())}，没在导航"
+        if (p != null) {
+            val minutes = (p.remainingSeconds + 59) / 60
+            return tr("还有 ${Format.distance(p.remainingMeters.toInt())}，大约 $minutes 分钟", "${Format.distance(p.remainingMeters.toInt())} to go, about $minutes ${if (minutes == 1) "minute" else "minutes"}")
+        }
+        val r = _recording.value ?: return tr("现在没在导航", "Not navigating right now")
+        return tr("已经骑了 ${Format.distance(r.distanceMeters.toInt())}，没在导航", "You've ridden ${Format.distance(r.distanceMeters.toInt())}, not navigating")
     }
 
     /** 天气、气温、空气：语音问「天气怎么样」时说 */
     fun weatherText(): String {
-        val parts = listOfNotNull(_weather.value?.summary, _climate.value?.summary?.let { "现在 $it" })
-        return parts.joinToString("，").ifEmpty { "开始骑以后才知道沿途天气" }
+        val parts = listOfNotNull(_weather.value?.summary, _climate.value?.summary?.let { tr("现在 $it", "Now $it") })
+        return parts.joinToString(tr("，", ", ")).ifEmpty { tr("开始骑以后才知道沿途天气", "Weather along the way shows up once you start riding") }
     }
 
     /** 检测到可能摔车：倒计时，到时间还没说没事就告诉队友 */
@@ -311,11 +318,11 @@ class RideSession(
         if (_crash.value != null || group?.state?.value == null) return
         val deadline = System.currentTimeMillis() + CRASH_COUNTDOWN_MS
         _crash.value = CrashAlert(deadline)
-        speaker.say("你可能摔车了，没事的话点我没事，${CRASH_COUNTDOWN_MS / 1000} 秒后通知队友")
+        speaker.say(tr("你可能摔车了，没事的话点我没事，${CRASH_COUNTDOWN_MS / 1000} 秒后通知队友", "You may have crashed. If you're OK, tap I'm OK. Alerting your group in ${CRASH_COUNTDOWN_MS / 1000} seconds"))
         crashJob?.cancel()
         crashJob = scope.launch {
             delay(CRASH_COUNTDOWN_MS - 10_000)
-            speaker.say("10 秒后通知队友")
+            speaker.say(tr("10 秒后通知队友", "Alerting your group in 10 seconds"))
             delay(10_000)
             sendSos()
         }
@@ -327,7 +334,7 @@ class RideSession(
         val at = _location.value ?: return
         group?.sendSos(at)
         _crash.update { (it ?: CrashAlert(System.currentTimeMillis())).copy(sent = true) }
-        speaker.say("已经通知队友")
+        speaker.say(tr("已经通知队友", "Your group has been alerted"))
     }
 
     /** 我没事：取消倒计时，已经通知了的也撤回 */
@@ -339,7 +346,7 @@ class RideSession(
 
     /** 导航到 [target]（比如摔车的队友那儿），不分享给队友 */
     suspend fun navigateTo(target: LatLon, prefs: RoutePrefs, title: String) {
-        val from = _location.value ?: throw IllegalStateException("还没定位到")
+        val from = _location.value ?: throw IllegalStateException(tr("还没定位到", "No location yet"))
         val stops = listOf(from, target)
         startNavigation(router.route(stops, prefs), stops, prefs, title, share = false)
     }
@@ -352,11 +359,16 @@ class RideSession(
         val along = _navigation.value?.progress?.takeIf { !it.offRoute }?.alongMeters ?: return null
         val roof = covered.nextAhead(along)
         val hut = _amenities.value.filter { it.amenity.type == AmenityType.SHELTER && it.alongMeters >= along }.minOfOrNull { it.alongMeters - along }
-        val (meters, what) = listOfNotNull(roof?.let { it to "有顶棚的路" }, hut?.let { it to "避雨亭" }).minByOrNull { it.first } ?: return null
+        // true 是有顶棚的路，false 是避雨亭
+        val (meters, isRoof) = listOfNotNull(roof?.let { it to true }, hut?.let { it to false }).minByOrNull { it.first } ?: return null
         return when {
             meters > SHELTER_MENTION_METERS -> null
-            meters < 20 -> "，现在这段路有顶棚可以躲雨".takeIf { what == "有顶棚的路" } ?: "，旁边有避雨亭"
-            else -> "，前方 ${Format.distance(meters.toInt())} 有${what}可以躲雨"
+            meters < 20 -> if (isRoof) tr("，现在这段路有顶棚可以躲雨", ", this stretch is covered if you need shelter") else tr("，旁边有避雨亭", ", there's a shelter right here")
+            else -> {
+                val d = Format.distance(meters.toInt())
+                if (isRoof) tr("，前方 $d 有有顶棚的路可以躲雨", ", covered path in $d to shelter from the rain")
+                else tr("，前方 $d 有避雨亭可以躲雨", ", rain shelter in $d")
+            }
         }
     }
 
@@ -435,9 +447,9 @@ class RideSession(
      * 轨迹上每隔一段取一个点当途经点，BRouter 就会走回同样的路
      */
     suspend fun startReturnTrip(track: List<LatLon>, prefs: RoutePrefs) {
-        val stops = ReturnTrip.stops(track) ?: throw IllegalStateException("还没骑多远，没有路可以原路返回")
+        val stops = ReturnTrip.stops(track) ?: throw IllegalStateException(tr("还没骑多远，没有路可以原路返回", "Haven't ridden far enough to retrace the route"))
         val route = router.route(stops, prefs)
-        startNavigation(route, stops, prefs, title = "原路返回")
+        startNavigation(route, stops, prefs, title = tr("原路返回", "Return the same way"))
     }
 
     /** 跟着队友分享的路线骑：按同样的点和配置算，预计时间还按我的速度 */
@@ -525,7 +537,7 @@ class RideSession(
                     val along = if (ahead.isNotEmpty()) weather.along(ahead) else null
                     _weather.value = along
                     val text = along?.takeIf { !it.dry }?.summary
-                    if (text != null && text != spokenWeather) speaker.say("注意，$text${shelterAhead().orEmpty()}")
+                    if (text != null && text != spokenWeather) speaker.say(tr("注意，", "Heads up, ") + text + shelterAhead().orEmpty())
                     spokenWeather = text
                 } catch (e: CancellationException) {
                     throw e

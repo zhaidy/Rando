@@ -1,5 +1,6 @@
 package com.personal.rando.places
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import org.json.JSONObject
@@ -10,6 +11,8 @@ import kotlin.math.floor
 data class PcnLoop(val name: String, val lines: List<List<LatLon>>) {
     /** 「西部探险环线」 */
     val zh: String get() = ZH[name] ?: name
+    /** 界面上显示的名字：中文界面用 [zh]，英文界面用原名 */
+    val label: String get() = tr(zh, name)
 
     private companion object {
         val ZH = mapOf(

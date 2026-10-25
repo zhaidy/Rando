@@ -1,5 +1,6 @@
 package com.personal.rando.group
 
+import com.personal.rando.i18n.tr
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -37,9 +38,11 @@ import kotlin.random.Random
  * 对讲方式：实时是边说边发，像打电话；整句是说完一句再整句发出去，网络差的时候更稳，
  * 收到的人先「嘀」一声再放
  */
-enum class WalkieMode(val label: String) {
-    LIVE("实时"),
-    CLIP("整句"),
+enum class WalkieMode(private val zh: String, private val en: String) {
+    LIVE("实时", "Live"),
+    CLIP("整句", "Clips");
+
+    val label: String get() = tr(zh, en)
 }
 
 /** 对讲：开没开、方式、灵敏度、声音走哪儿、我在不在说、谁在说 */
@@ -160,7 +163,7 @@ class Walkie(
         }
         if (record == null) {
             withContext(Dispatchers.Main) { turnOff() }
-            _state.update { it.copy(problem = "麦克风打不开，可能被别的 App 占用了") }
+            _state.update { it.copy(problem = tr("麦克风打不开，可能被别的 App 占用了", "Can't open the mic, another app may be using it")) }
             return
         }
         val effects = listOfNotNull(
@@ -186,7 +189,7 @@ class Walkie(
                         Log.w(TAG, "mic read failed: $got")
                         test?.cancel()
                         test = null
-                        _state.update { it.copy(testing = false, sending = false, problem = "麦克风读不到声音（$got），可能被别的 App 占用了") }
+                        _state.update { it.copy(testing = false, sending = false, problem = tr("麦克风读不到声音（$got），可能被别的 App 占用了", "No sound from the mic ($got), another app may be using it")) }
                     }
                     delay(20)
                     continue
@@ -207,7 +210,7 @@ class Walkie(
                     test = runCatching { SelfTest() }
                         .onFailure { e ->
                             Log.w(TAG, "encoder failed", e)
-                            _state.update { it.copy(testing = false, problem = "这台手机的声音编码出错了") }
+                            _state.update { it.copy(testing = false, problem = tr("这台手机的声音编码出错了", "Audio encoding failed on this phone")) }
                         }
                         .getOrNull()
                     _state.update { it.copy(sending = test != null) }
@@ -236,7 +239,7 @@ class Walkie(
                             sender = runCatching { Sender(_state.value.mode) }
                                 .onFailure { e ->
                                     Log.w(TAG, "encoder failed", e)
-                                    _state.update { it.copy(problem = "这台手机的声音编码出错了") }
+                                    _state.update { it.copy(problem = tr("这台手机的声音编码出错了", "Audio encoding failed on this phone")) }
                                 }
                                 .getOrNull()
                                 ?.also { s -> event.frames.forEach(s::add) }
@@ -343,9 +346,12 @@ class Walkie(
             val codecOk = decoded.size >= samples * 3 / 4
             Log.i(TAG, "self test: ${raw.size} reads, $samples samples, ${frames.size} aac frames, ${decoded.size} decoded, loudest $loudest dB")
             val problem = when {
-                loudest < QUIET_DB -> "麦克风几乎没收到声音：看看是不是被别的 App 占用了，或者麦克风被手、壳挡住了"
-                !codecOk -> "这台手机解不开压缩的声音（${frames.size} 帧解出 ${decoded.size * 100 / samples.coerceAtLeast(1)}%），放的是原声，可能听不到队友"
-                callVolume() == 0 -> "通话音量是 0：说话的时候按音量加大键"
+                loudest < QUIET_DB -> tr("麦克风几乎没收到声音：看看是不是被别的 App 占用了，或者麦克风被手、壳挡住了", "The mic picked up almost nothing: check whether another app is using it, or a hand or case is covering it")
+                !codecOk -> {
+                    val percent = decoded.size * 100 / samples.coerceAtLeast(1)
+                    tr("这台手机解不开压缩的声音（${frames.size} 帧解出 $percent%），放的是原声，可能听不到队友", "This phone can't decode compressed audio (${frames.size} frames, $percent% decoded). Playing the raw recording; you may not hear teammates")
+                }
+                callVolume() == 0 -> tr("通话音量是 0：说话的时候按音量加大键", "Call volume is 0: press volume up while talking")
                 else -> null
             }
             _state.update { it.copy(testing = false, sending = false, problem = problem) }
@@ -407,7 +413,7 @@ class Walkie(
             var first = true
             try {
                 if (decoder == null) {
-                    _state.update { it.copy(problem = "这台手机的声音解码出错了，听不到队友") }
+                    _state.update { it.copy(problem = tr("这台手机的声音解码出错了，听不到队友", "Audio decoding failed on this phone, you won't hear teammates")) }
                     return
                 }
                 while (true) {
@@ -505,7 +511,7 @@ class Walkie(
             val track = runCatching { newTrack() }.getOrNull()
             try {
                 if (track == null) {
-                    _state.update { it.copy(problem = "喇叭打不开，放不了声音") }
+                    _state.update { it.copy(problem = tr("喇叭打不开，放不了声音", "Can't open the speaker, no sound can play")) }
                     return@launch
                 }
                 track.play()
@@ -527,7 +533,7 @@ class Walkie(
     private companion object {
         const val TAG = "Walkie"
         /** 试一下时「谁在说」里显示的 */
-        const val SELF_NAME = "你自己"
+        val SELF_NAME: String get() = tr("你自己", "You")
         /** 连着这么多次读不到麦克风（一秒）就说麦克风有问题 */
         const val READ_FAILURES = 50
         const val KEY_LEVEL = "level"

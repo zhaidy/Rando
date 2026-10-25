@@ -6,13 +6,15 @@ import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.Locale
 
 /**
- * 系统自带的 TTS 播报。声音按 [VoiceChoice] 挑：设置里选了就用选的，没选就用装好的音质最高的普通话声音；
- * 手机一个中文声音都没有时退回系统默认语言
+ * 系统自带的 TTS 播报。声音按 [VoiceChoice] 挑：设置里选了就用选的，没选就用装好的音质最高的
+ * 界面语言的声音（中文是普通话）；手机上一个这种语言的声音都没有时退回系统默认语言
  */
 class Speaker(context: Context, private val wanted: () -> String? = { null }) {
 
@@ -23,6 +25,8 @@ class Speaker(context: Context, private val wanted: () -> String? = { null }) {
     @Volatile private var applied: String? = null
     /** 要联网的声音念不出来以后，这个时间之前先用不联网的 */
     @Volatile private var offlineUntil = 0L
+    /** 现在 TTS 设的是不是英文；界面换了语言，下次念之前跟着换 */
+    private var english: Boolean? = null
 
     private val _options = MutableStateFlow<List<VoiceOption>>(emptyList())
     /** 设置里能选的声音，好的排前面；引擎启动好之前是空的 */
@@ -32,11 +36,7 @@ class Speaker(context: Context, private val wanted: () -> String? = { null }) {
         if (status == TextToSpeech.SUCCESS) {
             ready = true
             voices = runCatching { tts.voices?.toList() }.getOrNull().orEmpty()
-            _options.value = VoiceChoice.choices(voices.map(::option))
-            val result = tts.setLanguage(Locale.SIMPLIFIED_CHINESE)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts.setLanguage(Locale.getDefault())
-            }
+            followLanguage()
             pending?.let(::say)
             pending = null
         }
@@ -74,19 +74,33 @@ class Speaker(context: Context, private val wanted: () -> String? = { null }) {
         )
     }
 
+    /** 界面语言换了：换 TTS 的语言，设置里能选的声音也换成这种语言的 */
+    fun followLanguage() {
+        if (!ready || english == Lang.english) return
+        english = Lang.english
+        _options.value = VoiceChoice.choices(voices.map(::option))
+        applied = null
+        val result = tts.setLanguage(Lang.locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts.setLanguage(Locale.getDefault())
+        }
+    }
+
     /** 排队念，路口提示和路况提醒挨着来时不会互相打断 */
     fun say(text: String) {
         if (!ready) {
             pending = text
             return
         }
+        followLanguage()
         useVoice(wanted())
         tts.speak(text, TextToSpeech.QUEUE_ADD, null, text)
     }
 
     /** 设置里试听：打断正在念的，用 [name] 念一句 */
-    fun preview(name: String?, text: String = "前方 200 米右转，进入公园连道") {
+    fun preview(name: String?, text: String = tr("前方 200 米右转，进入公园连道", "In 200 metres, turn right onto the park connector")) {
         if (!ready) return
+        followLanguage()
         useVoice(name)
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, PREVIEW)
     }

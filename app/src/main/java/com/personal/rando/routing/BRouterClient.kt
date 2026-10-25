@@ -1,5 +1,6 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,8 +64,8 @@ class BRouterClient(
 
     /** 常见的几种出错换成中文 */
     private fun explain(message: String): String = when {
-        "island" in message -> "有个点在走不通的地方（小岛、封闭区域），换个点试试"
-        "not mapped" in message || "no track found" in message -> "附近找不到能骑的路"
+        "island" in message -> tr("有个点在走不通的地方（小岛、封闭区域），换个点试试", "A point is somewhere unreachable (an island or closed area), try another point")
+        "not mapped" in message || "no track found" in message -> tr("附近找不到能骑的路", "No rideable path nearby")
         else -> message
     }
 
@@ -75,7 +76,7 @@ class BRouterClient(
             .post(profile.toRequestBody("text/plain".toMediaType()))
             .build()
         val json = http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("上传路线配置失败（HTTP ${response.code}）")
+            if (!response.isSuccessful) throw IOException(tr("上传路线配置失败（HTTP ${response.code}）", "Failed to upload route profile (HTTP ${response.code})"))
             JSONObject(response.body.string())
         }
         json.optString("error").takeIf { it.isNotEmpty() }?.let { throw IOException(it) }

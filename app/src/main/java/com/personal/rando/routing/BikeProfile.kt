@@ -1,15 +1,19 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
+
 /**
  * 车型配置。「公园连道」是 Rando 自己的配置（见 [RandoProfiles]），要先上传；
  * 其余对应 BRouter 服务器自带的配置
  */
-enum class BikeProfile(val label: String, val brouterName: String, val custom: Boolean = false) {
-    PCN("公园连道", "", custom = true),
-    SAFE("安全优先", "safety"),
-    CITY("城市车", "trekking"),
-    ROAD("公路车", "fastbike"),
-    MTB("山地车", "mtb"),
+enum class BikeProfile(private val zh: String, private val en: String, val brouterName: String, val custom: Boolean = false) {
+    PCN("公园连道", "Park connectors", "", custom = true),
+    SAFE("安全优先", "Safest", "safety"),
+    CITY("城市车", "City bike", "trekking"),
+    ROAD("公路车", "Road bike", "fastbike"),
+    MTB("山地车", "Mountain bike", "mtb");
+
+    val label: String get() = tr(zh, en)
 }
 
 /** 路线偏好：车型配置，加几个只对「公园连道」起作用的开关，和预计时间按什么速度算 */

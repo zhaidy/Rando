@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -68,8 +69,9 @@ class RideWidget : AppWidgetProvider() {
 
         fun text(week: PeriodTotal, recording: RecordingState?): WidgetText = WidgetText(
             km = String.format(Locale.US, "%.1f", week.meters / 1000),
-            detail = if (week.rides == 0) "这周还没骑" else "${week.rides} 次 · ${Format.clock(week.movingSeconds)}",
-            button = recording?.let { "记录中 · ${Format.distance(it.distanceMeters.toInt())}" } ?: "开始记录",
+            detail = if (week.rides == 0) tr("这周还没骑", "No rides this week")
+            else tr("${week.rides} 次 · ${Format.clock(week.movingSeconds)}", "${week.rides} ${if (week.rides == 1) "ride" else "rides"} · ${Format.clock(week.movingSeconds)}"),
+            button = recording?.let { tr("记录中 · ${Format.distance(it.distanceMeters.toInt())}", "Recording · ${Format.distance(it.distanceMeters.toInt())}") } ?: tr("开始记录", "Start recording"),
         )
 
         /** 比这个矮就用一行的布局：两格高大约 110dp，一格高 40～60dp */
@@ -94,6 +96,9 @@ class RideWidget : AppWidgetProvider() {
             )
             fun views(layout: Int) = RemoteViews(context.packageName, layout).apply {
                 setTextViewText(R.id.widget_km, t.km)
+                // 布局里的字跟系统语言，这里换成应用里选的语言
+                setTextViewText(R.id.widget_title, if (layout == R.layout.widget_row) tr("本周", "Week") else tr("本周骑行", "This week"))
+                setTextViewText(R.id.widget_unit, tr("公里", "km"))
                 setTextViewText(R.id.widget_detail, t.detail)
                 setTextViewText(R.id.widget_button, t.button)
                 setOnClickPendingIntent(R.id.widget_button, start)

@@ -1,12 +1,17 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.places.PcnCoverage
 import com.personal.rando.places.PcnLoop
 import java.util.Calendar
 import java.util.TimeZone
 
 /** 回顾一个月，或者一整年 */
-enum class ReviewSpan(val label: String) { MONTH("月"), YEAR("年") }
+enum class ReviewSpan(private val zh: String, private val en: String) {
+    MONTH("月", "Month"), YEAR("年", "Year");
+
+    val label: String get() = tr(zh, en)
+}
 
 /**
  * 一个月（一年）的回顾：骑了多少、最长最快的一次、骑了几天、连着骑了几天、
@@ -118,8 +123,8 @@ object Reviews {
     private fun title(start: Long, span: ReviewSpan, zone: TimeZone): String {
         val c = Calendar.getInstance(zone).apply { timeInMillis = start }
         return when (span) {
-            ReviewSpan.MONTH -> "${c.get(Calendar.YEAR)} 年 ${c.get(Calendar.MONTH) + 1} 月"
-            ReviewSpan.YEAR -> "${c.get(Calendar.YEAR)} 年"
+            ReviewSpan.MONTH -> tr("${c.get(Calendar.YEAR)} 年 ${c.get(Calendar.MONTH) + 1} 月", "${MONTHS[c.get(Calendar.MONTH)]} ${c.get(Calendar.YEAR)}")
+            ReviewSpan.YEAR -> tr("${c.get(Calendar.YEAR)} 年", "${c.get(Calendar.YEAR)}")
         }
     }
 }

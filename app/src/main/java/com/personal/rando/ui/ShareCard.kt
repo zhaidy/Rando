@@ -18,6 +18,8 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.places.SavedPlace
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
@@ -35,7 +37,6 @@ import org.maplibre.android.snapshotter.MapSnapshotter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.math.cos
 
@@ -56,12 +57,12 @@ object ShareCard {
 
     /** 一次骑行的分享图；[hide] 打开时家附近的轨迹不画（见 [SharePrivacy]） */
     suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true): Card =
-        render(context, "rando-${ride.id}", "分享骑行", listOf(ride), hide) { map, tracks -> draw(map, tracks.first(), ride, record) }
+        render(context, "rando-${ride.id}", tr("分享骑行", "Share ride"), listOf(ride), hide) { map, tracks -> draw(map, tracks.first(), ride, record) }
 
     /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
     suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true): Card? {
         if (rides.isEmpty()) return null
-        return render(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides, hide) { map, tracks -> drawDay(map, tracks, rides) }
+        return render(context, "rando-day-${rides.first().id}", tr("分享今天的骑行", "Share today's rides"), rides, hide) { map, tracks -> drawDay(map, tracks, rides) }
     }
 
     /** 拍地图、画图；每次骑行可能被隐私圈断成几段，所以是 骑行 → 段 → 点 */
@@ -88,7 +89,7 @@ object ShareCard {
             val ridesPx = rideTracks.map { r -> piecesPx.subList(from, from + r.size).also { from += r.size } }
             paint(snapshot?.first, ridesPx)
         }
-        return Card(bitmap, name, chooserTitle, if (home != null) "隐藏家附近" else "隐藏起点终点附近")
+        return Card(bitmap, name, chooserTitle, if (home != null) tr("隐藏家附近", "Hide near home") else tr("隐藏起点终点附近", "Hide start and finish"))
     }
 
     /** 存到缓存，弹出系统分享 */
@@ -123,7 +124,7 @@ object ShareCard {
                 }
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return@runCatching false
                 try {
-                    resolver.openOutputStream(uri)?.use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("打不开 $uri")
+                    resolver.openOutputStream(uri)?.use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error(tr("打不开 $uri", "Can't open $uri"))
                 } catch (e: Exception) {
                     resolver.delete(uri, null, null)
                     throw e
@@ -203,7 +204,7 @@ object ShareCard {
     fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>): Bitmap {
         val first = rides.first()
         val last = rides.last()
-        val title = if (rides.size == 1) "今天${first.title}" else "今天骑了 ${rides.size} 次"
+        val title = if (rides.size == 1) tr("今天${first.title}", "Today: ${first.title}") else tr("今天骑了 ${rides.size} 次", "${rides.size} rides today")
         val time = if (rides.size == 1) {
             "${CLOCK.format(Date(first.startedAt))}–${CLOCK.format(Date(first.endedAt))}"
         } else {
@@ -259,10 +260,10 @@ object ShareCard {
         }
         y += 140f
         val stats = listOf(
-            Format.distance(meters.toInt()) to "距离",
-            Format.clock(movingSeconds) to "骑行时间",
-            "${ascendMeters.toInt()} 米" to "爬升",
-            Format.speed(if (movingSeconds > 0) meters / movingSeconds else 0.0) to "均速",
+            Format.distance(meters.toInt()) to tr("距离", "Distance"),
+            Format.clock(movingSeconds) to tr("骑行时间", "Moving time"),
+            tr("${ascendMeters.toInt()} 米", "${ascendMeters.toInt()} m") to tr("爬升", "Climb"),
+            Format.speed(if (movingSeconds > 0) meters / movingSeconds else 0.0) to tr("均速", "Avg speed"),
         )
         val big = text(64f, ink, bold)
         val small = text(28f, ink)
@@ -283,7 +284,7 @@ object ShareCard {
             c.drawText(label, x, y + 50f, caption)
             x += widths[i] + gap
         }
-        if (map != null) c.drawText("地图 © OpenStreetMap", left, HEIGHT - 52f, text(16f, Color.parseColor("#C6CAC7")))
+        if (map != null) c.drawText(tr("地图 © OpenStreetMap", "Map © OpenStreetMap"), left, HEIGHT - 52f, text(16f, Color.parseColor("#C6CAC7")))
         c.drawText("Rando", WIDTH - 72f, HEIGHT - 48f, text(34f, green, bold).apply { textAlign = Paint.Align.RIGHT })
         return out
     }
@@ -320,8 +321,9 @@ object ShareCard {
         typeface = face
     }
 
-    private val DATE = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
-    private val DAY = SimpleDateFormat("yyyy年M月d日 EEE", Locale.CHINA)
-    private val CLOCK = SimpleDateFormat("HH:mm", Locale.CHINA)
+    // 每次按现在的语言新建：切了语言日期也跟着换
+    private val DATE get() = SimpleDateFormat(tr("yyyy年M月d日 HH:mm", "d MMM yyyy, HH:mm"), Lang.locale)
+    private val DAY get() = SimpleDateFormat(tr("yyyy年M月d日 EEE", "EEE d MMM yyyy"), Lang.locale)
+    private val CLOCK get() = SimpleDateFormat("HH:mm", Lang.locale)
     private const val SNAPSHOT_TIMEOUT_MS = 15_000L
 }

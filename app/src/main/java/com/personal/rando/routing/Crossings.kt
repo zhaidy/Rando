@@ -1,11 +1,15 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
+
 /** 路口是哪种：有红绿灯最稳，没标记的要自己看车 */
-enum class CrossingType(val label: String, val color: String) {
-    SIGNALS("红绿灯", "#1B7F3B"),
-    ZEBRA("斑马线", "#3D7BD9"),
-    UNMARKED("无标记", "#E0672B"),
-    UNKNOWN("没标明", "#8A8A8A");
+enum class CrossingType(private val zh: String, private val en: String, val color: String) {
+    SIGNALS("红绿灯", "Traffic lights", "#1B7F3B"),
+    ZEBRA("斑马线", "Zebra crossing", "#3D7BD9"),
+    UNMARKED("无标记", "Unmarked", "#E0672B"),
+    UNKNOWN("没标明", "Unknown", "#8A8A8A");
+
+    val label: String get() = tr(zh, en)
 
     companion object {
         /** 点的标签是路口才返回类型 */

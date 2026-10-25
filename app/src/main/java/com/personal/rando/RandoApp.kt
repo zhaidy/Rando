@@ -2,6 +2,7 @@ package com.personal.rando
 
 import android.app.Application
 import android.content.Context
+import com.personal.rando.i18n.Lang
 import com.personal.rando.places.HazardStore
 import com.personal.rando.places.ParkingStore
 import com.personal.rando.places.MrtData
@@ -30,6 +31,7 @@ class RandoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Lang.apply(settings.settings.value.language)
         // 骑车自动开始记录：进程起来时按设置登记一下活动识别
         AutoStart.apply(this, settings.settings.value.autoStart)
     }

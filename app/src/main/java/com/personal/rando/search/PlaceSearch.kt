@@ -1,5 +1,6 @@
 package com.personal.rando.search
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,7 @@ class PlaceSearch(
             }
             .build()
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("搜索失败（HTTP ${response.code}）")
+            if (!response.isSuccessful) throw IOException(tr("搜索失败（HTTP ${response.code}）", "Search failed (HTTP ${response.code})"))
             parse(response.body.string(), near)
         }
     }

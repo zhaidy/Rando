@@ -1,5 +1,7 @@
 package com.personal.rando.ui
 
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.ride.HeatLevel
 import com.personal.rando.ride.RideHeat
 import com.personal.rando.ride.Review
@@ -95,7 +97,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val DATE = SimpleDateFormat("M月d日 EEE HH:mm", Locale.CHINA)
+private val DATE get() = SimpleDateFormat(tr("M月d日 EEE HH:mm", "EEE d MMM HH:mm"), Lang.locale)
+
+/** 英文的「3 rides」 */
+private fun ridesEn(n: Int): String = if (n == 1) "1 ride" else "$n rides"
 
 // ───────────────────────── 记录列表 ─────────────────────────
 
@@ -129,14 +134,14 @@ fun RideList(
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("返回", "Back"), tint = Ink) }
                 Spacer(Modifier.width(4.dp))
-                Text("骑行记录", Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("骑行记录", "Rides"), Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                 if (today.isNotEmpty()) {
                     GlassButton(onClick = { onShareToday(today) }, tone = GlassTone.Tinted(RandoGreen), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                         Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("分享今天", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("分享今天", "Share today"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -144,7 +149,7 @@ fun RideList(
                 rides == null -> Unit
                 rides.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        "还没有记录。在地图右边点橙色的 ▶ 开始记录，或者开始导航时会自动记录。",
+                        tr("还没有记录。在地图右边点橙色的 ▶ 开始记录，或者开始导航时会自动记录。", "No rides yet. Tap the orange ▶ on the right of the map to start recording, or start navigating and it records automatically."),
                         color = InkSoft,
                         fontSize = 15.sp,
                     )
@@ -192,24 +197,24 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
                 }
             }
             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-                TotalStat(Format.distance(current.meters.toInt()), "${current.rides} 次")
-                TotalStat(Format.clock(current.movingSeconds), "骑行时间")
-                previous?.let { TotalStat(compare(current.meters - it.meters), "比上${period.label}") }
+                TotalStat(Format.distance(current.meters.toInt()), tr("${current.rides} 次", ridesEn(current.rides)))
+                TotalStat(Format.clock(current.movingSeconds), tr("骑行时间", "Ride time"))
+                previous?.let { TotalStat(compare(current.meters - it.meters), tr("比上${period.label}", "vs last ${period.label.lowercase()}")) }
             }
             PeriodBars(totals, Modifier.padding(top = 14.dp).fillMaxWidth().height(120.dp))
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "全部 ${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
+                    tr("全部 ${rides.size} 次", "All ${ridesEn(rides.size)}") + " · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
                     Modifier.weight(1f),
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                 )
                 GlassButton(onClick = onReview, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text("回顾", color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("回顾", "Review"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
                 GlassButton(onClick = onRiddenMap, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text("骑过的路", color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("骑过的路", "Ridden roads"), color = RandoGreenDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -218,7 +223,7 @@ private fun StatsCard(rides: List<Ride>, now: Long, onRiddenMap: () -> Unit, onR
 
 /** 「+12.3 公里」「-800 米」「持平」 */
 private fun compare(meters: Double): String = when {
-    abs(meters) < 50 -> "持平"
+    abs(meters) < 50 -> tr("持平", "Same")
     meters > 0 -> "+" + Format.distance(meters.toInt())
     else -> "-" + Format.distance((-meters).toInt())
 }
@@ -288,9 +293,9 @@ private fun RideRow(ride: Ride, index: Int, onClick: () -> Unit) {
                 Text(DATE.format(Date(ride.startedAt)), color = InkSoft, fontSize = 13.sp)
             }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                SmallStat(Format.distance(ride.distanceMeters.toInt()), "距离")
-                SmallStat(Format.clock(ride.movingSeconds), "骑行时间")
-                SmallStat(Format.speed(ride.averageSpeed), "均速")
+                SmallStat(Format.distance(ride.distanceMeters.toInt()), tr("距离", "Distance"))
+                SmallStat(Format.clock(ride.movingSeconds), tr("骑行时间", "Ride time"))
+                SmallStat(Format.speed(ride.averageSpeed), tr("均速", "Avg speed"))
             }
         }
     }
@@ -323,23 +328,26 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
             onDismissRequest = { asking = false },
             shape = GlassShapes.Sheet,
             containerColor = Color(0xF7F7FAF8),
-            title = { Text("分享哪些？") },
+            title = { Text(tr("分享哪些？", "Share what?")) },
             text = {
                 Text(
-                    "${if (isToday) "今天" else "这天"}骑了 ${day.size} 次，一共 ${Format.distance(day.sumOf { it.distanceMeters }.toInt())}。",
+                    tr(
+                        "${if (isToday) "今天" else "这天"}骑了 ${day.size} 次，一共 ${Format.distance(day.sumOf { it.distanceMeters }.toInt())}。",
+                        "${ridesEn(day.size)} ${if (isToday) "today" else "that day"}, ${Format.distance(day.sumOf { it.distanceMeters }.toInt())} in total.",
+                    ),
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     asking = false
                     preview { hide -> ShareCard.dayCard(context, day, hide) }
-                }) { Text(if (isToday) "今天全部" else "这天全部", color = RandoGreen) }
+                }) { Text(if (isToday) tr("今天全部", "All of today") else tr("这天全部", "Whole day"), color = RandoGreen) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     asking = false
                     preview { hide -> ShareCard.card(context, ride, record, hide) }
-                }) { Text("只分享这次") }
+                }) { Text(tr("只分享这次", "Just this ride")) }
             },
         )
     }
@@ -369,8 +377,8 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
             onDismissRequest = { confirmDelete = false },
             shape = GlassShapes.Sheet,
             containerColor = Color(0xF7F7FAF8),
-            title = { Text("删除这条记录？") },
-            text = { Text("删掉就找不回来了。") },
+            title = { Text(tr("删除这条记录？", "Delete this ride?")) },
+            text = { Text(tr("删掉就找不回来了。", "This can't be undone.")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -378,9 +386,9 @@ fun RideDetailScreen(id: Long, onBack: () -> Unit) {
                         store.delete(id)
                         onBack()
                     }
-                }) { Text("删除", color = RandoRed) }
+                }) { Text(tr("删除", "Delete"), color = RandoRed) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("取消", "Cancel")) } },
         )
     }
 }
@@ -411,21 +419,21 @@ fun RideDetail(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("返回", "Back"), tint = Ink) }
                 Spacer(Modifier.width(10.dp))
                 GlassPanel(Modifier.weight(1f), shape = GlassShapes.Pill) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
                         Text(ride.title, color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            DATE.format(Date(ride.startedAt)) + " · 全程 " + Format.clock((ride.endedAt - ride.startedAt) / 1000),
+                            DATE.format(Date(ride.startedAt)) + tr(" · 全程 ", " · Total ") + Format.clock((ride.endedAt - ride.startedAt) / 1000),
                             color = InkSoft, fontSize = 12.sp,
                         )
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                GlassIconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "分享", tint = Ink) }
+                GlassIconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = tr("分享", "Share"), tint = Ink) }
                 Spacer(Modifier.width(10.dp))
-                GlassIconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "删除", tint = RandoRed) }
+                GlassIconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = tr("删除", "Delete"), tint = RandoRed) }
             }
             GlassPanel(
                 Modifier
@@ -437,14 +445,14 @@ fun RideDetail(
                 Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     record?.let { Text(it, color = RandoGreen, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                     Row {
-                        DetailStat(Format.distance(ride.distanceMeters.toInt()), "距离", Modifier.weight(1f))
-                        DetailStat(Format.clock(ride.movingSeconds), "骑行时间", Modifier.weight(1f))
-                        DetailStat("${ride.ascendMeters.toInt()} 米", "爬升", Modifier.weight(1f))
+                        DetailStat(Format.distance(ride.distanceMeters.toInt()), tr("距离", "Distance"), Modifier.weight(1f))
+                        DetailStat(Format.clock(ride.movingSeconds), tr("骑行时间", "Ride time"), Modifier.weight(1f))
+                        DetailStat(tr("${ride.ascendMeters.toInt()} 米", "${ride.ascendMeters.toInt()} m"), tr("爬升", "Climb"), Modifier.weight(1f))
                     }
                     Row {
-                        DetailStat(Format.speed(ride.averageSpeed), "均速", Modifier.weight(1f))
-                        DetailStat(Format.speed(ride.maxSpeed), "最快", Modifier.weight(1f))
-                        DetailStat("${Calories.of(ride, weightKg)} 千卡", "消耗", Modifier.weight(1f))
+                        DetailStat(Format.speed(ride.averageSpeed), tr("均速", "Avg speed"), Modifier.weight(1f))
+                        DetailStat(Format.speed(ride.maxSpeed), tr("最快", "Top speed"), Modifier.weight(1f))
+                        DetailStat(tr("${Calories.of(ride, weightKg)} 千卡", "${Calories.of(ride, weightKg)} kcal"), tr("消耗", "Burned"), Modifier.weight(1f))
                     }
                 }
             }
@@ -498,7 +506,11 @@ private fun TrackMap(ride: Ride, modifier: Modifier) {
 // ───────────────────────── 骑过的路 ─────────────────────────
 
 /** 骑过的路有两种看法：常骑的路（热力），和全岛公园连道点亮了多少 */
-enum class RiddenMode(val label: String) { HEAT("常骑的路"), PCN("公园连道") }
+enum class RiddenMode(private val zh: String, private val en: String) {
+    HEAT("常骑的路", "Frequent roads"), PCN("公园连道", "PCN");
+
+    val label: String get() = tr(zh, en)
+}
 
 /** 所有记录的轨迹叠在一张地图上，看看哪些路骑过、哪些常骑；也可以看公园连道点亮了多少 */
 @Composable
@@ -534,12 +546,12 @@ fun RiddenMap(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("返回", "Back"), tint = Ink) }
                 Spacer(Modifier.width(10.dp))
                 GlassPanel(Modifier.weight(1f), shape = GlassShapes.Card) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("骑过的路", Modifier.weight(1f), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(tr("骑过的路", "Ridden roads"), Modifier.weight(1f), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             RiddenMode.entries.forEach { m ->
                                 val selected = m == mode
                                 Text(
@@ -558,7 +570,7 @@ fun RiddenMap(
                         when (mode) {
                             RiddenMode.HEAT -> {
                                 Text(
-                                    "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
+                                    tr("${rides.size} 次", ridesEn(rides.size)) + " · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
                                     color = InkSoft,
                                     fontSize = 12.sp,
                                 )
@@ -569,14 +581,14 @@ fun RiddenMap(
                             }
                             RiddenMode.PCN -> {
                                 Text(
-                                    pcn?.let { "全岛公园连道骑过 ${Format.share(it.share)} · ${Format.distance(it.riddenMeters.toInt())} / ${Format.distance(it.totalMeters.toInt())}" }
-                                        ?: "正在算…",
+                                    pcn?.let { tr("全岛公园连道骑过 ", "Ridden ") + Format.share(it.share) + tr("", " of all PCNs") + " · ${Format.distance(it.riddenMeters.toInt())} / ${Format.distance(it.totalMeters.toInt())}" }
+                                        ?: tr("正在算…", "Calculating…"),
                                     color = InkSoft,
                                     fontSize = 12.sp,
                                 )
                                 Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    LegendItem(MapLayers.PCN_RIDDEN, "骑过")
-                                    LegendItem(MapLayers.PCN_NOT_YET, "还没骑")
+                                    LegendItem(MapLayers.PCN_RIDDEN, tr("骑过", "Ridden"))
+                                    LegendItem(MapLayers.PCN_NOT_YET, tr("还没骑", "Not yet"))
                                 }
                             }
                         }
@@ -607,8 +619,8 @@ private fun LoopsCard(pcn: PcnProgress, modifier: Modifier) {
             pcn.loops.sortedByDescending { it.share }.forEach { p ->
                 Column {
                     Row {
-                        Text(p.loop.zh, Modifier.weight(1f), color = Ink, fontSize = 14.sp)
-                        Text("${Format.share(p.share)} · 共 ${Format.distance(p.totalMeters.toInt())}", color = InkSoft, fontSize = 13.sp)
+                        Text(p.loop.label, Modifier.weight(1f), color = Ink, fontSize = 14.sp)
+                        Text("${Format.share(p.share)} · " + tr("共 ${Format.distance(p.totalMeters.toInt())}", "of ${Format.distance(p.totalMeters.toInt())}"), color = InkSoft, fontSize = 13.sp)
                     }
                     Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(5.dp).clip(GlassShapes.Pill).background(Color(0x22000000))) {
                         Box(
@@ -708,9 +720,9 @@ fun ReviewPage(
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
+                IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("返回", "Back"), tint = Ink) }
                 Spacer(Modifier.width(4.dp))
-                Text("回顾", Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("回顾", "Review"), Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                 ReviewSpan.entries.forEach { s ->
                     val selected = s == span
                     Text(
@@ -742,7 +754,7 @@ fun ReviewPage(
                 if (r.empty) {
                     item {
                         Text(
-                            "这${if (span == ReviewSpan.MONTH) "个月" else "一年"}还没有骑行记录",
+                            tr("这${if (span == ReviewSpan.MONTH) "个月" else "一年"}还没有骑行记录", "No rides this ${if (span == ReviewSpan.MONTH) "month" else "year"}"),
                             Modifier.fillMaxWidth().padding(32.dp),
                             color = InkSoft,
                             fontSize = 15.sp,
@@ -753,9 +765,9 @@ fun ReviewPage(
                 }
                 item { ReviewTotals(r) }
                 item { ReviewFacts(r) }
-                r.longest?.let { ride -> item { Highlight("最远的一次", ride, Format.distance(ride.distanceMeters.toInt())) { onOpen(ride.id) } } }
+                r.longest?.let { ride -> item { Highlight(tr("最远的一次", "Longest ride"), ride, Format.distance(ride.distanceMeters.toInt())) { onOpen(ride.id) } } }
                 r.fastest?.takeIf { it.id != r.longest?.id || r.rides == 1 }?.let { ride ->
-                    item { Highlight("最快的一次", ride, Format.speed(ride.averageSpeed)) { onOpen(ride.id) } }
+                    item { Highlight(tr("最快的一次", "Fastest ride"), ride, Format.speed(ride.averageSpeed)) { onOpen(ride.id) } }
                 }
             }
         }
@@ -767,13 +779,14 @@ private fun ReviewTotals(r: Review) {
     GlassPanel(Modifier.fillMaxWidth(), shape = GlassShapes.Card, tone = GlassTone.Tinted(RandoGreen)) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-                TotalStat(Format.distance(r.meters.toInt()), "${r.rides} 次")
-                TotalStat(Format.clock(r.movingSeconds), "骑行时间")
-                TotalStat("${r.ascendMeters.toInt()} 米", "爬升")
+                TotalStat(Format.distance(r.meters.toInt()), tr("${r.rides} 次", ridesEn(r.rides)))
+                TotalStat(Format.clock(r.movingSeconds), tr("骑行时间", "Ride time"))
+                TotalStat(tr("${r.ascendMeters.toInt()} 米", "${r.ascendMeters.toInt()} m"), tr("爬升", "Climb"))
             }
-            val unit = if (r.span == ReviewSpan.MONTH) "上个月" else "去年"
+            val unit = if (r.span == ReviewSpan.MONTH) tr("上个月", "last month") else tr("去年", "last year")
             Text(
-                if (r.previousMeters > 0) "比$unit ${compare(r.meters - r.previousMeters)}" else "${unit}没有记录",
+                if (r.previousMeters > 0) tr("比$unit ${compare(r.meters - r.previousMeters)}", "${compare(r.meters - r.previousMeters)} vs $unit")
+                else tr("${unit}没有记录", "No rides $unit"),
                 Modifier.padding(top = 10.dp),
                 color = Color.White.copy(alpha = 0.85f),
                 fontSize = 14.sp,
@@ -793,11 +806,11 @@ private fun ReviewFacts(r: Review) {
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Fact("骑车的日子", "${r.days} 天")
-        if (r.streak >= 2) Fact("最长连着骑", "${r.streak} 天")
-        r.favoriteTime?.let { Fact("最常出门", it) }
-        Fact("平均每次", Format.distance((r.meters / r.rides).toInt()))
-        r.newPcnMeters?.let { Fact("新点亮的公园连道", if (it >= 50) Format.distance(it.toInt()) else "没有") }
+        Fact(tr("骑车的日子", "Days ridden"), tr("${r.days} 天", daysEn(r.days)))
+        if (r.streak >= 2) Fact(tr("最长连着骑", "Longest streak"), tr("${r.streak} 天", daysEn(r.streak)))
+        r.favoriteTime?.let { Fact(tr("最常出门", "Usual time"), it) }
+        Fact(tr("平均每次", "Average ride"), Format.distance((r.meters / r.rides).toInt()))
+        r.newPcnMeters?.let { Fact(tr("新点亮的公园连道", "New PCN ridden"), if (it >= 50) Format.distance(it.toInt()) else tr("没有", "None")) }
     }
 }
 
@@ -827,3 +840,5 @@ private fun Highlight(label: String, ride: Ride, value: String, onClick: () -> U
         Text(value, color = RandoGreenDeep, fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+private fun daysEn(n: Int): String = if (n == 1) "1 day" else "$n days"

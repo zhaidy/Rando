@@ -1,8 +1,14 @@
 package com.personal.rando.routing
 
-enum class StructureKind(val label: String, val unit: String) {
-    OVERPASS("天桥", "座"),
-    UNDERPASS("地下通道", "处"),
+import com.personal.rando.i18n.tr
+
+/** [unit] 是中文的量词，英文界面不用 */
+enum class StructureKind(private val zh: String, private val en: String, val unit: String) {
+    OVERPASS("天桥", "overhead bridge", "座"),
+    UNDERPASS("地下通道", "underpass", "处");
+
+    /** 英文是小写的「overhead bridge」，放句中用 */
+    val label: String get() = tr(zh, en)
 }
 
 /**
@@ -22,10 +28,10 @@ data class Structure(
     /** 「有电梯」「只有台阶，要扛车」…… */
     val access: String
         get() = when {
-            hasElevator -> "有电梯"
-            hasSteps -> "只有台阶，要扛车"
-            kind == StructureKind.UNDERPASS && onBikeway -> "连道从马路桥底下穿过，一般是平的"
-            else -> "上下方式没标明"
+            hasElevator -> tr("有电梯", "there's a lift")
+            hasSteps -> tr("只有台阶，要扛车", "steps only, carry the bike")
+            kind == StructureKind.UNDERPASS && onBikeway -> tr("连道从马路桥底下穿过，一般是平的", "the path runs under the road bridge, usually level")
+            else -> tr("上下方式没标明", "access not mapped")
         }
 }
 
