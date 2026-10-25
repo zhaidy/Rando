@@ -14,6 +14,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -39,6 +40,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.cos
 
 /**
@@ -54,10 +56,26 @@ object ShareCard {
      * 画好的分享图：先给人看一眼，再分享或者存到相册。
      * [privacy] 是预览里开关的名字：收藏了家是「隐藏家附近」，没收藏是剪掉起点终点
      */
-    class Card(val bitmap: Bitmap, val name: String, val chooserTitle: String, val privacy: String)
+    class Card(
+        val bitmap: Bitmap,
+        val name: String,
+        val chooserTitle: String,
+        val privacy: String,
+        private val track: List<Pair<PointF, LatLon>> = emptyList(),
+        private val pins: List<Pair<Uri, PointF>> = emptyList(),
+    ) {
+        /** 图上 [p]（分享图的像素）最近的轨迹点：照片拖到哪，就钉在那附近画出来的路上；一段路都没画返回 null */
+        fun nearest(p: PointF): LatLon? = track.minByOrNull { (q, _) -> (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) }?.second
 
-    /** 照片钉在图上的样子：小图和它拍的地方（像素） */
-    class Pin(val photo: Bitmap, val at: PointF)
+        /** [p] 按在哪张照片的小卡片上 */
+        fun pinAt(p: PointF): Uri? = pins.lastOrNull { (_, c) -> abs(c.x - p.x) <= PhotoPins.SIZE / 2 && abs(c.y - p.y) <= PhotoPins.SIZE / 2 }?.first
+    }
+
+    /** 照片钉在图上的样子：小图和它拍的地方（像素）；画完 [center] 是小卡片摆在哪 */
+    class Pin(val photo: Bitmap, val at: PointF) {
+        var center: PointF? = null
+            internal set
+    }
 
     /** 一次骑行的分享图；[hide] 打开时家附近的轨迹不画（见 [SharePrivacy]），[photos] 钉在拍的地方 */
     suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card =
@@ -97,7 +115,7 @@ object ShareCard {
         // 选照片时一张张重画，地图还是那张就不再拍
         val snapshot = lastSnapshot?.takeIf { it.first == framed }?.second
             ?: withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, framed) }?.also { lastSnapshot = framed to it }
-        val bitmap = withContext(Dispatchers.Default) {
+        val (bitmap, trackPx, pins) = withContext(Dispatchers.Default) {
             // 照片的点和轨迹一起缩放，没地图时也对得上
             val places = pinned.map { listOf(it.at!!) }
             val allPx = snapshot?.second?.let { project -> (pieces + places).map { it.map(project) } } ?: fitAll(pieces + places, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
@@ -105,9 +123,13 @@ object ShareCard {
             var from = 0
             val ridesPx = rideTracks.map { r -> piecesPx.subList(from, from + r.size).also { from += r.size } }
             val pins = pinned.mapIndexed { i, p -> Pin(p.thumb, allPx[pieces.size + i].first()) }
-            paint(snapshot?.first, ridesPx, pins)
+            Triple(paint(snapshot?.first, ridesPx, pins), piecesPx.flatten(), pins)
         }
-        return Card(bitmap, name, chooserTitle, if (home != null) tr("隐藏家附近", "Hide near home") else tr("隐藏起点终点附近", "Hide start and finish"))
+        return Card(
+            bitmap, name, chooserTitle, if (home != null) tr("隐藏家附近", "Hide near home") else tr("隐藏起点终点附近", "Hide start and finish"),
+            track = trackPx.zip(pieces.flatten()),
+            pins = pinned.zip(pins).mapNotNull { (p, pin) -> pin.center?.let { p.uri to it } },
+        )
     }
 
     /**
@@ -351,6 +373,7 @@ object ShareCard {
     private fun drawPins(c: Canvas, pins: List<Pin>, track: List<PointF>) {
         if (pins.isEmpty()) return
         val centers = PhotoPins.layout(pins.map { it.at.x to it.at.y }, WIDTH.toFloat(), MAP_HEIGHT.toFloat(), track.map { it.x to it.y })
+        pins.forEachIndexed { i, p -> p.center = PointF(centers[i].first, centers[i].second) }
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeWidth = 5f; strokeCap = Paint.Cap.ROUND }
         pins.forEachIndexed { i, p -> c.drawLine(p.at.x, p.at.y, centers[i].first, centers[i].second, line) }
         val dot = Paint(Paint.ANTI_ALIAS_FLAG)

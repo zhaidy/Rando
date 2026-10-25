@@ -24,8 +24,14 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** 一张要放进分享图的照片：[at] 是按拍照时间对到轨迹上的位置，对不上是 null（只随原图发，不钉在图上） */
-class SharePhoto(val uri: Uri, val takenAt: Long?, val at: LatLon?, val thumb: Bitmap)
+/**
+ * 一张要放进分享图的照片：[at] 是按拍照时间对到轨迹上的位置，对不上是 null（只随原图发，不钉在图上）。
+ * 相机拍完导进手机的，时间对不上，可以在预览里自己拖到图上的位置
+ */
+class SharePhoto(val uri: Uri, val takenAt: Long?, val at: LatLon?, val thumb: Bitmap) {
+    /** 拖到图上 [place] 之后的这张 */
+    fun movedTo(place: LatLon) = SharePhoto(uri, takenAt, place, thumb)
+}
 
 /** 从相册找骑行时拍的照片、读缩略图、导出去掉位置信息的原图 */
 object SharePhotos {
