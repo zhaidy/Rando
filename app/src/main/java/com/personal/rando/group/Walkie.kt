@@ -19,6 +19,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -255,9 +256,16 @@ class Walkie(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 录着录着编码器、麦克风被系统收走了：关掉对讲说一声，不要让整个 App 闪退
+            Log.w(TAG, "listen failed", e)
+            _state.update { it.copy(problem = tr("对讲出错了，已经关掉，可以再开一次", "Walkie-talkie hit an error and was turned off, try turning it on again")) }
+            withContext(Dispatchers.Main) { turnOff() }
         } finally {
-            sender?.finish()
-            test?.cancel()
+            runCatching { sender?.finish() }
+            runCatching { test?.cancel() }
             runCatching { record.stop() }
             record.release()
             effects.forEach { it.release() }
@@ -404,7 +412,8 @@ class Walkie(
         private suspend fun run() {
             _state.update { it.copy(talking = it.talking + name) }
             val decoder = runCatching { AacStreamDecoder() }.getOrNull()
-            val track = newTrack()
+            // 同时好几个人在说、正在打电话时可能开不出音轨
+            val track = runCatching { newTrack() }.getOrNull()
             // 开始放之前收到的先攒着：没在放的时候往音轨里写，缓冲（一秒）满了后面的会被丢掉
             val waiting = mutableListOf<ShortArray>()
             var buffered = 0
@@ -414,6 +423,10 @@ class Walkie(
             try {
                 if (decoder == null) {
                     _state.update { it.copy(problem = tr("这台手机的声音解码出错了，听不到队友", "Audio decoding failed on this phone, you won't hear teammates")) }
+                    return
+                }
+                if (track == null) {
+                    _state.update { it.copy(problem = tr("喇叭打不开，放不了声音", "Can't open the speaker, no sound can play")) }
                     return
                 }
                 while (true) {
@@ -446,8 +459,7 @@ class Walkie(
             } catch (e: Exception) {
                 Log.w(TAG, "play failed", e)
             } finally {
-                runCatching { track.stop() }
-                track.release()
+                track?.let { runCatching { it.stop() }; it.release() }
                 decoder?.close()
                 _state.update { it.copy(talking = it.talking - name) }
                 withContext(Dispatchers.Main.immediate) { if (players[id] === this@Player) players.remove(id) }

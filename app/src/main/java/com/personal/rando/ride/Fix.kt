@@ -1,6 +1,8 @@
 package com.personal.rando.ride
 
 import android.location.Location
+import android.location.LocationListener
+import android.os.Bundle
 import com.personal.rando.routing.LatLon
 
 /** 一次定位，只留用得着的字段，方便单元测试里造数据 */
@@ -37,6 +39,18 @@ data class Fix(
             bearing = if (l.hasBearing()) l.bearing else null,
             time = l.time,
         )
+
+        /**
+         * 收定位的回调。不能写成 `LocationListener { }`：Android 10 以下另外三个方法没有默认实现，
+         * 一开关 GPS 系统去调它们就闪退
+         */
+        fun listener(onFix: (Fix) -> Unit): LocationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) = onFix(of(location))
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        }
 
         /** 米/秒，大约 5 公里/时 */
         const val MOVING_SPEED = 1.4f

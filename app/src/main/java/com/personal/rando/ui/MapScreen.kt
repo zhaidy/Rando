@@ -32,7 +32,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.speech.RecognizerIntent
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
 import androidx.activity.compose.BackHandler
@@ -1173,12 +1172,15 @@ private fun LocationUpdates(enabled: Boolean, onFix: (Fix) -> Unit) {
     DisposableEffect(enabled) {
         val manager = context.getSystemService(LocationManager::class.java)
         if (!enabled || manager == null) return@DisposableEffect onDispose {}
-        val listener = LocationListener { onFix(Fix.of(it)) }
+        val listener = Fix.listener(onFix)
         listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             .filter { manager.isProviderEnabled(it) }
             .forEach { provider ->
-                manager.getLastKnownLocation(provider)?.let { onFix(Fix.of(it)) }
-                manager.requestLocationUpdates(provider, 2_000L, 5f, listener, Looper.getMainLooper())
+                // 只给了大概位置时 Android 12 以下不让听 GPS，跳过它只用网络定位
+                runCatching {
+                    manager.getLastKnownLocation(provider)?.let { onFix(Fix.of(it)) }
+                    manager.requestLocationUpdates(provider, 2_000L, 5f, listener, Looper.getMainLooper())
+                }
             }
         onDispose { manager.removeUpdates(listener) }
     }
