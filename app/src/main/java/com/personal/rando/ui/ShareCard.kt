@@ -1,5 +1,6 @@
 package com.personal.rando.ui
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -12,6 +13,10 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.media.MediaScannerConnection
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.personal.rando.ride.Ride
 import com.personal.rando.ride.timeOfDay
@@ -40,33 +45,41 @@ object ShareCard {
     const val HEIGHT = 1350
     const val MAP_HEIGHT = 900
 
-    /** 分享一次骑行 */
-    suspend fun share(context: Context, ride: Ride, record: String?) =
-        send(context, "rando-${ride.id}", "分享骑行", listOf(ride)) { map, tracks -> draw(map, tracks.first(), ride, record) }
+    /** 画好的分享图：先给人看一眼，再分享或者存到相册 */
+    class Card(val bitmap: Bitmap, val name: String, val chooserTitle: String)
 
-    /** 分享今天骑的几次：轨迹画在一张图上，数据加起来 */
-    suspend fun shareDay(context: Context, rides: List<Ride>) {
-        if (rides.isEmpty()) return
-        send(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides) { map, tracks -> drawDay(map, tracks, rides) }
+    /** 一次骑行的分享图 */
+    suspend fun card(context: Context, ride: Ride, record: String?): Card =
+        render(context, "rando-${ride.id}", "分享骑行", listOf(ride)) { map, tracks -> draw(map, tracks.first(), ride, record) }
+
+    /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
+    suspend fun dayCard(context: Context, rides: List<Ride>): Card? {
+        if (rides.isEmpty()) return null
+        return render(context, "rando-day-${rides.first().id}", "分享今天的骑行", rides) { map, tracks -> drawDay(map, tracks, rides) }
     }
 
-    /** 拍地图、画图、存到缓存，弹出系统分享 */
-    private suspend fun send(
+    /** 拍地图、画图 */
+    private suspend fun render(
         context: Context,
         name: String,
         chooserTitle: String,
         rides: List<Ride>,
         paint: (Bitmap?, List<List<PointF>>) -> Bitmap,
-    ) {
+    ): Card {
         val tracks = rides.map { r -> r.points.map { it.location } }
         val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, tracks.flatten()) }
         val bitmap = withContext(Dispatchers.Default) {
             val trackPx = snapshot?.second?.let { project -> tracks.map { it.map(project) } } ?: fitAll(tracks, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
             paint(snapshot?.first, trackPx)
         }
+        return Card(bitmap, name, chooserTitle)
+    }
+
+    /** 存到缓存，弹出系统分享 */
+    suspend fun send(context: Context, card: Card) {
         val file = withContext(Dispatchers.IO) {
             File(context.cacheDir, "share").apply { mkdirs() }.let { dir ->
-                File(dir, "$name.png").also { f -> f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+                File(dir, "${card.name}.png").also { f -> f.outputStream().use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             }
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
@@ -74,7 +87,41 @@ object ShareCard {
             .setType("image/png")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent.createChooser(intent, card.chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /**
+     * 存到相册的 Pictures/Rando 里；存好返回 true。
+     * Android 10 以上不用权限，9 以下要先拿到「存储」权限
+     */
+    suspend fun save(context: Context, card: Card): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val fileName = "${card.name}.png"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Rando")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return@runCatching false
+                try {
+                    resolver.openOutputStream(uri)?.use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("打不开 $uri")
+                } catch (e: Exception) {
+                    resolver.delete(uri, null, null)
+                    throw e
+                }
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Rando").apply { mkdirs() }
+                val f = File(dir, fileName)
+                f.outputStream().use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                MediaScannerConnection.scanFile(context, arrayOf(f.path), arrayOf("image/png"), null)
+            }
+            true
+        }.getOrDefault(false)
     }
 
     /** 地图快照：框住整条轨迹；拍不到（没网）返回 null，就画在纯色底上 */
@@ -93,6 +140,8 @@ object ShareCard {
             .withRegion(region)
             .withPixelRatio(1f)
             .withLogo(false)
+            // 地图自带的版权字太大，盖在地图上；改成卡片底下一行小字
+            .withAttribution(false)
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { cont ->
                 val snapshotter = MapSnapshotter(context, options)
@@ -218,6 +267,7 @@ object ShareCard {
             c.drawText(label, x, y + 50f, caption)
             x += widths[i] + gap
         }
+        if (map != null) c.drawText("地图 © OpenStreetMap", left, HEIGHT - 48f, text(20f, Color.parseColor("#A3AAA6")))
         c.drawText("Rando", WIDTH - 72f, HEIGHT - 48f, text(34f, green, bold).apply { textAlign = Paint.Align.RIGHT })
         return out
     }

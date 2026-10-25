@@ -104,8 +104,8 @@ fun RideListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onRiddenMap: () -
     val store = LocalContext.current.rando.session.rides
     val rides by produceState<List<Ride>?>(null) { value = store.list() }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview, onShareToday = { today -> scope.launch { ShareCard.shareDay(context, today) } })
+    val preview = rememberSharePreview()
+    RideList(rides, onBack, onOpen, onRiddenMap, onReview = onReview, onShareToday = { today -> preview { ShareCard.dayCard(context, today) } })
 }
 
 /** 骑行记录：一整块玻璃盖在地图上，最上面是总数，下面一条条往上浮出来 */
@@ -305,13 +305,13 @@ private fun SmallStat(value: String, label: String) {
 }
 
 /**
- * 分享按钮按下去做什么：那天只骑了这一次就直接分享；
+ * 分享按钮按下去做什么：那天只骑了这一次就直接出预览；
  * 骑了好几次先问一下，分享这一次还是那天全部
  */
 @Composable
 fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val preview = rememberSharePreview()
     val store = context.rando.session.rides
     val day by produceState(listOf(ride), ride) {
         value = RideStats.today(store.list().filter { it.id != ride.id } + ride, ride.startedAt)
@@ -332,18 +332,18 @@ fun rememberRideShare(ride: Ride, record: String?): () -> Unit {
             confirmButton = {
                 TextButton(onClick = {
                     asking = false
-                    scope.launch { ShareCard.shareDay(context, day) }
+                    preview { ShareCard.dayCard(context, day) }
                 }) { Text(if (isToday) "今天全部" else "这天全部", color = RandoGreen) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     asking = false
-                    scope.launch { ShareCard.share(context, ride, record) }
+                    preview { ShareCard.card(context, ride, record) }
                 }) { Text("只分享这次") }
             },
         )
     }
-    return { if (day.size > 1) asking = true else scope.launch { ShareCard.share(context, ride, record) } }
+    return { if (day.size > 1) asking = true else preview { ShareCard.card(context, ride, record) } }
 }
 
 // ───────────────────────── 记录详情 ─────────────────────────
