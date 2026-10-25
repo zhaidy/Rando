@@ -1169,6 +1169,8 @@ private fun LinkText(text: String, onClick: () -> Unit) {
         color = AccentInk,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 
@@ -1778,6 +1780,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
 /** 设置：家、体重（算卡路里）、骑车自动开始记录、主页显示骑过的路、播报声音 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsDialog(
     settings: Settings,
@@ -1861,7 +1864,8 @@ fun SettingsDialog(
                 SettingsCard(tr("家", "Home")) {
                 Column {
                     Text(homeLabel(home, here), color = InkSoft, fontSize = 13.sp)
-                    Row {
+                    // 三个按钮一行放不下时整个换到下一行，不要把「删掉」挤成竖排
+                    FlowRow {
                         LinkText(tr("用现在的位置", "Use current location"), onHomeHere)
                         LinkText(tr("搜索或在地图上选", "Search or pick on map"), onPickHome)
                         if (home != null) LinkText(tr("删掉", "Delete"), onRemoveHome)
