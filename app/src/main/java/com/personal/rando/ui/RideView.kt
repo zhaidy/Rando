@@ -16,9 +16,18 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextAlign
 import com.personal.rando.i18n.tr
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.CornerRadius
+import com.personal.rando.ride.Music
+import com.personal.rando.ride.NowPlaying
 import com.personal.rando.R
 import com.personal.rando.ui.glass.GlassButton
-import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassShapes
 import com.personal.rando.ui.glass.GlassTone
 import com.personal.rando.ui.glass.LocalHazeState
@@ -112,8 +121,6 @@ import java.util.Locale
 
 /** 小字：户外太阳底下也要看得清，不能太灰 */
 private val DIM = Color(0xFFD0D0D0)
-/** 上下两块的底色：比一般的深色玻璃实，太阳底下字更清楚 */
-private val PANEL = GlassTone.Tinted(Color(0xFF0E1110))
 private val CLOCK = SimpleDateFormat("HH:mm", Locale.CHINA)
 /** 路口离这么近才在屏幕上提示 */
 private const val CROSSING_SHOWN_METERS = 300.0
@@ -159,8 +166,12 @@ fun RideView(
     val timeline = remember(navigation?.route) { navigation?.route?.let(::RouteTimeline) }
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
-    // 下面那块平时只留速度那一行，点一下才展开其余数据和按钮
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    // 上面那块展开还是收成一行；下面那块三档：一行、速度加剩余、再加其余数据和按钮
+    var topOpen by rememberSaveable { mutableStateOf(true) }
+    var bottom by rememberSaveable { mutableIntStateOf(BOTTOM_NORMAL) }
+    var topDrag by remember { mutableFloatStateOf(0f) }
+    var bottomDrag by remember { mutableFloatStateOf(0f) }
+    val music = rememberMusic()
     FullBrightness()
     val density = LocalDensity.current
     // 上面那块的下沿、下面那块的上沿、整个屏幕的高，都是像素
@@ -176,16 +187,26 @@ fun RideView(
         Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged { height = it.height }) {
             // 地图铺满，上下两块深色玻璃浮在上面
             map(Modifier.fillMaxSize().hazeSource(haze), cover)
-            GlassPanel(
+            // 上面那块：不加框，黑色往下渐隐到地图里；往上滑收成一行，往下滑展开
+            Column(
                 Modifier
                     .fillMaxWidth()
+                    .background(Brush.verticalGradient(0.78f to Color.Black, 1f to Color.Transparent))
                     .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .onGloballyPositioned { topEdge = it.boundsInParent().bottom.toInt() },
-                shape = GlassShapes.Card,
-                tone = PANEL,
+                    .draggable(
+                        rememberDraggableState { topDrag += it },
+                        Orientation.Vertical,
+                        onDragStarted = { topDrag = 0f },
+                        onDragStopped = {
+                            val step = with(density) { SWIPE.toPx() }
+                            if (topDrag < -step) topOpen = false else if (topDrag > step) topOpen = true
+                        },
+                    )
+                    .animateContentSize(Motion.smooth())
+                    .onGloballyPositioned { topEdge = it.boundsInParent().bottom.toInt() }
+                    .padding(top = 8.dp),
             ) {
-                Column(Modifier.padding(vertical = 10.dp)) {
+                if (topOpen) {
                     Box(Modifier.fillMaxWidth()) {
                         if (navigation != null) {
                             RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
@@ -208,74 +229,82 @@ fun RideView(
                             Text(tr("正在听：$it", "Listening: $it"), color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
+                    MusicBar(music, Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(top = 10.dp))
+                } else {
+                    TopLine(navigation, recording, music, Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp))
                 }
+                Grabber(
+                    label = if (topOpen) tr("收起上面", "Collapse top") else tr("展开上面", "Expand top"),
+                    onClick = { topOpen = !topOpen },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
             }
-            GlassPanel(
+            // 下面那块：三档，往下滑一档档收（最小只剩一行速度），往上滑一档档放（最大有其余数据和按钮）
+            Column(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .background(Brush.verticalGradient(0f to Color.Transparent, 0.2f to Color.Black))
                     .navigationBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .onGloballyPositioned { bottomEdge = it.boundsInParent().top.toInt() },
-                tone = PANEL,
+                    .draggable(
+                        rememberDraggableState { bottomDrag += it },
+                        Orientation.Vertical,
+                        onDragStarted = { bottomDrag = 0f },
+                        onDragStopped = {
+                            val step = with(density) { SWIPE.toPx() }
+                            if (bottomDrag > step) bottom = (bottom - 1).coerceAtLeast(BOTTOM_LINE)
+                            else if (bottomDrag < -step) bottom = (bottom + 1).coerceAtMost(BOTTOM_MORE)
+                        },
+                    )
+                    .animateContentSize(Motion.smooth())
+                    .onGloballyPositioned { bottomEdge = it.boundsInParent().top.toInt() }
+                    .padding(bottom = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Column(
-                    Modifier
-                        .animateContentSize(Motion.smooth())
-                        .padding(bottom = 10.dp),
-                ) {
-                    // 只有顶上这一条能点开 / 收起；整块都能点的话，颠一下碰到就展开了
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { expanded = !expanded }
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                            contentDescription = null,
-                            tint = DIM,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Text(if (expanded) tr("收起", "Less") else tr("更多", "More"), color = DIM, fontSize = 13.sp)
+                // 只有这根横条能点；整块都能点的话，颠一下碰到就变了
+                Grabber(
+                    label = if (bottom == BOTTOM_MORE) tr("收起", "Less") else tr("更多", "More"),
+                    onClick = { bottom = if (bottom == BOTTOM_MORE) BOTTOM_NORMAL else bottom + 1 },
+                )
+                val speed = String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6)
+                val left = if (navigation != null) {
+                    (progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--") to tr("剩余 分", "min left")
+                } else {
+                    Format.clock(recording?.movingSeconds ?: 0) to tr("骑行时间", "Ride time")
+                }
+                val right = if (navigation != null) {
+                    (progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--") to tr("剩余 公里", "km left")
+                } else {
+                    String.format(Locale.US, "%.1f", (recording?.distanceMeters ?: 0.0) / 1000) to tr("已骑 公里", "km ridden")
+                }
+                if (bottom == BOTTOM_LINE) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.Bottom) {
+                        SmallStat(left.first, left.second, Modifier.weight(1f), Alignment.Start)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(speed, color = Color.White, fontSize = 60.sp, fontWeight = FontWeight.Bold, lineHeight = 60.sp)
+                            Text(" km/h", color = DIM, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        }
+                        SmallStat(right.first, right.second, Modifier.weight(1f), Alignment.End, highlight = navigation != null)
                     }
+                } else {
                     timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 6.dp)) }
-                    Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (navigation != null) {
-                            BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", tr("剩余 分", "min left"), Modifier.weight(1f))
-                        } else {
-                            BigStat(Format.clock(recording?.movingSeconds ?: 0), tr("骑行时间", "Ride time"), Modifier.weight(1f))
-                        }
-                        Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            AnimatedContent(
-                                targetState = String.format(Locale.US, "%.1f", (recording?.currentSpeed ?: 0.0) * 3.6),
-                                transitionSpec = {
-                                    (slideInVertically(Motion.smooth()) { it / 3 } + fadeIn(tween(150)))
-                                        .togetherWith(slideOutVertically(Motion.smooth()) { -it / 3 } + fadeOut(tween(100)))
-                                },
-                                label = "speed",
-                            ) { v -> Text(v, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Medium, lineHeight = 60.sp) }
-                            Text(tr("公里/时", "km/h"), color = DIM, fontSize = 13.sp)
-                        }
-                        if (navigation != null) {
-                            BigStat(
-                                progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
-                                tr("剩余 公里", "km left"),
-                                Modifier.weight(1f),
-                            )
-                        } else {
-                            BigStat(
-                                String.format(Locale.US, "%.1f", (recording?.distanceMeters ?: 0.0) / 1000),
-                                tr("已骑 公里", "km ridden"),
-                                Modifier.weight(1f),
-                            )
-                        }
+                    AnimatedContent(
+                        targetState = speed,
+                        transitionSpec = {
+                            (slideInVertically(Motion.smooth()) { it / 3 } + fadeIn(tween(150)))
+                                .togetherWith(slideOutVertically(Motion.smooth()) { -it / 3 } + fadeOut(tween(100)))
+                        },
+                        label = "speed",
+                    ) { v -> Text(v, color = Color.White, fontSize = 96.sp, fontWeight = FontWeight.Bold, lineHeight = 96.sp, letterSpacing = (-2).sp) }
+                    Text(tr("公里/时", "km/h"), color = DIM, fontSize = 15.sp)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        BigStat(left.first, left.second, Modifier.weight(1f))
+                        Spacer(Modifier.weight(0.6f))
+                        BigStat(right.first, right.second, Modifier.weight(1f), highlight = navigation != null)
                     }
-                    AnimatedVisibility(expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    AnimatedVisibility(bottom == BOTTOM_MORE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     Column {
-                    recording?.let { MoreStats(it, navigating = navigation != null, weightKg, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp)) }
+                    recording?.let { MoreStats(it, navigating = navigation != null, weightKg, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -300,6 +329,170 @@ fun RideView(
                 }
             }
         }
+    }
+}
+
+/** 面板边上的短横条：点一下收起 / 展开（也可以按住整块往上、往下滑） */
+@Composable
+private fun Grabber(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(width = 120.dp, height = 28.dp)
+            .clip(GlassShapes.Pill)
+            .clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(width = 44.dp, height = 5.dp).clip(GlassShapes.Pill).background(Color(0xFF6A707A)))
+    }
+}
+
+/** 上面收起时只剩一行：箭头、距离、怎么走；在放歌的话右边两个小按钮 */
+@Composable
+private fun TopLine(navigation: NavigationState?, recording: RecordingState?, music: MusicState, modifier: Modifier) {
+    Row(modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+        val progress = navigation?.progress
+        when {
+            navigation == null -> Text(
+                tr("自由骑行", "Free ride") + (recording?.let { tr(" · 爬升 ${it.ascendMeters.toInt()} 米", " · ${it.ascendMeters.toInt()} m climb") } ?: ""),
+                Modifier.weight(1f), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            progress == null || progress.arrived || navigation.rerouting || progress.offRoute -> Text(
+                when {
+                    progress == null -> navigation.waitingText
+                    progress.arrived -> tr("已到达目的地", "You have arrived")
+                    else -> tr("已偏离路线，正在重新规划…", "Off route, rerouting…")
+                },
+                Modifier.weight(1f), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            else -> {
+                TurnIcon(progress.next, size = 40.dp)
+                Spacer(Modifier.width(12.dp))
+                val distance = Format.distance(progress.distanceToNext.toInt())
+                Text(distance.substringBefore(' '), color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold, lineHeight = 46.sp)
+                Text(" " + distance.substringAfter(' ', ""), color = Color.White, fontSize = 18.sp)
+                Spacer(Modifier.width(10.dp))
+                Text(progress.next?.text ?: tr("到达终点", "Arrive"), Modifier.weight(1f), color = DIM, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        music.now?.let { now ->
+            RoundKey(if (now.playing) tr("暂停", "Pause") else tr("播放", "Play"), music::playPause) { MediaGlyph(if (now.playing) Glyph.PAUSE else Glyph.PLAY, Color.White) }
+            Spacer(Modifier.width(6.dp))
+            RoundKey(tr("下一首", "Next"), music::next) { MediaGlyph(Glyph.NEXT, Color.White) }
+        }
+    }
+}
+
+@Composable
+private fun RoundKey(label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF1C1F24)).clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** 上面那块里的音乐：封面色块、歌名、歌手 · App，上一首 / 播放暂停 / 下一首；没在放就不显示 */
+@Composable
+private fun MusicBar(music: MusicState, modifier: Modifier) {
+    val now = music.now ?: return
+    Row(
+        modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF15181D))
+            .padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (now.title != null) {
+            Column(Modifier.weight(1f)) {
+                Text(now.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(listOfNotNull(now.artist, now.app).joinToString(" · "), color = DIM, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("音乐", "Music"), color = DIM, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(10.dp))
+                // 没有通知使用权看不到歌名；点一下去系统里打开
+                Text(
+                    tr("显示歌名", "Show song"),
+                    Modifier.clip(GlassShapes.Pill).clickable(onClick = music::grant).padding(horizontal = 8.dp, vertical = 6.dp),
+                    color = Color(0xFF5EE0EC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = tr("上一首", "Previous"), onClick = music::previous), contentAlignment = Alignment.Center) { MediaGlyph(Glyph.PREVIOUS, Color.White) }
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(Color.White)
+                .clickable(onClickLabel = if (now.playing) tr("暂停", "Pause") else tr("播放", "Play"), onClick = music::playPause),
+            contentAlignment = Alignment.Center,
+        ) { MediaGlyph(if (now.playing) Glyph.PAUSE else Glyph.PLAY, Color.Black) }
+        Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = tr("下一首", "Next"), onClick = music::next), contentAlignment = Alignment.Center) { MediaGlyph(Glyph.NEXT, Color.White) }
+    }
+}
+
+private enum class Glyph { PLAY, PAUSE, NEXT, PREVIOUS }
+
+/** 播放、暂停、上一首、下一首：自己画，core 图标里只有播放 */
+@Composable
+private fun MediaGlyph(glyph: Glyph, color: Color) {
+    Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val h = size.height
+        fun tri(x0: Float, x1: Float) = Path().apply { moveTo(x0, 0f); lineTo(x1, h / 2); lineTo(x0, h); close() }
+        when (glyph) {
+            Glyph.PLAY -> drawPath(tri(w * 0.15f, w * 0.95f), color)
+            Glyph.PAUSE -> {
+                drawRoundRect(color, Offset(w * 0.15f, 0f), Size(w * 0.24f, h), CornerRadius(2f))
+                drawRoundRect(color, Offset(w * 0.61f, 0f), Size(w * 0.24f, h), CornerRadius(2f))
+            }
+            Glyph.NEXT -> {
+                drawPath(tri(0f, w * 0.8f), color)
+                drawRect(color, Offset(w * 0.8f, 0f), Size(w * 0.18f, h))
+            }
+            Glyph.PREVIOUS -> {
+                drawPath(Path().apply { moveTo(w, 0f); lineTo(w * 0.2f, h / 2); lineTo(w, h); close() }, color)
+                drawRect(color, Offset(w * 0.02f, 0f), Size(w * 0.18f, h))
+            }
+        }
+    }
+}
+
+/** 骑行视图里的音乐：每秒问一次在放什么 */
+class MusicState(private val music: Music, private val context: android.content.Context) {
+    var now by mutableStateOf<NowPlaying?>(null)
+        internal set
+
+    fun playPause() { music.playPause(); refreshSoon() }
+    fun next() = music.next()
+    fun previous() = music.previous()
+    fun grant() { runCatching { context.startActivity(Music.settingsIntent()) } }
+
+    internal fun refresh() { now = runCatching { music.now() }.getOrNull() }
+    private fun refreshSoon() { now = now?.copy(playing = !(now?.playing ?: false)) }
+}
+
+@Composable
+fun rememberMusic(): MusicState {
+    val context = LocalContext.current
+    val state = remember { MusicState(Music(context), context) }
+    LaunchedEffect(state) {
+        while (true) {
+            state.refresh()
+            delay(1_000)
+        }
+    }
+    return state
+}
+
+/** 往上、往下滑过这么多才收起 / 展开 */
+private val SWIPE = 36.dp
+private const val BOTTOM_LINE = 0
+private const val BOTTOM_NORMAL = 1
+private const val BOTTOM_MORE = 2
+
+@Composable
+private fun SmallStat(value: String, label: String, modifier: Modifier, align: Alignment.Horizontal, highlight: Boolean = false) {
+    Column(modifier, horizontalAlignment = align) {
+        Text(value, color = if (highlight) RandoYellow else Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = DIM, fontSize = 12.sp)
     }
 }
 
@@ -471,7 +664,7 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
                     val distance = Format.distance(progress.distanceToNext.toInt())
                     val number = distance.substringBefore(' ')
                     val unit = distance.substringAfter(' ', "")
-                    Text(number, color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Medium)
+                    Text(number, color = Color.White, fontSize = 76.sp, fontWeight = FontWeight.Bold, letterSpacing = (-2).sp)
                     Spacer(Modifier.width(8.dp))
                     Text(unit, color = Color.White, fontSize = 28.sp)
                 }
@@ -493,10 +686,10 @@ private fun RideMessage(text: String) {
 }
 
 @Composable
-private fun BigStat(value: String, label: String, modifier: Modifier) {
+private fun BigStat(value: String, label: String, modifier: Modifier, highlight: Boolean = false) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
-        Text(label, color = DIM, fontSize = 13.sp)
+        Text(value, color = if (highlight) RandoYellow else Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold, lineHeight = 46.sp)
+        Text(label, color = DIM, fontSize = 14.sp)
     }
 }
 

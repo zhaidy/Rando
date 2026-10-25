@@ -3,6 +3,7 @@ package com.personal.rando.ui
 import com.personal.rando.ui.glass.NeuButton
 import com.personal.rando.ui.glass.neuInset
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.platform.LocalContext
 import com.personal.rando.ui.glass.LocalHazeState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.fillMaxSize
@@ -930,6 +931,24 @@ private fun SavedRoutesRow(routes: List<SavedRoute>, onChoose: (SavedRoute) -> U
     }
 }
 
+/** 骑行视图上显示歌名要「通知使用权」：没开时给个入口 */
+@Composable
+private fun MusicAccessRow() {
+    val context = LocalContext.current
+    val music = remember { com.personal.rando.ride.Music(context) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(tr("骑行时显示正在放的歌", "Show what's playing while riding"), color = Ink, fontSize = 16.sp)
+            Text(
+                if (music.granted) tr("已打开：能看到歌名、切歌", "On: song names and controls")
+                else tr("要在系统里给 Rando「通知使用权」，只读播放器，不读通知内容", "Needs notification access in system settings; only the player is read, never your notifications"),
+                color = InkSoft, fontSize = 13.sp,
+            )
+        }
+        if (!music.granted) LinkText(tr("去打开", "Turn on")) { runCatching { context.startActivity(com.personal.rando.ride.Music.settingsIntent()) } }
+    }
+}
+
 /** 给现在这条路线起个名字收藏起来 */
 @Composable
 fun SaveRouteDialog(suggested: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
@@ -1748,6 +1767,7 @@ fun SettingsDialog(
                     }
                     Switch(checked = showRidden, onCheckedChange = { showRidden = it })
                 }
+                MusicAccessRow()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(tr("播报声音", "Voice"), color = Ink, fontSize = 16.sp)
