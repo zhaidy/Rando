@@ -26,6 +26,7 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Loop(20), p("骑一圈二十公里吧"))
         assertEquals(VoiceCommand.Route("东海岸一圈"), p("骑东海岸一圈"))
         assertEquals(VoiceCommand.Route("上班"), p("骑上班那条"))
+        assertEquals(VoiceCommand.Loop(20), p("骑二十公里"))
     }
 
     @Test
@@ -39,6 +40,12 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Report(HazardType.BAD_SURFACE), p("这里有个坑"))
         assertEquals(VoiceCommand.Walkie(true), p("打开对讲"))
         assertEquals(VoiceCommand.Walkie(false), p("关掉对讲"))
+        assertEquals(VoiceCommand.Walkie(false), p("不要对讲了"))
+        assertEquals(VoiceCommand.Walkie(false), p("别开对讲"))
+        // 对讲连不上不是封路
+        assertEquals(VoiceCommand.Walkie(true), p("对讲不通"))
+        assertEquals(VoiceCommand.StopNavigation, p("关闭导航"))
+        assertEquals(VoiceCommand.StopNavigation, p("关掉导航"))
         assertEquals(VoiceCommand.Weather, p("会不会下雨"))
         assertEquals(VoiceCommand.MrtHome, p("坐地铁回家"))
         assertEquals(VoiceCommand.MrtHome, p("搭MRT回家"))
@@ -66,6 +73,9 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.GoTo("家"), p("take me home."))
         assertEquals(VoiceCommand.GoTo("家"), p("Home"))
         assertEquals(VoiceCommand.GoTo("Funan"), p("Take me to Funan"))
+        assertEquals(VoiceCommand.GoTo("公司"), p("take me to work"))
+        assertEquals(VoiceCommand.GoTo("公司"), p("navigate to the office"))
+        assertEquals(VoiceCommand.GoTo("家"), p("directions to my home"))
         assertEquals(VoiceCommand.GoTo("Gardens by the Bay"), p("navigate to Gardens by the Bay"))
         assertEquals(VoiceCommand.Loop(20), p("ride a 20 km loop"))
         assertEquals(VoiceCommand.Loop(25), p("Loop twenty-five kilometres"))
@@ -82,7 +92,6 @@ class VoiceParserTest {
         assertEquals(VoiceCommand.Weather, p("is it going to rain"))
         assertEquals(VoiceCommand.MrtHome, p("take the MRT home"))
         assertEquals(VoiceCommand.MrtHome, p("take the train home"))
-        assertEquals(VoiceCommand.Weather, p("is it going to rain"))
         assertEquals(VoiceCommand.Weather, p("is it raining"))
         assertEquals(VoiceCommand.Unknown("what's for lunch"), p("what's for lunch"))
     }

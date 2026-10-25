@@ -93,9 +93,7 @@ object ShareCard {
     /** 同一天骑的几次：轨迹画在一张图上，数据加起来；以前哪天的不写「今天」 */
     suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card? {
         if (rides.isEmpty()) return null
-        val today = RideStats.today(rides.take(1), System.currentTimeMillis()).isNotEmpty()
-        val share = if (today) tr("分享今天的骑行", "Share today's rides") else tr("分享这天的骑行", "Share this day's rides")
-        return render(context, "rando-day-${rides.first().id}", share, rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins, today) }
+        return render(context, "rando-day-${rides.first().id}", if (RideStats.today(rides, System.currentTimeMillis()).isNotEmpty()) tr("分享今天的骑行", "Share today's rides") else tr("分享这天的骑行", "Share this day's rides"), rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins) }
     }
 
     /** 分享图的隐私圈：收藏了家才有；没有的话隐私靠剪掉起点终点 */
@@ -265,13 +263,16 @@ object ShareCard {
             ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, pins,
         )
 
-    /** 同一天几次骑行合在一张图上：标题写骑了几次，下面是合计 */
-    fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>, pins: List<Pin> = emptyList(), today: Boolean = true): Bitmap {
+    /** 同一天几次骑行合在一张图上：标题写骑了几次，下面是合计；以前某天的不说「今天」 */
+    fun drawDay(
+        map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>, pins: List<Pin> = emptyList(),
+        now: Long = System.currentTimeMillis(),
+    ): Bitmap {
         val first = rides.first()
         val last = rides.last()
+        val today = RideStats.today(rides, now).isNotEmpty()
         val title = when {
-            rides.size == 1 && today -> tr("今天${first.title}", "Today: ${first.title}")
-            rides.size == 1 -> first.title
+            rides.size == 1 -> if (today) tr("今天${first.title}", "Today: ${first.title}") else first.title
             today -> tr("今天骑了 ${rides.size} 次", "${rides.size} rides today")
             else -> tr("这天骑了 ${rides.size} 次", "${rides.size} rides that day")
         }

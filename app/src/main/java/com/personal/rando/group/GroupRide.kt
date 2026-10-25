@@ -383,7 +383,8 @@ class GroupRide(
         when (event) {
             is GroupEvent.Roster -> {
                 _state.update { it?.copy(teammates = event.members) }
-                // 刚连上（重连）：断线时撤掉的求助、路线收不到了，以服务器接着发来的为准
+                // 刚连上（重连）：断线时错过的「我没事」「结束导航」「离队」都收不到了，先清掉；
+                // 服务器接着会把还有效的求助、路线再发一遍（回答过的路线不会再问）
                 _sos.value = emptyList()
                 _offer.value = null
             }

@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.SystemClock
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -93,7 +94,8 @@ class CrashWatch(context: Context, private val detector: CrashDetector, private 
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             val (x, y, z) = event.values
-            val time = System.currentTimeMillis()
+            // 开机后的时间，跟 GPS 速度那边一样（不受改手机时间影响）
+            val time = SystemClock.elapsedRealtime()
             if (detector.onAccel(time, sqrt((x * x + y * y + z * z).toDouble()))) onCrash()
         }
 

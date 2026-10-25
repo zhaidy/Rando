@@ -2,6 +2,7 @@ package com.personal.rando.ride
 
 import com.personal.rando.i18n.tr
 import android.content.Context
+import android.os.SystemClock
 import com.personal.rando.nav.NavProgress
 import com.personal.rando.nav.Navigator
 import com.personal.rando.nav.RoadAlerts
@@ -201,7 +202,8 @@ class RideSession(
                         val far = here?.let { tr("，离你 ${Format.distance(Geo.distance(it, s.location).toInt())}", ", ${Format.distance(Geo.distance(it, s.location).toInt())} from you") }.orEmpty()
                         speaker.say(tr("注意，${s.name}可能摔车了$far", "Warning, ${s.name} may have crashed$far"))
                     }
-                    known = list.map { "${it.id}:${it.ts}" }.toSet()
+                    // 只加不减：重连时列表先清空再重发一遍，同一条不要再念
+                    known = known + list.map { "${it.id}:${it.ts}" }
                 }
             }
             // 队友分享了路线：骑车时不一定看屏幕，念一声
@@ -233,8 +235,8 @@ class RideSession(
         group?.let { g ->
             g.onFix(fix)
             if (precise && recorder != null) g.stragglerAlert(fix.location)?.let(speaker::say)
-            // 用手机的钟，和加速度那边对得上（GPS 的时间可能和手机差好几秒，刚开时还会喂一个旧定位）
-            fix.speed?.let { crashDetector.onSpeed(System.currentTimeMillis(), it.toDouble()) }
+            // 跟加速度计用同一个钟：GPS 时间和手机时间可能差好几秒
+            fix.speed?.let { crashDetector.onSpeed(SystemClock.elapsedRealtime(), it.toDouble()) }
         }
         recorder?.let {
             if (it.add(fix)) checkpoint(it)

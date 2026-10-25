@@ -25,12 +25,16 @@ class GroupTest {
     @Test
     fun `认出服务器发来的各种消息`() {
         val roster = GroupProtocol.parse(
-            """{"t":"roster","members":[{"id":"a","name":"小红","lat":1.3,"lon":103.8,"ts":1},{"id":"b","name":"阿明"}]}""", now = 99,
+            """{"t":"roster","now":5000,"members":[{"id":"a","name":"小红","lat":1.3,"lon":103.8,"ts":1000},{"id":"b","name":"阿明"}]}""", now = 100_000,
         ) as GroupEvent.Roster
         assertEquals(listOf("小红", "阿明"), roster.members.map { it.name })
         assertEquals(LatLon(1.3, 103.8), roster.members[0].location)
-        assertEquals(99L, roster.members[0].updatedAt)
+        // 服务器上存的位置是 4 秒前的
+        assertEquals(96_000L, roster.members[0].updatedAt)
         assertNull(roster.members[1].location)
+        // 老服务器没给 now：跟本机时间比
+        val old = GroupProtocol.parse("""{"t":"roster","members":[{"id":"a","lat":1.3,"lon":103.8,"ts":40000}]}""", now = 100_000) as GroupEvent.Roster
+        assertEquals(40_000L, old.members[0].updatedAt)
 
         assertEquals(GroupEvent.Joined("c", "小李"), GroupProtocol.parse("""{"t":"join","id":"c","name":"小李"}""", 0))
         assertEquals(GroupEvent.Left("c"), GroupProtocol.parse("""{"t":"leave","id":"c"}""", 0))
