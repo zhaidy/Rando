@@ -8,6 +8,8 @@ import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
 import com.personal.rando.ui.Format
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -22,6 +24,8 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.io.IOException
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -88,6 +92,18 @@ class GroupRide(
     private var lastSentAt = 0L
     /** 掉队提醒：每个队友上次提醒的时间 */
     private val warnedAt = mutableMapOf<String, Long>()
+
+    /** 附近一公里内、十分钟内有人报过位置的队伍，近的在前 */
+    suspend fun nearby(at: LatLon): List<NearbyTeam> = withContext(Dispatchers.IO) {
+        val url = "$serverUrl/nearby".toHttpUrl().newBuilder()
+            .addQueryParameter("lat", String.format(Locale.US, "%.5f", at.lat))
+            .addQueryParameter("lon", String.format(Locale.US, "%.5f", at.lon))
+            .build()
+        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("找附近的队伍 HTTP ${response.code}")
+            NearbyTeam.parse(response.body.string())
+        }
+    }
 
     fun join(code: String, name: String) {
         leave()

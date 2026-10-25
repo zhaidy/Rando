@@ -124,4 +124,16 @@ class GroupTest {
         assertEquals("试一下：说一句话，会放给你自己听", com.personal.rando.ui.walkieText(WalkieState(on = true, testing = true)))
         assertEquals("对讲出问题了：麦克风打不开", com.personal.rando.ui.walkieText(WalkieState(problem = "麦克风打不开")))
     }
+
+    @Test
+    fun `附近的队伍`() {
+        val teams = NearbyTeam.parse(
+            """{"teams":[{"code":"K7PX3M","names":["阿明","小红","阿强","小李"],"members":4,"meters":120},{"code":"AB12CD","names":[],"members":0,"meters":800}]}"""
+        )
+        assertEquals(listOf("K7PX3M", "AB12CD"), teams.map { it.code })
+        assertEquals("阿明、小红、阿强 等 4 人", teams[0].namesText)
+        assertEquals(120, teams[0].meters)
+        assertEquals("", teams[1].namesText)
+        assertEquals(emptyList<NearbyTeam>(), NearbyTeam.parse("{}"))
+    }
 }

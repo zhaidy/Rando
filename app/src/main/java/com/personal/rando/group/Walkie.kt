@@ -112,7 +112,10 @@ class Walkie(
         _state.update { it.copy(on = false, sending = false, talking = emptySet(), device = null, micBars = 0, testing = false) }
     }
 
-    /** 试一下：下一句话不发给队友，回放给自己听，听得到就说明麦克风、耳机都没问题 */
+    /**
+     * 试一下：录 3 秒（不管有没有听到说话），压缩、解压一遍再放给自己听，不发给队友。
+     * 听得到就说明麦克风、编码、喇叭（耳机）都没问题；几乎没声音会直接说是麦克风的问题
+     */
     fun test() {
         if (!_state.value.on) return
         _state.update { it.copy(testing = true, problem = null) }
@@ -159,6 +162,7 @@ class Walkie(
         var sender: Sender? = null
         var lastBars = -1
         var framesSinceBars = 0
+        var test: SelfTest? = null
         try {
             record.startRecording()
             val frame = ShortArray(Vox.FRAME_SAMPLES)
@@ -169,6 +173,17 @@ class Walkie(
                     continue
                 }
                 vox.level = _state.value.level
+                if (_state.value.testing && test == null) {
+                    sender?.finish()
+                    sender = null
+                    test = runCatching { SelfTest() }
+                        .onFailure { e ->
+                            Log.w(TAG, "encoder failed", e)
+                            _state.update { it.copy(testing = false, problem = "这台手机的声音编码出错了") }
+                        }
+                        .getOrNull()
+                    _state.update { it.copy(sending = test != null) }
+                }
                 // 音量格子：一秒刷新五次
                 if (++framesSinceBars >= 10) {
                     framesSinceBars = 0
@@ -178,11 +193,19 @@ class Walkie(
                         _state.update { it.copy(micBars = bars) }
                     }
                 }
+                test?.let { t ->
+                    if (t.add(frame.copyOf(n))) {
+                        t.finish()
+                        test = null
+                    }
+                }
+                // 试一下时不发；放自己的声音时也不听，免得喇叭里的声音又被录进去发给队友
+                if (test != null || selfPlaying) continue
                 for (event in vox.feed(frame.copyOf(n))) {
                     when (event) {
                         is Vox.Event.Start -> {
                             // 编码器建不起来（个别手机）：说出来，不要悄悄地不发
-                            sender = runCatching { Sender(if (_state.value.testing) WalkieMode.CLIP else _state.value.mode, test = _state.value.testing) }
+                            sender = runCatching { Sender(_state.value.mode) }
                                 .onFailure { e ->
                                     Log.w(TAG, "encoder failed", e)
                                     _state.update { it.copy(problem = "这台手机的声音编码出错了") }
@@ -203,6 +226,7 @@ class Walkie(
             }
         } finally {
             sender?.finish()
+            test?.cancel()
             runCatching { record.stop() }
             record.release()
             effects.forEach { it.release() }
@@ -214,7 +238,7 @@ class Walkie(
      * 一句话：实时的边压边发，攒够 [CHUNK_FRAMES] 帧 AAC（0.13 秒）就发一小段；
      * 整句的压好攒着，说完一起发（只有一段，seq 0，end）
      */
-    private inner class Sender(private val mode: WalkieMode, private val test: Boolean = false) {
+    private inner class Sender(private val mode: WalkieMode) {
         private val stream = Random.nextInt(1, Int.MAX_VALUE)
         private val encoder = AacStreamEncoder()
         private val pending = mutableListOf<ByteArray>()
@@ -234,14 +258,47 @@ class Walkie(
         private fun send(end: Boolean) {
             val bytes = pending.fold(ByteArray(0)) { acc, f -> acc + f }
             pending.clear()
-            val data = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            if (test) {
-                // 试一下：不发出去，自己放
-                _state.update { it.copy(testing = false) }
-                scope.launch { receive(GroupEvent.Voice(SELF_ID, "你自己", AacCodec.FORMAT, stream, seq++, end, data)) }
-            } else {
-                group.sendVoice(stream, seq++, end, data)
+            group.sendVoice(stream, seq++, end, Base64.encodeToString(bytes, Base64.NO_WRAP))
+        }
+    }
+
+    /** 放自己的声音（试一下）的时候不收音 */
+    @Volatile private var selfPlaying = false
+
+    /** 试一下：录满 [TEST_SAMPLES] 再放 */
+    private inner class SelfTest {
+        private val encoder = AacStreamEncoder()
+        private val chunks = mutableListOf<ByteArray>()
+        private var samples = 0
+        private var loudest = Double.NEGATIVE_INFINITY
+
+        /** 录够了返回 true */
+        fun add(pcm: ShortArray): Boolean {
+            chunks += encoder.encode(pcm)
+            samples += pcm.size
+            loudest = maxOf(loudest, Vox.levelDb(pcm))
+            return samples >= TEST_SAMPLES
+        }
+
+        fun finish() {
+            runCatching { chunks += encoder.finish() }
+            encoder.close()
+            val quiet = loudest < QUIET_DB
+            _state.update {
+                it.copy(
+                    testing = false,
+                    sending = false,
+                    problem = if (quiet) "麦克风几乎没收到声音：看看是不是被别的 App 占用了，或者麦克风被手、壳挡住了" else null,
+                )
             }
+            val data = Base64.encodeToString(chunks.fold(ByteArray(0)) { acc, c -> acc + c }, Base64.NO_WRAP)
+            selfPlaying = true
+            scope.launch { receive(GroupEvent.Voice(SELF_ID, "你自己", AacCodec.FORMAT, Random.nextInt(1, Int.MAX_VALUE), 0, true, data)) }
+        }
+
+        fun cancel() {
+            runCatching { encoder.close() }
+            _state.update { it.copy(testing = false) }
         }
     }
 
@@ -285,7 +342,10 @@ class Walkie(
             _state.update { it.copy(talking = it.talking + name) }
             val decoder = runCatching { AacStreamDecoder() }.getOrNull()
             val track = newTrack()
+            // 开始放之前收到的先攒着：没在放的时候往音轨里写，缓冲（一秒）满了后面的会被丢掉
+            val waiting = mutableListOf<ShortArray>()
             var buffered = 0
+            var written = 0L
             var playing = false
             var first = true
             try {
@@ -301,17 +361,20 @@ class Walkie(
                     val frames = AacCodec.splitAdts(Base64.decode(voice.data, Base64.DEFAULT))
                     val pcm = decoder.decode(frames)
                     if (pcm.isNotEmpty()) {
-                        track.write(pcm, 0, pcm.size)
+                        waiting += pcm
                         buffered += pcm.size
-                        if (!playing && (buffered >= PREBUFFER_SAMPLES || voice.end)) {
-                            track.play()
-                            playing = true
-                        }
+                    }
+                    if (!playing && (buffered >= PREBUFFER_SAMPLES || voice.end)) {
+                        track.play()
+                        playing = true
+                    }
+                    if (playing) {
+                        // 在放的时候写，缓冲满了会等着放出去一些再写，一句长话也不会丢
+                        for (chunk in waiting) written += track.write(chunk, 0, chunk.size).coerceAtLeast(0)
+                        waiting.clear()
                     }
                     if (voice.end) {
-                        if (!playing) track.play()
-                        // 等最后写进去的放完
-                        delay(TAIL_MS)
+                        drain(track, written)
                         break
                     }
                 }
@@ -322,8 +385,16 @@ class Walkie(
                 track.release()
                 decoder?.close()
                 _state.update { it.copy(talking = it.talking - name) }
+                if (id == SELF_ID) selfPlaying = false
                 withContext(Dispatchers.Main.immediate) { if (players[id] === this@Player) players.remove(id) }
             }
+        }
+
+        /** 等写进去的都放完再关；最多多等一秒 */
+        private suspend fun drain(track: AudioTrack, written: Long) {
+            val limit = System.currentTimeMillis() + written * 1000 / Vox.SAMPLE_RATE + 1_000
+            while (System.currentTimeMillis() < limit && (track.playbackHeadPosition.toLong() and 0xFFFFFFFFL) < written) delay(50)
+            delay(TAIL_MS)
         }
 
         private suspend fun beep() {
@@ -371,6 +442,10 @@ class Walkie(
         const val PREBUFFER_SAMPLES = Vox.SAMPLE_RATE / 5
         /** 一秒半没收到这个人的声音就当他说完了（网络断了、最后一段丢了） */
         const val SILENCE_MS = 1_500L
-        const val TAIL_MS = 400L
+        const val TAIL_MS = 200L
+        /** 试一下录 3 秒 */
+        const val TEST_SAMPLES = Vox.SAMPLE_RATE * 3
+        /** 3 秒里最响的一下都不到这么响（dBFS）：麦克风几乎没收到声音 */
+        const val QUIET_DB = -50.0
     }
 }

@@ -18,6 +18,10 @@
 //          {"t":"hazard",id,name,hid,type,lat,lon,ts} {"t":"hazard_del",id,hid}（只转发，不存；各人手机自己存）
 //          分享的路线、求助存在房间里，后来加入的人连上就能收到；本人离队就删掉
 // "ping" 直接回 "pong"，不用唤醒房间
+//
+// 附近的队伍：GET /nearby?lat=..&lon=..，返回 {"teams":[{code,names,members,meters}...]}，近的在前。
+// 房间收到队员位置时（每个房间最多半分钟一次）告诉大厅（Lobby，全局只有一个）自己在哪；
+// 十分钟没报的、没人了的就不列了。只在内存里记，不存
 
 import { DurableObject } from "cloudflare:workers";
 
@@ -29,10 +33,25 @@ const MAX_MESSAGE = 512 * 1024;
 // 一条路线最多这么多个点（起点、途经点、终点；原路返回会多一些）
 const MAX_STOPS = 100;
 const MAX_TITLE = 40;
+// 列出这么远以内的队伍
+const NEARBY_METERS = 1000;
+// 这么久没报位置的队伍不列
+const NEARBY_STALE_MS = 10 * 60 * 1000;
+// 房间最多这么久报一次
+const REPORT_EVERY_MS = 30 * 1000;
+const NEARBY_LIMIT = 10;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/nearby") {
+      // Number(null) 是 0，没带参数要先挡掉
+      const lat = Number(url.searchParams.get("lat") ?? NaN);
+      const lon = Number(url.searchParams.get("lon") ?? NaN);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return new Response("缺少位置", { status: 400 });
+      const teams = await lobby(env).nearby(lat, lon);
+      return Response.json({ teams });
+    }
     const match = url.pathname.match(/^\/room\/([^/]+)$/);
     if (!match) {
       return new Response("rando-group ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -43,7 +62,10 @@ export default {
     const id = url.searchParams.get("id") ?? "";
     if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return new Response("缺少队员 id", { status: 400 });
     const room = env.ROOMS.get(env.ROOMS.idFromName(code));
-    return room.fetch(request);
+    // 房间自己不知道队伍码（Durable Object 只知道 id），带过去
+    const forward = new URL(request.url);
+    forward.searchParams.set("code", code);
+    return room.fetch(new Request(forward, request));
   },
 };
 
@@ -58,6 +80,7 @@ export class Room extends DurableObject {
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     const name = (url.searchParams.get("name") ?? "").trim().slice(0, MAX_NAME) || "队友";
+    const code = url.searchParams.get("code") ?? "";
 
     // 同一个人重连：把旧连接关掉，名额不重复算
     for (const old of this.ctx.getWebSockets(id)) {
@@ -70,7 +93,7 @@ export class Room extends DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [id]);
-    server.serializeAttachment({ id, name, pos: null });
+    server.serializeAttachment({ id, name, code, pos: null });
 
     const others = this.members().filter((m) => m.id !== id);
     server.send(JSON.stringify({ t: "roster", members: others }));
@@ -103,6 +126,7 @@ export class Room extends DurableObject {
       };
       ws.serializeAttachment({ ...me, pos });
       this.broadcast({ t: "pos", id: me.id, name: me.name, ...pos }, me.id);
+      await this.report(me.code, pos);
     } else if (msg.t === "voice" && typeof msg.data === "string") {
       // 实时对讲：一句话切成 0.1 秒多一段连续发，sid 是这句话的编号，seq 是第几段，end 表示说完了
       this.broadcast(
@@ -158,6 +182,19 @@ export class Room extends DurableObject {
     // 断线重连时客户端会重新分享
     await this.ctx.storage.delete(`route:${me.id}`);
     this.broadcast({ t: "leave", id: me.id }, me.id);
+    if (me.code && this.members().every((m) => m.id === me.id)) {
+      try { await lobby(this.env).remove(me.code); } catch {}
+    }
+  }
+
+  /** 告诉大厅这个队伍在哪；半分钟内报过就不报了（休眠醒来后会多报一次，不要紧） */
+  async report(code, pos) {
+    if (!code || Date.now() - (this.reportedAt ?? 0) < REPORT_EVERY_MS) return;
+    this.reportedAt = Date.now();
+    const names = this.members().map((m) => m.name);
+    try {
+      await lobby(this.env).report(code, { lat: pos.lat, lon: pos.lon, names, ts: pos.ts });
+    } catch {}
   }
 
   /** 房间里的人和他们最后的位置 */
@@ -178,6 +215,48 @@ export class Room extends DurableObject {
       try { ws.send(text); } catch {}
     }
   }
+}
+
+function lobby(env) {
+  return env.LOBBY.get(env.LOBBY.idFromName("lobby"));
+}
+
+/** 大厅：记着每个队伍最近在哪，回答「附近有哪些队伍」 */
+export class Lobby extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.teams = new Map();
+  }
+
+  report(code, team) {
+    this.teams.set(code, team);
+  }
+
+  remove(code) {
+    this.teams.delete(code);
+  }
+
+  nearby(lat, lon) {
+    const now = Date.now();
+    const result = [];
+    for (const [code, t] of this.teams) {
+      if (now - t.ts > NEARBY_STALE_MS) {
+        this.teams.delete(code);
+        continue;
+      }
+      const meters = distance(lat, lon, t.lat, t.lon);
+      if (meters <= NEARBY_METERS) result.push({ code, names: t.names, members: t.names.length, meters: Math.round(meters) });
+    }
+    return result.sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT);
+  }
+}
+
+/** 两点距离（米），新加坡这么小的范围按平面算就够 */
+function distance(lat1, lon1, lat2, lon2) {
+  const k = 111320;
+  const x = (lon2 - lon1) * k * Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
+  const y = (lat2 - lat1) * k;
+  return Math.hypot(x, y);
 }
 
 /** 检查分享的路线；不对返回 null */
