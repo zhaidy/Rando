@@ -154,7 +154,7 @@ class GroupRide(
 
     fun join(code: String, name: String) {
         // 开着对讲换队伍：leave 会关掉直连，换好后接着开
-        val wasLocal = local.running
+        val wasLocal = local.running || rtc.running
         leave()
         myName = name
         _state.value = GroupState(code)
@@ -166,6 +166,9 @@ class GroupRide(
     fun leave() {
         unwatchNetwork()
         reconnectJob?.cancel()
+        // 先关直连：要趁连接还在把 bye 发给队友，不然对方要干等到超时
+        local.stop()
+        rtc.stop()
         socket?.close(1000, "bye")
         socket = null
         lastSent = null
@@ -176,8 +179,6 @@ class GroupRide(
         answered.clear()
         _offer.value = null
         _state.value = null
-        local.stop()
-        rtc.stop()
     }
 
     /** 开始导航时把路线分享给队友；不在队伍里就不发 */

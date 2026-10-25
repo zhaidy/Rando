@@ -1382,6 +1382,8 @@ private fun ElevationChart(route: Route) {
     // 新加坡很平，起伏不到 20 米时按 20 米画，免得一点小坡看起来像山
     val span = (high - low).coerceAtLeast(MIN_CHART_SPAN)
     val total = profile.last().alongMeters
+    // 起点终点几乎同一处：全长是 0，除下去全是 NaN，画不出来就不画
+    if (total <= 0) return
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.Bottom) {
         Canvas(

@@ -186,7 +186,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         if (speed == _state.value.prefs.mySpeed) return
         _state.update { it.copy(prefs = it.prefs.copy(mySpeed = speed)) }
         // 路线已经在了，按新的速度重新算一下预计时间
-        if (_state.value.route != RouteState.Idle) planRoute()
+        // 只有「按我的速度」时预计时间才跟着变；其他档位不用重算一遍、把选好的备选冲掉
+        if (_state.value.route != RouteState.Idle && _state.value.prefs.pace == Pace.MINE) planRoute()
     }
 
     private fun loadPrefs(): RoutePrefs {
@@ -313,7 +314,8 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
 
     /** 语音说的地方一定是目的地：正在选家、起点、途经点的都先取消，不然会放错位置、一直等着自动开始 */
     private fun arriveAt(place: Place) {
-        _state.update { it.copy(pickingHome = false, pickingStart = false, pickingVia = false) }
+        // 骑着说的：从现在的位置直接去，之前规划的起点、途经点不要了
+        _state.update { it.copy(pickingHome = false, pickingStart = false, pickingVia = false, start = null, via = emptyList()) }
         startWhenReady = true
         choosePlace(place)
     }

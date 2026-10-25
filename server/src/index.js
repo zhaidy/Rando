@@ -65,7 +65,12 @@ export default {
     if (!match) {
       return new Response("rando-group ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
     }
-    const code = decodeURIComponent(match[1]).toUpperCase();
+    let code;
+    try {
+      code = decodeURIComponent(match[1]).toUpperCase();
+    } catch {
+      return new Response("队伍码不对", { status: 400 });
+    }
     if (!CODE.test(code)) return new Response("队伍码不对", { status: 400 });
     if (request.headers.get("Upgrade") !== "websocket") return new Response("要用 WebSocket 连接", { status: 426 });
     const id = url.searchParams.get("id") ?? "";
@@ -152,7 +157,8 @@ export class Room extends DurableObject {
       await this.ctx.storage.put(`route:${me.id}`, out);
       this.broadcast(out, me.id);
     } else if (msg.t === "route_clear") {
-      await this.ctx.storage.delete([`route:${me.id}`, `sos:${me.id}`]);
+      // 只清路线：求救要等 sos_clear（我没事）才清，停了导航不代表人没事
+      await this.ctx.storage.delete(`route:${me.id}`);
       this.broadcast({ t: "route_clear", id: me.id }, me.id);
     } else if (msg.t === "sos" && Number.isFinite(msg.lat) && Number.isFinite(msg.lon)) {
       const out = { t: "sos", id: me.id, name: me.name, lat: msg.lat, lon: msg.lon, ts };

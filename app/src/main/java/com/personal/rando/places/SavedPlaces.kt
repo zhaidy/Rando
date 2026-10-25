@@ -40,9 +40,12 @@ object SavedPlacesJson {
 
     fun decode(json: String): List<SavedPlace> {
         val arr = JSONArray(json)
-        return (0 until arr.length()).map {
-            val o = arr.getJSONObject(it)
-            SavedPlace(o.getString("name"), LatLon(o.getDouble("lat"), o.getDouble("lon")))
+        // 一条坏了只跳过那条：整个当空的话，下次一存就把家和其他收藏全冲掉了
+        return (0 until arr.length()).mapNotNull {
+            runCatching {
+                val o = arr.getJSONObject(it)
+                SavedPlace(o.getString("name"), LatLon(o.getDouble("lat"), o.getDouble("lon")))
+            }.getOrNull()
         }
     }
 

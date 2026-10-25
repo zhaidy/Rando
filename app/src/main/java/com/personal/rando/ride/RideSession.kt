@@ -276,7 +276,8 @@ class RideSession(
                     lastMoving = moving
                     lastChange = now
                 } else if (now - lastChange >= AUTO_STOP_MS) {
-                    val ride = stopRecording()
+                    // 结束时间算到停下来那会儿，不要多算干等的十分钟
+                    val ride = stopRecording(endedAt = lastChange)
                     speaker.say(ride?.let { tr("停了一会儿，已经结束记录，骑了 ${Format.distance(it.distanceMeters.toInt())}", "Stopped for a while, recording ended. You rode ${Format.distance(it.distanceMeters.toInt())}") } ?: tr("停了一会儿，已经结束记录", "Stopped for a while, recording ended"))
                     return@launch
                 }
@@ -398,7 +399,7 @@ class RideSession(
     }
 
     /** 结束记录并保存；太短的（没怎么动）不存，返回 null */
-    fun stopRecording(): Ride? {
+    fun stopRecording(endedAt: Long = System.currentTimeMillis()): Ride? {
         val r = recorder ?: return null
         recorder = null
         autoStopJob?.cancel()
@@ -407,7 +408,7 @@ class RideSession(
         imOk()
         RideWidget.refresh(app)
         stopWatchingWeather()
-        val ride = r.toRide(System.currentTimeMillis())
+        val ride = r.toRide(endedAt)
         if (ride.distanceMeters < MIN_RIDE_METERS) return null
         (_location.value ?: ride.points.lastOrNull()?.location)?.let { parking?.park(it) }
         scope.launch {
@@ -497,12 +498,16 @@ class RideSession(
         _navigation.update { it?.copy(progress = progress, via = it.via.drop(passed)) }
         prompter.next(progress)?.let(speaker::say)
         if (!progress.offRoute && !progress.arrived) roadAlerts?.next(progress.alongMeters)?.let(speaker::say)
-        if (progress.offRoute) reroute(point)
+        // 到了以后接着骑走（去停车、继续兜风）不要再算路回终点
+        if (progress.offRoute && !progress.arrived) reroute(point)
     }
 
     /** 查路线两旁的补给点；查不到就算了，不影响导航 */
     private fun loadAmenities(route: Route) {
         amenityJob?.cancel()
+        // 旧路线的距离对新路线没意义：先清掉，查不到也不要接着用旧的
+        _amenities.value = emptyList()
+        covered = emptyList()
         amenityJob = scope.launch {
             try {
                 val found = amenityClient.along(route.points)

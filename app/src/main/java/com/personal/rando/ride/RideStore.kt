@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 /** 骑行记录一条一个 JSON 文件，放在应用私有目录 */
 class RideStore(context: Context) {
@@ -20,8 +21,12 @@ class RideStore(context: Context) {
         dir.mkdirs()
         // 先写临时文件再改名，写到一半被杀也不会留下坏文件
         val tmp = File(dir, "${ride.id}.json.tmp")
-        tmp.writeText(RideJson.encode(ride))
-        tmp.renameTo(File(dir, "${ride.id}.json"))
+        // 先落盘再改名：只改名不 sync，断电后可能剩个空文件；改名失败要报出来，不然这次骑行就没了
+        tmp.outputStream().use { out ->
+            out.write(RideJson.encode(ride).toByteArray())
+            out.fd.sync()
+        }
+        if (!tmp.renameTo(File(dir, "${ride.id}.json"))) throw IOException("rename ${tmp.name}")
         _changes.value++
     }
 
