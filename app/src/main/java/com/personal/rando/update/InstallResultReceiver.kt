@@ -1,5 +1,6 @@
 package com.personal.rando.update
 
+import com.personal.rando.i18n.tr
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,8 +20,8 @@ class InstallResultReceiver : BroadcastReceiver() {
             // 用户在确认界面点了取消，不用提醒
             PackageInstaller.STATUS_FAILURE_ABORTED -> Unit
             else -> {
-                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "错误码 $status"
-                UpdateNotifications.show(context, "Rando 更新失败", message)
+                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: tr("错误码 $status", "Error code $status")
+                UpdateNotifications.show(context, tr("Rando 更新失败", "Rando update failed"), message)
             }
         }
     }

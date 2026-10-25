@@ -1,5 +1,6 @@
 package com.personal.rando.places
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.RouteTimeline
@@ -14,14 +15,17 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /** 沿途补给：饮水机、厕所、便利店、维修站（公共修车点、车店）、避雨亭；终点附近的停车架 */
-enum class AmenityType(val label: String, val color: String, val unit: String) {
-    WATER("饮水机", "#1E88E5", "个"),
-    TOILET("厕所", "#8E24AA", "个"),
-    SHOP("便利店", "#F4511E", "家"),
-    REPAIR("维修站", "#43A047", "个"),
-    SHELTER("避雨亭", "#6D4C41", "个"),
+/** [unit] 是中文的量词，英文界面不用 */
+enum class AmenityType(private val zh: String, private val en: String, val color: String, val unit: String) {
+    WATER("饮水机", "Water fountain", "#1E88E5", "个"),
+    TOILET("厕所", "Toilet", "#8E24AA", "个"),
+    SHOP("便利店", "Convenience store", "#F4511E", "家"),
+    REPAIR("维修站", "Bike repair", "#43A047", "个"),
+    SHELTER("避雨亭", "Shelter", "#6D4C41", "个"),
     /** 新加坡组屋楼下到处都是，沿途不查，只查终点附近的 */
-    PARKING("停车架", "#546E7A", "处");
+    PARKING("停车架", "Bike parking", "#546E7A", "处");
+
+    val label: String get() = tr(zh, en)
 
     companion object {
         fun of(tags: Map<String, String>): AmenityType? = when {
@@ -63,7 +67,7 @@ class AmenityClient(
             try {
                 val request = Request.Builder().url(server).post(FormBody.Builder().add("data", query).build()).build()
                 return@withContext http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IOException("补给点查询 HTTP ${response.code}")
+                    if (!response.isSuccessful) throw IOException(tr("补给点查询 HTTP ${response.code}", "Amenity lookup HTTP ${response.code}"))
                     val json = response.body.string()
                     AlongRoute(AmenityQuery.parse(json), AmenityQuery.parseCovered(json))
                 }
@@ -71,7 +75,7 @@ class AmenityClient(
                 error = e
             }
         }
-        throw error ?: IOException("补给点查询失败")
+        throw error ?: IOException(tr("补给点查询失败", "Amenity lookup failed"))
     }
 }
 

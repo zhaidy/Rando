@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.routing.LatLon
 import java.util.Calendar
 import java.util.TimeZone
@@ -27,16 +28,16 @@ data class Ride(
     /** 「早上骑行」「傍晚骑行」，按开始时间 */
     val title: String
         get() {
-            return "${timeOfDay(startedAt)}骑行"
+            return tr("${timeOfDay(startedAt)}骑行", "${timeOfDay(startedAt)} ride")
         }
 }
 
 /** 「早上」「中午」「下午」「傍晚」「夜里」：[millis] 在 [zone] 是什么时候 */
 fun timeOfDay(millis: Long, zone: TimeZone = TimeZone.getDefault()): String =
     when (Calendar.getInstance(zone).apply { timeInMillis = millis }.get(Calendar.HOUR_OF_DAY)) {
-        in 5..10 -> "早上"
-        in 11..13 -> "中午"
-        in 14..16 -> "下午"
-        in 17..18 -> "傍晚"
-        else -> "夜里"
+        in 5..10 -> tr("早上", "Morning")
+        in 11..13 -> tr("中午", "Lunch")
+        in 14..16 -> tr("下午", "Afternoon")
+        in 17..18 -> tr("傍晚", "Evening")
+        else -> tr("夜里", "Night")
     }

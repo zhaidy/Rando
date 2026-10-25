@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.Lang
 import com.personal.rando.routing.LatLon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,5 +55,12 @@ class SameRouteTest {
         assertNull(RouteRecord.of(first, emptyList()))
         // 看最早那次的记录：之前没骑过
         assertEquals("这条路第一次骑，最好成绩 14:30", RouteRecord.of(first, listOf(now, second))!!.text)
+    }
+
+    @Test
+    fun `英文的同一条路成绩`() = Lang.with(english = true) {
+        assertEquals("First time on this route, best 14:30", RouteRecord(0, null, false, 870).text)
+        assertEquals("3rd time on this route, 1 min 20 s faster than last time, personal best!", RouteRecord(2, 80, true, 870).text)
+        assertEquals("12th time on this route, about the same as last time, best 14:30", RouteRecord(11, 2, false, 870).text)
     }
 }

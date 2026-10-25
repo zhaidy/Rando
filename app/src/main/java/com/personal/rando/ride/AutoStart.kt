@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
@@ -67,7 +68,7 @@ object AutoStart {
         if (session.recording.value != null) return
         if (hasBackgroundLocation(context)) {
             session.startRecording(auto = true)
-            session.say("检测到你在骑车，开始记录")
+            session.say(tr("检测到你在骑车，开始记录", "Looks like you're riding, recording started"))
         } else {
             notify(context)
         }
@@ -76,8 +77,8 @@ object AutoStart {
     private fun notify(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "自动开始记录", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "检测到在骑车时问要不要开始记录"
+            NotificationChannel(CHANNEL, tr("自动开始记录", "Auto-start recording"), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = tr("检测到在骑车时问要不要开始记录", "Asks whether to start recording when riding is detected")
             }
         )
         val start = PendingIntent.getActivity(
@@ -90,8 +91,8 @@ object AutoStart {
             NOTIFICATION_ID,
             NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("在骑车吗？")
-                .setContentText("点一下开始记录（定位设成「始终允许」就能自动开始）")
+                .setContentTitle(tr("在骑车吗？", "Riding?"))
+                .setContentText(tr("点一下开始记录（定位设成「始终允许」就能自动开始）", "Tap to start recording (set location to \"Allow all the time\" to start automatically)"))
                 .setContentIntent(start)
                 .setAutoCancel(true)
                 .setTimeoutAfter(10 * 60_000L)

@@ -1,5 +1,6 @@
 package com.personal.rando.weather
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -16,15 +17,16 @@ data class AreaForecast(val area: String, val location: LatLon, val forecast: St
     /** 会不会下雨 */
     val wet: Boolean get() = WET.any { it in forecast }
     val thunder: Boolean get() = "Thunder" in forecast
+    val heavy: Boolean get() = "Heavy" in forecast
 
     /** 「雷阵雨」「大雨」「小雨」「阵雨」；不下雨是 null */
     val rainText: String?
         get() = when {
             !wet -> null
-            thunder -> "雷阵雨"
-            "Heavy" in forecast -> "大雨"
-            "Light" in forecast || "Passing" in forecast -> "小雨"
-            else -> "阵雨"
+            thunder -> tr("雷阵雨", "thundery showers")
+            heavy -> tr("大雨", "heavy rain")
+            "Light" in forecast || "Passing" in forecast -> tr("小雨", "light rain")
+            else -> tr("阵雨", "showers")
         }
 
     private companion object {
@@ -54,17 +56,20 @@ data class RouteWeather(
     /** 一句话，路线卡片上和语音里用 */
     val summary: String
         get() = when {
-            rainingNow.isNotEmpty() -> "${rainingNow.first().name} 附近正在下雨" +
-                (wetAreas.firstOrNull()?.let { "，两小时内 ${names(wetAreas)} 一带有${worst(wetAreas)}" } ?: "")
-            wetAreas.isNotEmpty() -> "两小时内 ${names(wetAreas)} 一带可能有${worst(wetAreas)}"
-            else -> "沿途两小时内不会下雨"
+            rainingNow.isNotEmpty() -> tr("${rainingNow.first().name} 附近正在下雨", "Raining near ${rainingNow.first().name}") +
+                (wetAreas.firstOrNull()?.let {
+                    tr("，两小时内 ${names(wetAreas)} 一带有${worst(wetAreas)}", ", ${worst(wetAreas)} around ${names(wetAreas)} within 2 hours")
+                } ?: "")
+            wetAreas.isNotEmpty() -> tr("两小时内 ${names(wetAreas)} 一带可能有${worst(wetAreas)}", "Possible ${worst(wetAreas)} around ${names(wetAreas)} within 2 hours")
+            else -> tr("沿途两小时内不会下雨", "No rain along the route for the next 2 hours")
         }
 
-    private fun names(areas: List<AreaForecast>) = areas.take(3).joinToString("、") { it.area } + if (areas.size > 3) " 等" else ""
+    private fun names(areas: List<AreaForecast>) =
+        areas.take(3).joinToString(tr("、", ", ")) { it.area } + if (areas.size > 3) tr(" 等", " etc.") else ""
 
     private fun worst(areas: List<AreaForecast>) = when {
-        areas.any { it.thunder } -> "雷阵雨"
-        else -> areas.mapNotNull { it.rainText }.firstOrNull { it == "大雨" } ?: areas.first().rainText ?: "雨"
+        areas.any { it.thunder } -> tr("雷阵雨", "thundery showers")
+        else -> areas.firstOrNull { it.heavy }?.rainText ?: areas.first().rainText ?: tr("雨", "rain")
     }
 }
 
@@ -170,7 +175,7 @@ class WeatherClient(
 
     private fun get(url: String): String =
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("天气数据 HTTP ${response.code}")
+            if (!response.isSuccessful) throw IOException(tr("天气数据 HTTP ${response.code}", "Weather data HTTP ${response.code}"))
             response.body.string()
         }
 }

@@ -1,7 +1,9 @@
 package com.personal.rando.nav
 
+import com.personal.rando.i18n.Lang
 import com.personal.rando.routing.Maneuver
 import com.personal.rando.routing.Turn
+import com.personal.rando.ui.Format
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -86,5 +88,14 @@ class VoicePrompterTest {
     @Test
     fun `开始导航报全程`() {
         assertEquals("开始导航，全程 15.9 公里", VoicePrompter().start(15863.0))
+    }
+
+    @Test
+    fun `英文播报`() = Lang.with(english = true) {
+        assertEquals("In ${Format.distance(200)}, turn right", VoicePrompter().next(progress(190.0)))
+        assertEquals("Turn right, then turn left", VoicePrompter().next(progress(30.0, following = left, gap = 40.0)))
+        assertEquals("Off route, rerouting", VoicePrompter().next(progress(100.0, offRoute = true)))
+        assertEquals("You have arrived", VoicePrompter().next(progress(0.0, next = null, arrived = true)))
+        assertEquals("At the roundabout, take the 2nd exit", Maneuver(1, Turn.ROUNDABOUT, exit = 2).text)
     }
 }

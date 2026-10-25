@@ -1,14 +1,18 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
+
 /**
  * 预计时间按什么速度算。BRouter 用「骑手平均功率」模拟骑行时间（默认 100 瓦，很悠闲），
  * 选了档位就把功率带给它；「按我的速度」用骑过的平均速度直接算
  */
-enum class Pace(val label: String, val watts: Int?) {
-    MINE("按我的速度", null),
-    EASY("悠闲", 80),
-    NORMAL("一般", 120),
-    FAST("快", 160),
+enum class Pace(private val zh: String, private val en: String, val watts: Int?) {
+    MINE("按我的速度", "My pace", null),
+    EASY("悠闲", "Easy", 80),
+    NORMAL("一般", "Moderate", 120),
+    FAST("快", "Fast", 160);
+
+    val label: String get() = tr(zh, en)
 }
 
 /** 从骑行记录算出来的平均速度（米/秒，只算在骑的时间） */

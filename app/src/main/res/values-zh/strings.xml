@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">本周骑了多少，一键开始记录</string>
+    <string name="widget_week_title">本周骑行</string>
+    <string name="widget_row_title">本周</string>
+    <string name="widget_km_unit">公里</string>
+    <string name="widget_no_rides">还没骑</string>
+    <string name="widget_start">开始记录</string>
+</resources>

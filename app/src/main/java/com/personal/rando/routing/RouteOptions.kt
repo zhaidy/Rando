@@ -1,14 +1,17 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 
 /** 几条路线比什么：每一项都是越小越好，差到 [enough] 才算真的不一样 */
-enum class Measure(val label: String, val enough: Int) {
-    TIME("最快", 120),
-    ROAD("马路最少", 300),
-    CROSSINGS("过马路最少", 2),
-    DISTANCE("最短", 300),
-    CLIMB("爬坡最少", 15);
+enum class Measure(private val zh: String, private val en: String, val enough: Int) {
+    TIME("最快", "Fastest", 120),
+    ROAD("马路最少", "Least road", 300),
+    CROSSINGS("过马路最少", "Fewest crossings", 2),
+    DISTANCE("最短", "Shortest", 300),
+    CLIMB("爬坡最少", "Least climbing", 15);
+
+    val label: String get() = tr(zh, en)
 
     fun of(route: Route): Int = when (this) {
         TIME -> route.durationSeconds

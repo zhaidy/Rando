@@ -1,5 +1,6 @@
 package com.personal.rando.weather
 
+import com.personal.rando.i18n.Lang
 import com.personal.rando.routing.LatLon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,5 +51,12 @@ class WindTest {
         val w = Wind(0.0, 20.0).along(north)
         assertEquals("北风 20 km/h · 全程大多逆风", w.summary(loop = false))
         assertTrue(w.strongHeadwind)
+    }
+
+    @Test
+    fun `英文的风`() = Lang.with(english = true) {
+        assertEquals("South wind 20 km/h · tailwind out, headwind back", Wind(180.0, 20.0).along(outAndBack).summary(loop = true))
+        assertEquals("North wind 20 km/h · mostly headwind", Wind(0.0, 20.0).along(north).summary(loop = false))
+        assertEquals("South wind 5 km/h, light", Wind(180.0, 5.0).along(outAndBack).summary(loop = true))
     }
 }

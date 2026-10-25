@@ -1,5 +1,6 @@
 package com.personal.rando.group
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.ride.Fix
 import com.personal.rando.routing.LatLon
 import com.personal.rando.places.Hazard
@@ -143,11 +144,11 @@ object GroupProtocol {
                 val list = o.getJSONArray("members")
                 GroupEvent.Roster((0 until list.length()).map { mate(list.getJSONObject(it), now) })
             }
-            "join" -> GroupEvent.Joined(o.getString("id"), o.optString("name", "队友"))
+            "join" -> GroupEvent.Joined(o.getString("id"), o.optString("name", MATE))
             "leave" -> GroupEvent.Left(o.getString("id"))
             "pos" -> GroupEvent.Position(mate(o, now))
             "voice" -> GroupEvent.Voice(
-                o.getString("id"), o.optString("name", "队友"), o.optString("format"),
+                o.getString("id"), o.optString("name", MATE), o.optString("format"),
                 o.optInt("sid"), o.optInt("seq"), o.optBoolean("end"), o.optString("data"),
             )
             "route" -> {
@@ -155,7 +156,7 @@ object GroupProtocol {
                 GroupEvent.Route(
                     SharedRoute(
                         id = o.getString("id"),
-                        name = o.optString("name", "队友"),
+                        name = o.optString("name", MATE),
                         ts = o.getLong("ts"),
                         title = o.optString("title"),
                         meters = o.optInt("meters"),
@@ -169,10 +170,10 @@ object GroupProtocol {
             }
             "route_clear" -> GroupEvent.RouteCleared(o.getString("id"))
             "sos" -> GroupEvent.Sos(
-                SosAlert(o.getString("id"), o.optString("name", "队友"), LatLon(o.getDouble("lat"), o.getDouble("lon")), o.optLong("ts")),
+                SosAlert(o.getString("id"), o.optString("name", MATE), LatLon(o.getDouble("lat"), o.getDouble("lon")), o.optLong("ts")),
             )
             "sos_clear" -> GroupEvent.SosCleared(o.getString("id"))
-            "hazard" -> HazardJson.decode(JSONObject(o.toString()).put("id", o.getString("hid")).put("by", o.optString("name", "队友")))
+            "hazard" -> HazardJson.decode(JSONObject(o.toString()).put("id", o.getString("hid")).put("by", o.optString("name", MATE)))
                 ?.let { GroupEvent.HazardAdded(it) }
             "hazard_del" -> GroupEvent.HazardRemoved(o.getString("hid"))
             else -> null
@@ -185,7 +186,7 @@ object GroupProtocol {
         val located = o.has("lat") && o.has("lon")
         return Teammate(
             id = o.getString("id"),
-            name = o.optString("name", "队友"),
+            name = o.optString("name", MATE),
             location = if (located) LatLon(o.getDouble("lat"), o.getDouble("lon")) else null,
             speed = o.optDouble("speed").takeIf { !it.isNaN() },
             bearing = o.optDouble("bearing").takeIf { !it.isNaN() },
@@ -199,7 +200,7 @@ object GroupProtocol {
 data class NearbyTeam(val code: String, val names: List<String>, val meters: Int) {
     /** 「阿明、小红 等 4 人」 */
     val namesText: String
-        get() = names.take(3).joinToString("、") + if (names.size > 3) " 等 ${names.size} 人" else ""
+        get() = names.take(3).joinToString(tr("、", ", ")) + if (names.size > 3) tr(" 等 ${names.size} 人", " and ${names.size - 3} more") else ""
 
     companion object {
         /** 服务器 /nearby 返回的 {"teams":[{code,names,members,meters}]} */
@@ -222,3 +223,6 @@ object TeamCode {
     /** 用户输进来的：去掉空格，转大写；不像队伍码返回 null */
     fun normalize(input: String): String? = input.filterNot { it.isWhitespace() || it == '-' }.uppercase().takeIf { Regex("[A-Z0-9]{4,12}").matches(it) }
 }
+
+/** 没报名字的队友 */
+private val MATE: String get() = tr("队友", "Teammate")

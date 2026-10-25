@@ -1,14 +1,18 @@
 package com.personal.rando.routing
 
+import com.personal.rando.i18n.tr
+
 /** 路线上每一段是什么路，地图上按颜色画出来，卡片上统计各占多少 */
-enum class RoadKind(val label: String, val color: String) {
-    PCN("公园连道", "#1B7F3B"),
-    CYCLEWAY("自行车道", "#0097A7"),
-    PATH("人行道、小路", "#3D7BD9"),
-    ROAD_FOOTPATH("马路边人行道", "#C98A1B"),
-    ROAD("马路", "#D93A2B"),
-    CROSSING("过马路", "#8E44AD"),
-    PUSH("推车", "#8A8A8A");
+enum class RoadKind(private val zh: String, private val en: String, val color: String) {
+    PCN("公园连道", "Park connector", "#1B7F3B"),
+    CYCLEWAY("自行车道", "Cycle path", "#0097A7"),
+    PATH("人行道、小路", "Footpath", "#3D7BD9"),
+    ROAD_FOOTPATH("马路边人行道", "Roadside pavement", "#C98A1B"),
+    ROAD("马路", "Road", "#D93A2B"),
+    CROSSING("过马路", "Crossing", "#8E44AD"),
+    PUSH("推车", "Walk the bike", "#8A8A8A");
+
+    val label: String get() = tr(zh, en)
 
     companion object {
         fun of(tags: Map<String, String>): RoadKind {

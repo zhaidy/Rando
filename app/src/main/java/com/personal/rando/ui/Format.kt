@@ -1,21 +1,22 @@
 package com.personal.rando.ui
 
+import com.personal.rando.i18n.tr
 import java.util.Locale
 
 object Format {
 
     fun distance(meters: Int): String =
-        if (meters < 1000) "$meters 米"
-        else String.format(Locale.US, "%.1f 公里", meters / 1000.0)
+        if (meters < 1000) tr("$meters 米", "$meters m")
+        else String.format(Locale.US, tr("%.1f 公里", "%.1f km"), meters / 1000.0)
 
     /** 状态栏小胶囊里放不下空格：「850米」「15.9公里」 */
     fun shortDistance(meters: Int): String = distance(meters).replace(" ", "")
 
     fun duration(seconds: Int): String {
         val minutes = (seconds + 59) / 60
-        return if (minutes < 60) "$minutes 分钟"
-        else if (minutes % 60 == 0) "${minutes / 60} 小时"
-        else "${minutes / 60} 小时 ${minutes % 60} 分"
+        return if (minutes < 60) tr("$minutes 分钟", "$minutes min")
+        else if (minutes % 60 == 0) tr("${minutes / 60} 小时", "${minutes / 60} h")
+        else tr("${minutes / 60} 小时 ${minutes % 60} 分", "${minutes / 60} h ${minutes % 60} min")
     }
 
     /** 第几公里：「3.2」，不带单位 */
@@ -35,5 +36,5 @@ object Format {
     }
 
     /** 米/秒 → 「18.5 公里/时」 */
-    fun speed(metersPerSecond: Double): String = String.format(Locale.US, "%.1f 公里/时", metersPerSecond * 3.6)
+    fun speed(metersPerSecond: Double): String = String.format(Locale.US, tr("%.1f 公里/时", "%.1f km/h"), metersPerSecond * 3.6)
 }

@@ -1,5 +1,6 @@
 package com.personal.rando.weather
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -18,7 +19,10 @@ data class Wind(val fromDegrees: Double, val kmh: Double) {
 
     /** 「东北风」：风从哪边来 */
     val name: String
-        get() = NAMES[(((fromDegrees % 360 + 360) % 360 + 22.5) / 45).toInt() % 8] + "风"
+        get() {
+            val i = (((fromDegrees % 360 + 360) % 360 + 22.5) / 45).toInt() % 8
+            return tr(NAMES[i] + "风", EN_NAMES[i] + " wind")
+        }
 
     /** 风小到骑车感觉不出来 */
     val calm: Boolean get() = kmh < CALM_KMH
@@ -56,6 +60,7 @@ data class Wind(val fromDegrees: Double, val kmh: Double) {
         const val CALM_KMH = 8.0
         private const val METERS_PER_DEGREE = 111_320.0
         private val NAMES = listOf("北", "东北", "东", "东南", "南", "西南", "西", "西北")
+        private val EN_NAMES = listOf("North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest")
 
         /** 按长度算的中点 */
         fun halfIndex(points: List<LatLon>): Int {
@@ -81,11 +86,11 @@ data class RouteWind(val wind: Wind, val outbound: Double, val back: Double, val
     /** 「东北风 15 km/h · 去程逆风、回程顺风」；风小就只说风向 */
     fun summary(loop: Boolean): String {
         val head = "${wind.name} ${wind.kmh.roundToInt()} km/h"
-        if (wind.calm) return "$head，风不大"
+        if (wind.calm) return tr("$head，风不大", "$head, light")
         return if (loop && kind(outbound) != kind(back)) {
-            "$head · 去程${kind(outbound)}、回程${kind(back)}"
+            tr("$head · 去程${kind(outbound)}、回程${kind(back)}", "$head · ${kind(outbound)} out, ${kind(back)} back")
         } else {
-            "$head · 全程大多${kind(overall)}"
+            tr("$head · 全程大多${kind(overall)}", "$head · mostly ${kind(overall)}")
         }
     }
 
@@ -93,9 +98,9 @@ data class RouteWind(val wind: Wind, val outbound: Double, val back: Double, val
     val strongHeadwind: Boolean get() = overall >= STRONG_KMH
 
     private fun kind(h: Double): String = when {
-        h >= SIDE_KMH -> "逆风"
-        h <= -SIDE_KMH -> "顺风"
-        else -> "侧风"
+        h >= SIDE_KMH -> tr("逆风", "headwind")
+        h <= -SIDE_KMH -> tr("顺风", "tailwind")
+        else -> tr("侧风", "crosswind")
     }
 
     private companion object {
@@ -124,7 +129,7 @@ class WindClient(
 
     private fun get(name: String): String =
         http.newCall(Request.Builder().url("$baseUrl/$name").build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("风 HTTP ${response.code}")
+            if (!response.isSuccessful) throw IOException(tr("风 HTTP ${response.code}", "Wind HTTP ${response.code}"))
             response.body.string()
         }
 }

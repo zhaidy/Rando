@@ -1,6 +1,7 @@
 package com.personal.rando.ui
 
 import android.content.Context
+import com.personal.rando.i18n.tr
 import com.personal.rando.search.PlaceSearch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -113,7 +114,7 @@ class OfflineMaps(context: Context) {
 
         override fun mapboxTileCountLimitExceeded(limit: Long) {
             r.setDownloadState(OfflineRegion.STATE_INACTIVE)
-            _state.update { it.copy(progress = null, error = "瓦片太多（上限 $limit）") }
+            _state.update { it.copy(progress = null, error = tr("瓦片太多（上限 $limit）", "Too many tiles (limit $limit)")) }
         }
     }
 

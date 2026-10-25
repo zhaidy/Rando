@@ -15,6 +15,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextAlign
+import com.personal.rando.i18n.tr
 import com.personal.rando.R
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
@@ -204,7 +205,7 @@ fun RideView(
                     listening?.let {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Dot("#E35B4F")
-                            Text("正在听：$it", color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(tr("正在听：$it", "Listening: $it"), color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -238,14 +239,14 @@ fun RideView(
                             tint = DIM,
                             modifier = Modifier.size(22.dp),
                         )
-                        Text(if (expanded) "收起" else "更多", color = DIM, fontSize = 13.sp)
+                        Text(if (expanded) tr("收起", "Less") else tr("更多", "More"), color = DIM, fontSize = 13.sp)
                     }
                     timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 6.dp)) }
                     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (navigation != null) {
-                            BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "剩余 分", Modifier.weight(1f))
+                            BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", tr("剩余 分", "min left"), Modifier.weight(1f))
                         } else {
-                            BigStat(Format.clock(recording?.movingSeconds ?: 0), "骑行时间", Modifier.weight(1f))
+                            BigStat(Format.clock(recording?.movingSeconds ?: 0), tr("骑行时间", "Ride time"), Modifier.weight(1f))
                         }
                         Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.CenterHorizontally) {
                             AnimatedContent(
@@ -256,18 +257,18 @@ fun RideView(
                                 },
                                 label = "speed",
                             ) { v -> Text(v, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Medium, lineHeight = 60.sp) }
-                            Text("公里/时", color = DIM, fontSize = 13.sp)
+                            Text(tr("公里/时", "km/h"), color = DIM, fontSize = 13.sp)
                         }
                         if (navigation != null) {
                             BigStat(
                                 progress?.let { String.format(Locale.US, "%.1f", it.remainingMeters / 1000) } ?: "--",
-                                "剩余 公里",
+                                tr("剩余 公里", "km left"),
                                 Modifier.weight(1f),
                             )
                         } else {
                             BigStat(
                                 String.format(Locale.US, "%.1f", (recording?.distanceMeters ?: 0.0) / 1000),
-                                "已骑 公里",
+                                tr("已骑 公里", "km ridden"),
                                 Modifier.weight(1f),
                             )
                         }
@@ -284,14 +285,14 @@ fun RideView(
                             tone = if (listening != null) GlassTone.Tinted(RandoRed) else GlassTone.Dark,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         ) {
-                            Icon(MicIcon, contentDescription = "语音指令", tint = Color.White, modifier = Modifier.size(22.dp))
+                            Icon(MicIcon, contentDescription = tr("语音指令", "Voice command"), tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                         GlassButton(onClick = onMap, modifier = Modifier.weight(1f), tone = GlassTone.Dark) {
-                            Text("地图", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            Text(tr("地图", "Map"), color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
                         ReportButton(onReport, onMrt, Modifier.weight(1f))
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
-                            Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            Text(tr("结束", "End"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
                     }
                     }
@@ -332,11 +333,11 @@ private fun MoreStats(recording: RecordingState, navigating: Boolean, weightKg: 
     val average = if (recording.movingSeconds > 0) recording.distanceMeters / recording.movingSeconds else 0.0
     val kmh = { mps: Double -> String.format(Locale.US, "%.1f", mps * 3.6) }
     val stats = buildList {
-        if (navigating) add(String.format(Locale.US, "%.1f", recording.distanceMeters / 1000) to "已骑 公里")
-        add(kmh(average) to "均速")
-        add("${Calories.of(recording.distanceMeters, recording.movingSeconds, recording.ascendMeters, weightKg)}" to "千卡")
-        add("${recording.ascendMeters.toInt()}" to "爬升 米")
-        if (!navigating) add(Format.clock(((now - recording.startedAt) / 1000).coerceAtLeast(0)) to "全程用时")
+        if (navigating) add(String.format(Locale.US, "%.1f", recording.distanceMeters / 1000) to tr("已骑 公里", "km ridden"))
+        add(kmh(average) to tr("均速", "avg km/h"))
+        add("${Calories.of(recording.distanceMeters, recording.movingSeconds, recording.ascendMeters, weightKg)}" to tr("千卡", "kcal"))
+        add("${recording.ascendMeters.toInt()}" to tr("爬升 米", "m climb"))
+        if (!navigating) add(Format.clock(((now - recording.startedAt) / 1000).coerceAtLeast(0)) to tr("全程用时", "elapsed"))
     }
     Row(
         modifier
@@ -386,8 +387,8 @@ private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier
             Dot(ahead.current.kind.color)
             Text(
                 buildString {
-                    append("${ahead.current.kind.label} · 还有 ${Format.distance(ahead.remainingInCurrent.toInt())}")
-                    ahead.next?.let { append("，然后${it.kind.label} ${Format.distance(it.length.toInt())}") }
+                    append(tr("${ahead.current.kind.label} · 还有 ${Format.distance(ahead.remainingInCurrent.toInt())}", "${ahead.current.kind.label} · ${Format.distance(ahead.remainingInCurrent.toInt())} more"))
+                    ahead.next?.let { append(tr("，然后${it.kind.label} ${Format.distance(it.length.toInt())}", ", then ${it.kind.label} ${Format.distance(it.length.toInt())}")) }
                 },
                 color = Color.White,
                 fontSize = 16.sp,
@@ -399,7 +400,7 @@ private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot("#FFFFFF")
                 Text(
-                    "前方 ${Format.distance(a.distance.toInt())} ${a.structure.kind.label} · ${a.structure.access}",
+                    tr("前方 ${Format.distance(a.distance.toInt())} ${a.structure.kind.label} · ${a.structure.access}", "${a.structure.kind.label} in ${Format.distance(a.distance.toInt())} · ${a.structure.access}"),
                     color = Color.White,
                     fontSize = 16.sp,
                 )
@@ -409,7 +410,7 @@ private fun RoadAhead(timeline: RouteTimeline, along: Double, modifier: Modifier
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot(c.type.color)
                 Text(
-                    "前方 ${Format.distance(c.distance.toInt())} 过马路 · ${c.type.label}",
+                    tr("前方 ${Format.distance(c.distance.toInt())} 过马路 · ${c.type.label}", "Road crossing in ${Format.distance(c.distance.toInt())} · ${c.type.label}"),
                     color = if (c.type == CrossingType.UNMARKED) Color(0xFFFFB074) else Color.White,
                     fontSize = 16.sp,
                 )
@@ -460,8 +461,8 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
     Column(modifier) {
         when {
             progress == null -> RideMessage(navigation.waitingText)
-            progress.arrived -> RideMessage("已到达目的地")
-            navigation.rerouting || progress.offRoute -> RideMessage("已偏离路线，正在重新规划…")
+            progress.arrived -> RideMessage(tr("已到达目的地", "You have arrived"))
+            navigation.rerouting || progress.offRoute -> RideMessage(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
             else -> {
                 val next = progress.next
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -475,7 +476,7 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
                     Text(unit, color = Color.White, fontSize = 28.sp)
                 }
                 Text(
-                    next?.text ?: "到达终点",
+                    next?.text ?: tr("到达终点", "Arrive at destination"),
                     color = DIM,
                     fontSize = 18.sp,
                     maxLines = 1,
@@ -527,7 +528,7 @@ private fun Extras(weather: RouteWeather?, warning: String?, amenities: List<Ame
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot(next.first().key.color)
                 Text(
-                    "前方 " + next.joinToString(" · ") { "${it.key.label} ${Format.distance(it.value.toInt())}" },
+                    tr("前方 ", "Ahead: ") + next.joinToString(" · ") { "${it.key.label} ${Format.distance(it.value.toInt())}" },
                     color = Color.White,
                     fontSize = 16.sp,
                     maxLines = 1,
@@ -564,12 +565,12 @@ private fun ReportButton(onReport: (HazardType) -> Unit, onMrt: () -> Unit, modi
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         GlassButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth(), tone = GlassTone.Dark) {
-            Text("路况", color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+            Text(tr("路况", "Report"), color = Color.White, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = GlassShapes.Card, containerColor = Color(0xF2222624)) {
             HazardType.entries.forEach { type ->
                 DropdownMenuItem(
-                    text = { Text("这里${type.label}", color = Color.White, fontSize = 17.sp) },
+                    text = { Text(tr("这里${type.label}", type.label), color = Color.White, fontSize = 17.sp) },
                     leadingIcon = { Dot(type.color) },
                     onClick = {
                         open = false
@@ -578,7 +579,7 @@ private fun ReportButton(onReport: (HazardType) -> Unit, onMrt: () -> Unit, modi
                 )
             }
             DropdownMenuItem(
-                text = { Text("骑累了，坐 MRT 回家", color = Color.White, fontSize = 17.sp) },
+                text = { Text(tr("骑累了，坐 MRT 回家", "Tired? Take the MRT home"), color = Color.White, fontSize = 17.sp) },
                 leadingIcon = { Dot("#D42E12") },
                 onClick = {
                     open = false
@@ -597,14 +598,14 @@ private const val AMENITY_SHOWN_METERS = 5000.0
 private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
     // 只占一行：骑了多远、多久下面那块已经有了
     Row(modifier, verticalAlignment = Alignment.Bottom) {
-        Text("自由骑行", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+        Text(tr("自由骑行", "Free ride"), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.width(10.dp))
         Text(
             recording?.let {
-                "爬升 ${it.ascendMeters.toInt()} 米" +
+                tr("爬升 ${it.ascendMeters.toInt()} 米", "${it.ascendMeters.toInt()} m climb") +
                     // 停下来不算时间，告诉人一声
-                    if (it.movingSeconds > 0 && it.currentSpeed == 0.0) " · 已自动暂停" else ""
-            } ?: "记录中",
+                    if (it.movingSeconds > 0 && it.currentSpeed == 0.0) tr(" · 已自动暂停", " · Auto-paused") else ""
+            } ?: tr("记录中", "Recording"),
             color = DIM,
             fontSize = 16.sp,
             maxLines = 1,
