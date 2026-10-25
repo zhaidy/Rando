@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.personal.rando.nav.Geo
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.routing.CrossingType
+import com.personal.rando.places.CoveredStretch
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.Route
@@ -208,7 +209,7 @@ fun SegmentInfo.markLabel(marked: Boolean): String? = when {
 
 /** 卡片上能点的提示，点了在地图上一处处看 */
 /** [AMENITIES] 的几处不在路线数据里，由界面用查到的补给点来填 */
-enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH, CLIMB, AMENITIES }
+enum class NoteTarget { ROAD, CROSSINGS, STRUCTURES, PUSH, CLIMB, AMENITIES, COVERED }
 
 /** 离点击位置 [toleranceMeters] 以内最近的那段路；都太远就是 null */
 fun Route.segmentAt(tap: LatLon, toleranceMeters: Double): SegmentInfo? {
@@ -239,7 +240,7 @@ fun Route.targets(target: NoteTarget): List<SegmentInfo> = when (target) {
         // 看实景看入口：桥上、通道里面多半没有街景
         SegmentInfo(it.kind.label, "#FFFFFF", it.lengthMeters, it.path.first(), it.path, it.access)
     }
-    NoteTarget.AMENITIES -> emptyList()
+    NoteTarget.AMENITIES, NoteTarget.COVERED -> emptyList()
     NoteTarget.CLIMB -> listOfNotNull(
         steepestClimb()?.let { c ->
             val path = points.subList(c.fromIndex, c.toIndex + 1)
@@ -270,6 +271,17 @@ private fun Route.piecesWithin(kind: RoadKind, skipEnds: Boolean): List<SegmentI
     }
     return result
 }
+
+/** 有顶棚的路一段段看 */
+fun List<CoveredStretch>.coveredTargets(): List<SegmentInfo> = map {
+    SegmentInfo(
+        "有顶棚的路", COVERED_COLOR, it.lengthMeters.toInt(), it.points[it.points.size / 2], it.points,
+        "第 ${Format.km(it.startMeters)} 公里，下雨可以躲",
+    )
+}
+
+/** 和避雨亭一个颜色 */
+const val COVERED_COLOR = "#6D4C41"
 
 /** 沿途补给一处处看 */
 fun List<AmenityOnRoute>.targets(): List<SegmentInfo> = map {

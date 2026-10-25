@@ -721,10 +721,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                             onStart = startNavigation,
                                             onShowOnMap = { target ->
                                                 val s = vm.state.value
-                                                val items = if (target == NoteTarget.AMENITIES) {
-                                                    s.amenities.targets()
-                                                } else {
-                                                    (s.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
+                                                val items = when (target) {
+                                                    NoteTarget.AMENITIES -> s.amenities.targets()
+                                                    NoteTarget.COVERED -> s.covered.coveredTargets()
+                                                    else -> (s.route as? RouteState.Ready)?.route?.targets(target).orEmpty()
                                                 }
                                                 if (items.isNotEmpty()) focus = Focus(items, 0)
                                             },

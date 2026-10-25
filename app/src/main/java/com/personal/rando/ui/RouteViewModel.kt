@@ -13,6 +13,8 @@ import com.personal.rando.routing.BikeProfile
 import com.personal.rando.routing.RoutePrefs
 import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.weather.RouteWind
+import com.personal.rando.places.Covered
+import com.personal.rando.places.CoveredStretch
 import com.personal.rando.weather.Wind
 import com.personal.rando.weather.WindClient
 import com.personal.rando.routing.LatLon
@@ -54,6 +56,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed interface RouteState {
     data object Idle : RouteState
@@ -89,6 +93,8 @@ data class PlannerState(
     val amenities: List<AmenityOnRoute> = emptyList(),
     /** 沿途的风 */
     val wind: RouteWind? = null,
+    /** 路线经过的有顶棚的路 */
+    val covered: List<CoveredStretch> = emptyList(),
 )
 
 /** 骑一圈：大约多远，第几次换方向 */
@@ -402,7 +408,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             _state.update { it.copy(route = RouteState.WaitingForLocation) }
             return
         }
-        _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList(), wind = null) }
+        _state.update { it.copy(route = RouteState.Loading, weather = null, climate = null, amenities = emptyList(), wind = null, covered = emptyList()) }
         routeJob = viewModelScope.launch {
             val next = try {
                 if (s.loop != null) {
@@ -492,8 +498,9 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
                 ?.let { c -> _state.update { it.copy(climate = c) } }
         }
         launch {
-            quietly { amenityClient.along(route.points) }?.let { list ->
-                _state.update { it.copy(amenities = list.onRoute(RouteTimeline(route))) }
+            quietly { amenityClient.along(route.points) }?.let { found ->
+                val covered = withContext(Dispatchers.Default) { Covered.onRoute(route.points, found.covered) }
+                _state.update { it.copy(amenities = found.amenities.onRoute(RouteTimeline(route)), covered = covered) }
             }
         }
     }
