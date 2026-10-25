@@ -111,7 +111,7 @@ class Vox(
         floorDb += (db - floorDb) * rate
     }
 
-    /** 两个一阶高通串起来，截止大约 250 Hz（16 kHz 采样），风声、路噪的低频压得更狠 */
+    /** 两个一阶高通串起来，截止大约 300 Hz（16 kHz 采样），风声、路噪的低频压得更狠 */
     private fun highPass(input: ShortArray): ShortArray {
         val out = ShortArray(input.size)
         for (i in input.indices) {
@@ -132,7 +132,7 @@ class Vox(
         const val FRAME_SAMPLES = SAMPLE_RATE / 50
         /** 再小的声音不管多突出都不算说话（手机放兜里、蹭一下） */
         const val MIN_SPEECH_DB = -45.0
-        private const val HP_ALPHA = 0.91
+        private const val HP_ALPHA = 0.895
         private const val WARMUP_FRAMES = 25
 
         fun levelDb(frame: ShortArray): Double {

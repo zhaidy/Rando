@@ -150,21 +150,15 @@ class Walkie(
 
     @SuppressLint("MissingPermission")
     private suspend fun listen() {
-        val minBuffer = AudioRecord.getMinBufferSize(Vox.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        // 通话用的输入：跟着通话线路走（蓝牙耳机的麦克风），带回声消除和降噪
-        val record = try {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION, Vox.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, Vox.FRAME_SAMPLES * 2 * 10),
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "mic unavailable", e)
-            withContext(Dispatchers.Main) { turnOff() }
-            _state.update { it.copy(problem = "麦克风打不开，可能被别的 App 占用了") }
-            return
+        // 能降噪就按 48 kHz 录、过 RNNoise 再降到 16 kHz；原生库或 48 kHz 用不了就直接按 16 kHz 录
+        var denoiser = Rnnoise.createOrNull()
+        var record = denoiser?.let { openMic(Rnnoise.SAMPLE_RATE) }
+        if (record == null) {
+            denoiser?.close()
+            denoiser = null
+            record = openMic(Vox.SAMPLE_RATE)
         }
-        if (record.state != AudioRecord.STATE_INITIALIZED) {
-            record.release()
+        if (record == null) {
             withContext(Dispatchers.Main) { turnOff() }
             _state.update { it.copy(problem = "麦克风打不开，可能被别的 App 占用了") }
             return
@@ -173,6 +167,7 @@ class Walkie(
             if (NoiseSuppressor.isAvailable()) runCatching { NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null,
             if (AcousticEchoCanceler.isAvailable()) runCatching { AcousticEchoCanceler.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull() else null,
         )
+        val downsampler = Downsampler(Rnnoise.SAMPLE_RATE / Vox.SAMPLE_RATE, Rnnoise.SAMPLE_RATE)
         val vox = Vox(_state.value.level)
         var sender: Sender? = null
         var lastBars = -1
@@ -182,20 +177,29 @@ class Walkie(
         try {
             record.startRecording()
             val frame = ShortArray(Vox.FRAME_SAMPLES)
+            val raw = if (denoiser != null) ShortArray(Vox.FRAME_SAMPLES * Rnnoise.SAMPLE_RATE / Vox.SAMPLE_RATE) else frame
             while (currentCoroutineContext().isActive) {
-                val n = record.read(frame, 0, frame.size)
-                if (n <= 0) {
+                val got = record.read(raw, 0, raw.size, AudioRecord.READ_BLOCKING)
+                if (got <= 0) {
                     // 一直读不到（麦克风被系统收走了）：说出来，不要「试一下」一直卡在录
                     if (++failedReads == READ_FAILURES) {
-                        Log.w(TAG, "mic read failed: $n")
+                        Log.w(TAG, "mic read failed: $got")
                         test?.cancel()
                         test = null
-                        _state.update { it.copy(testing = false, sending = false, problem = "麦克风读不到声音（$n），可能被别的 App 占用了") }
+                        _state.update { it.copy(testing = false, sending = false, problem = "麦克风读不到声音（$got），可能被别的 App 占用了") }
                     }
                     delay(20)
                     continue
                 }
                 failedReads = 0
+                val n = if (denoiser != null) {
+                    // 偶尔读不满一帧：后面补静音，RNNoise 只收整帧
+                    raw.fill(0, got)
+                    denoiser.process(raw)
+                    downsampler.process(raw, frame)
+                } else {
+                    got
+                }
                 vox.level = _state.value.level
                 if (_state.value.testing && test == null) {
                     sender?.finish()
@@ -254,8 +258,30 @@ class Walkie(
             runCatching { record.stop() }
             record.release()
             effects.forEach { it.release() }
+            denoiser?.close()
             _state.update { it.copy(sending = false, micBars = 0) }
         }
+    }
+
+    /** 通话用的输入：跟着通话线路走（蓝牙耳机的麦克风），带回声消除和降噪；打不开返回 null */
+    @SuppressLint("MissingPermission")
+    private fun openMic(sampleRate: Int): AudioRecord? {
+        val minBuffer = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val record = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION, sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, sampleRate / 50 * 2 * 10),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "mic unavailable at $sampleRate Hz", e)
+            return null
+        }
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            Log.w(TAG, "mic not initialized at $sampleRate Hz")
+            record.release()
+            return null
+        }
+        return record
     }
 
     /**

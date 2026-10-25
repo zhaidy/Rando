@@ -4,6 +4,7 @@
 
 - 云端会话启动时 `.claude/hooks/session-start.sh` 会在后台装好 Android SDK，推送前先在本地跑 `LANG=C.UTF-8 ./gradlew assembleDebug testDebugUnitTest`（测试名有中文，需要 UTF-8 locale）。
 - 刚开会话时如果报找不到 SDK 或 `local.properties`，说明后台安装还没跑完，等一会再试。
+- 对讲降噪用的 RNNoise 是原生代码（`app/src/main/cpp`，v0.1.1 源码直接放在仓库里），第一次编译时 Gradle 会自己下载 NDK 和 CMake。
 
 ## 用到的在线服务（都不需要 key）
 
