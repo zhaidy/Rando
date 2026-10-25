@@ -131,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.group.NearbyTeam
 import com.personal.rando.places.MrtHome
 import com.personal.rando.ride.AutoStart
 import androidx.core.content.FileProvider
@@ -855,12 +856,18 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         )
     }
     if (groupDialog) {
+        // 打开就找一下附近的队伍，不用每次输入队伍码；找不到、没定位就当没有
+        val nearby by produceState<List<NearbyTeam>?>(null, group.configured) {
+            val me = vm.session.location.value
+            value = if (me == null || !group.configured) emptyList() else runCatching { group.nearby(me) }.getOrDefault(emptyList())
+        }
         GroupDialog(
             configured = group.configured,
             name = group.myName,
             onCreate = { name -> joinGroup(TeamCode.generate(), name) },
             onJoin = { code, name -> joinGroup(code, name) },
             onDismiss = { groupDialog = false },
+            nearby = nearby,
         )
     }
     saving?.let { place ->

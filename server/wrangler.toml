@@ -8,7 +8,16 @@ compatibility_date = "2025-09-01"
 name = "ROOMS"
 class_name = "Room"
 
+# 附近的队伍：全局一个大厅
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
 # 免费版只能用 SQLite 存储的 Durable Object
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Lobby"]

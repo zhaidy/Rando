@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.group.GroupState
+import com.personal.rando.group.NearbyTeam
 import com.personal.rando.places.Hazard
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
@@ -56,7 +57,10 @@ private val MATE_COLORS = listOf("#8E24AA", "#1E88E5", "#E53935", "#00897B", "#F
 
 fun mateColor(id: String): String = MATE_COLORS[Math.floorMod(id.hashCode(), MATE_COLORS.size)]
 
-/** 建队或者加入：先填名字，再选建一个新队，或者输入别人的队伍码 */
+/**
+ * 建队或者加入：先填名字；附近有队伍就列在上面，点一下加入；
+ * 没有就建一个新队，或者输入别人的队伍码。[nearby] 是 null 时还在找
+ */
 @Composable
 fun GroupDialog(
     configured: Boolean,
@@ -64,6 +68,7 @@ fun GroupDialog(
     onCreate: (name: String) -> Unit,
     onJoin: (code: String, name: String) -> Unit,
     onDismiss: () -> Unit,
+    nearby: List<NearbyTeam>? = emptyList(),
 ) {
     var myName by remember { mutableStateOf(name) }
     var joining by remember { mutableStateOf(false) }
@@ -82,6 +87,21 @@ fun GroupDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("队友之间互相看到位置，掉队了会提醒。同一个队伍码的人在一个队里。", color = InkSoft, fontSize = 14.sp)
                 OutlinedTextField(value = myName, onValueChange = { myName = it.take(20) }, label = { Text("你的名字") }, singleLine = true)
+                when {
+                    nearby == null -> Text("正在找附近的队伍…", color = InkSoft, fontSize = 14.sp)
+                    nearby.isNotEmpty() -> {
+                        Text("附近的队伍", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        nearby.forEach { team ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(team.namesText.ifEmpty { "队伍 ${team.code}" }, color = Ink, fontSize = 15.sp)
+                                    Text("${team.code} · ${Format.distance(team.meters)}", color = InkSoft, fontSize = 13.sp)
+                                }
+                                TextButton(enabled = myName.isNotBlank(), onClick = { onJoin(team.code, myName.trim()) }) { Text("加入") }
+                            }
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !joining, onClick = { joining = false }, label = { Text("建一个队") })
                     FilterChip(selected = joining, onClick = { joining = true }, label = { Text("输入队伍码") })
@@ -180,7 +200,7 @@ fun walkieText(w: WalkieState): String = when {
     w.talking.isNotEmpty() && w.sending -> "${w.talking.joinToString("、")} 和你都在说"
     w.talking.isNotEmpty() -> "${w.talking.joinToString("、")} 在说话…"
     !w.on -> "对讲没开：点「开对讲」队友才听得到你"
-    w.testing && w.sending -> "在录，说完会放给你自己听"
+    w.testing && w.sending -> "在录 3 秒：说一句话，录完放给你自己听"
     w.testing -> "试一下：说一句话，会放给你自己听"
     w.sending && w.mode == WalkieMode.CLIP -> "在录，说完停一下就发出去"
     w.sending -> "队友正在听你说"

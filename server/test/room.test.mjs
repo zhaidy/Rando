@@ -185,3 +185,37 @@ test("标的路况转给队友", async () => {
   a.ws.close();
   b.ws.close();
 });
+
+test("附近的队伍：有人报了位置就列出来，走远了、没人了就不列", async () => {
+  const near = await fetch(`http://127.0.0.1:${PORT}/nearby?lat=1.3001&lon=103.8001`);
+  assert.equal(near.status, 200);
+  assert.ok(!(await near.json()).teams.some((t) => t.code === "NEAR01"));
+
+  const a = join("near01", "aaaaaaaa-20", "阿明");
+  await a.opened;
+  await a.next("roster");
+  a.send({ t: "pos", lat: 1.3, lon: 103.8 });
+  // 等房间报给大厅
+  let team;
+  for (let i = 0; i < 20 && !team; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const res = await (await fetch(`http://127.0.0.1:${PORT}/nearby?lat=1.3001&lon=103.8001`)).json();
+    team = res.teams.find((t) => t.code === "NEAR01");
+  }
+  assert.ok(team, "附近应该有 NEAR01");
+  assert.deepEqual(team.names, ["阿明"]);
+  assert.ok(team.meters < 50);
+
+  const far = await (await fetch(`http://127.0.0.1:${PORT}/nearby?lat=1.35&lon=103.9`)).json();
+  assert.ok(!far.teams.some((t) => t.code === "NEAR01"));
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/nearby`)).status, 400);
+
+  a.ws.close();
+  let gone = false;
+  for (let i = 0; i < 20 && !gone; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const res = await (await fetch(`http://127.0.0.1:${PORT}/nearby?lat=1.3001&lon=103.8001`)).json();
+    gone = !res.teams.some((t) => t.code === "NEAR01");
+  }
+  assert.ok(gone, "没人了就不列");
+});

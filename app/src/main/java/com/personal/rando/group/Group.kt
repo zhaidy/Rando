@@ -191,6 +191,25 @@ object GroupProtocol {
 }
 
 /** 队伍码：6 位，去掉容易看错的 0 O 1 I */
+/** 附近的一个队伍：队伍码、队里的人、离我多远 */
+data class NearbyTeam(val code: String, val names: List<String>, val meters: Int) {
+    /** 「阿明、小红 等 4 人」 */
+    val namesText: String
+        get() = names.take(3).joinToString("、") + if (names.size > 3) " 等 ${names.size} 人" else ""
+
+    companion object {
+        /** 服务器 /nearby 返回的 {"teams":[{code,names,members,meters}]} */
+        fun parse(json: String): List<NearbyTeam> {
+            val teams = JSONObject(json).optJSONArray("teams") ?: return emptyList()
+            return (0 until teams.length()).map { i ->
+                val t = teams.getJSONObject(i)
+                val names = t.optJSONArray("names") ?: JSONArray()
+                NearbyTeam(t.getString("code"), (0 until names.length()).map { names.getString(it) }, t.optInt("meters"))
+            }
+        }
+    }
+}
+
 object TeamCode {
     private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
