@@ -10,6 +10,7 @@ import androidx.compose.animation.scaleIn
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -432,7 +433,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         vm.session.startRecording()
     }
     LaunchedEffect(style, teammates) {
-        style?.let { MapLayers.showTeam(it, teammates) }
+        val s = style ?: return@LaunchedEffect
+        // 断了信号的队友不会再发位置，列表不变；隔一会儿重画一次，过时的点才会变灰
+        while (true) {
+            MapLayers.showTeam(s, teammates)
+            delay(MapLayers.TEAM_REFRESH_MS)
+        }
     }
     fun returnTrip(ride: Ride) {
         finished = null
@@ -1082,7 +1088,12 @@ private fun openStreetView(context: Context, at: LatLon) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, url).setPackage("com.google.android.apps.maps"))
     } catch (_: ActivityNotFoundException) {
-        context.startActivity(Intent(Intent.ACTION_VIEW, url))
+        // 没装 Google 地图就用浏览器开；浏览器也没有就提示一下，不要闪退
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, url))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, tr("没有能打开实景的 App", "No app can open Street View"), Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

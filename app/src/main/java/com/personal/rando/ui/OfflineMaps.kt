@@ -40,6 +40,8 @@ class OfflineMaps(context: Context) {
     private val _state = MutableStateFlow(OfflineMapState())
     val state: StateFlow<OfflineMapState> = _state
     private var region: OfflineRegion? = null
+    /** 每次下载、取消、删除都加一；回调回来时对不上说明已经取消了，不再接着下 */
+    private var generation = 0
 
     /** 看看手机里已经有没有 */
     fun refresh() {
@@ -70,19 +72,27 @@ class OfflineMaps(context: Context) {
     fun download() {
         if (_state.value.progress != null) return
         _state.update { it.copy(progress = 0f, error = null) }
+        val gen = ++generation
         deleteThen {
+            if (gen != generation) return@deleteThen
             val b = PlaceSearch.SINGAPORE_BBOX.split(",").map { it.toDouble() }
             val bounds = LatLngBounds.Builder().include(LatLng(b[1], b[0])).include(LatLng(b[3], b[2])).build()
             val definition = OfflineTilePyramidRegionDefinition(MapLayers.STYLE_URL, bounds, 0.0, MAX_ZOOM, app.resources.displayMetrics.density)
             val metadata = JSONObject().put("name", NAME).put("at", System.currentTimeMillis()).toString().toByteArray()
             manager.createOfflineRegion(definition, metadata, object : OfflineManager.CreateOfflineRegionCallback {
                 override fun onCreate(offlineRegion: OfflineRegion) {
+                    // 删旧的、建新的这段时间里点了取消：刚建好的也删掉
+                    if (gen != generation) return offlineRegion.delete(object : OfflineRegion.OfflineRegionDeleteCallback {
+                        override fun onDelete() = Unit
+                        override fun onError(error: String) = Unit
+                    })
                     region = offlineRegion
                     offlineRegion.setObserver(observer(offlineRegion))
                     offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
                 }
 
                 override fun onError(error: String) {
+                    if (gen != generation) return
                     _state.update { it.copy(progress = null, error = error) }
                 }
             })
@@ -119,7 +129,10 @@ class OfflineMaps(context: Context) {
         delete()
     }
 
-    fun delete() = deleteThen { _state.value = OfflineMapState() }
+    fun delete() {
+        generation++
+        deleteThen { _state.value = OfflineMapState() }
+    }
 
     private fun observer(r: OfflineRegion) = object : OfflineRegion.OfflineRegionObserver {
         override fun onStatusChanged(status: OfflineRegionStatus) {

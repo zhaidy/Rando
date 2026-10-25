@@ -240,6 +240,9 @@ object MapLayers {
         )
     }
 
+    /** 队友的点多久重画一次，好让断了信号的变灰 */
+    const val TEAM_REFRESH_MS = 15_000L
+
     fun showTeam(style: Style, mates: List<Teammate>, now: Long = System.currentTimeMillis()) {
         style.getSourceAs<GeoJsonSource>(TEAM)?.setGeoJson(
             FeatureCollection.fromFeatures(

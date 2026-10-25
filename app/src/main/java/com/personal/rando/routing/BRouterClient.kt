@@ -40,12 +40,14 @@ class BRouterClient(
         val polylines = RoadCorrections.polylines(stops, marked, prefs.avoidRoads)
         val route = run {
             val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos, polylines, alternative))
-            // 服务器上传过的配置过一阵会被清掉，这时返回 500；重新上传再试一次
+            // 服务器上传过的配置过一阵会被清掉，这时返回 500（没有说明）；重新上传再试一次。
+            // 超时、点不可达这些重新上传也没用，直接报错，免得白等一轮
             val cached = uploaded[custom]
             if (cached != null) {
                 try {
                     return@run fetch(url(stops, cached, watts, nogos, polylines, alternative))
-                } catch (_: IOException) {
+                } catch (e: RouteHttpException) {
+                    if (!e.profileGone) throw e
                     uploaded.remove(custom)
                 }
             }
@@ -58,9 +60,18 @@ class BRouterClient(
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
             val body = response.body.string()
             // 出错时服务器返回纯文本说明，比如 "target island detected"
-            if (!response.isSuccessful) throw IOException(explain(body.trim()).ifEmpty { "HTTP ${response.code}" })
+            if (!response.isSuccessful) {
+                val explained = explain(body.trim())
+                throw RouteHttpException(explained.ifEmpty { "HTTP ${response.code}" }, profileGone = response.code == 500 && !known(body))
+            }
             RouteParser.parse(body)
         }
+
+    /** 算路本身的出错（点不可达之类），不是配置没了 */
+    private fun known(message: String): Boolean = "island" in message || "not mapped" in message || "no track found" in message
+
+    /** [profileGone]：可能是上传的配置被服务器清掉了，值得重新上传再试 */
+    private class RouteHttpException(message: String, val profileGone: Boolean) : IOException(message)
 
     /** 常见的几种出错换成中文 */
     private fun explain(message: String): String = when {
