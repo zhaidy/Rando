@@ -776,7 +776,7 @@ fun PlannerSheet(
                   exit = fadeOut(tween(120)) + shrinkVertically(Motion.smooth()),
               ) {
                   PrimaryButton(onClick = actions.onStart, color = RandoAccent, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                      Text(tr("开始导航", "Start navigation"), color = HINT_INK, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                      Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                   }
               }
           }
@@ -824,7 +824,7 @@ private fun PeekLine(state: PlannerState, header: SheetHeader, onStart: () -> Un
         Text(text, Modifier.weight(1f), color = InkSoft, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (route != null) {
             PrimaryButton(onClick = onStart, color = RandoAccent) {
-                Text(tr("开始导航", "Start navigation"), color = HINT_INK, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("开始导航", "Start navigation"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -1263,12 +1263,19 @@ private fun PaceLine(prefs: RoutePrefs, onPace: (Pace) -> Unit) {
         Row(
             Modifier
                 .padding(top = 4.dp)
-                .clip(GlassShapes.Pill)
+                // 文字折成两行时胶囊形的圆角会切掉行首的字，用小圆角
+                .clip(RoundedCornerShape(8.dp))
                 .clickable { open = true }
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(tr("预计时间", "Est. time ") + paceText(prefs.pace, prefs.mySpeed), color = InkSoft, fontSize = 13.sp)
+            Text(
+                tr("预计时间", "Est. time ") + paceText(prefs.pace, prefs.mySpeed),
+                color = InkSoft,
+                fontSize = 13.sp,
+                // 不占满，留出下拉箭头的位置，否则长文字会把箭头挤没
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Icon(Icons.Default.ArrowDropDown, contentDescription = tr("换速度", "Change pace"), tint = InkSoft, modifier = Modifier.size(18.dp))
         }
         DropdownMenu(
