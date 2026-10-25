@@ -9,6 +9,8 @@ import com.personal.rando.places.MrtNetwork
 import com.personal.rando.places.SavedPlaceStore
 import com.personal.rando.places.SavedRouteStore
 import com.personal.rando.routing.BRouterClient
+import com.personal.rando.places.PcnData
+import com.personal.rando.places.PcnLoop
 import com.personal.rando.routing.RoadCorrectionStore
 import com.personal.rando.ride.AutoStart
 import com.personal.rando.ride.RideSession
@@ -55,6 +57,9 @@ class RandoApp : Application() {
     val voice: VoiceControl by lazy { VoiceControl(this, walkie).also { it.say = session::say } }
 
     val savedPlaces: SavedPlaceStore by lazy { SavedPlaceStore(this) }
+
+    /** 公园连道的 6 个大环（数据在 assets/pcn.json） */
+    val pcn: List<PcnLoop> by lazy { PcnData.parse(assets.open("pcn.json").bufferedReader().use { it.readText() }) }
 
     /** 新加坡 MRT、轻轨站（数据在 assets/mrt.json） */
     val mrt: MrtNetwork by lazy { MrtNetwork(MrtData.parse(assets.open("mrt.json").bufferedReader().use { it.readText() })) }
