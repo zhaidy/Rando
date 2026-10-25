@@ -89,6 +89,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -534,6 +535,8 @@ fun PlannerFrame(
     bottom: @Composable ColumnScope.() -> Unit,
     sheet: @Composable (Modifier) -> Unit,
     onInsets: (PlannerInsets) -> Unit = {},
+    /** 卡片拉满了：竖条、比例尺先让开，卡片才长得上去 */
+    sheetExpanded: Boolean = false,
 ) {
     val density = LocalDensity.current
     var insets by remember { mutableStateOf(PlannerInsets()) }
@@ -555,7 +558,13 @@ fun PlannerFrame(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            bottom()
+            AnimatedVisibility(
+                !sheetExpanded,
+                enter = fadeIn() + expandVertically(Motion.smooth()),
+                exit = fadeOut() + shrinkVertically(Motion.smooth()),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = bottom)
+            }
             sheet(Modifier.weight(1f, fill = false).onGloballyPositioned { insets = insets.copy(sheetTop = it.positionInRoot().y.toInt()) })
         }
     }
@@ -612,6 +621,8 @@ fun PlannerSheet(
     /** 车停在哪儿、我在哪儿（算离车多远） */
     parked: ParkedBike? = null,
     here: LatLon? = null,
+    /** 拉满（看路线详情）时告诉外面，好让竖条让位 */
+    onExpandedChange: (Boolean) -> Unit = {},
 ) {
     val header = when {
         state.loop != null -> SheetHeader.Loop(state.loop.targetMeters / 1000)
@@ -635,6 +646,9 @@ fun PlannerSheet(
         drag = 0f
     }
     val dragState = rememberDraggableState { drag += it }
+    val expanded = size == SheetSize.FULL && header != SheetHeader.Empty
+    LaunchedEffect(expanded) { onExpandedChange(expanded) }
+    DisposableEffect(Unit) { onDispose { onExpandedChange(false) } }
     val sheetScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
