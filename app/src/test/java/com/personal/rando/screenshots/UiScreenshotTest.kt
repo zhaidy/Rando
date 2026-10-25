@@ -307,8 +307,16 @@ class UiScreenshotTest {
             route.points.take(route.points.size / 2).reversed().map { TrackPoint(LatLon(it.lat + 0.004, it.lon + 0.006), null, 0) },
         )
         val day = listOf(rides[0], evening)
+        val tracksPx = com.personal.rando.ui.ShareCard.fitAll(day.map { r -> r.points.map { it.location } }, 1080f, 900f)
+        // 路上拍的三张：纯色块当照片
+        val pins = listOf(0.3 to "#A9C3A0", 0.7 to "#9DB8CB").map { (k, color) -> tracksPx[0][(tracksPx[0].size * k).toInt()] to color } +
+            listOf(tracksPx[1][tracksPx[1].size / 2] to "#D9B98F")
         val card = com.personal.rando.ui.ShareCard.drawDay(
-            null, com.personal.rando.ui.ShareCard.fitAll(day.map { r -> r.points.map { it.location } }, 1080f, 900f).map { listOf(it) }, day,
+            null, tracksPx.map { listOf(it) }, day,
+            pins.map { (at, color) ->
+                val photo = android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.parseColor(color)) }
+                com.personal.rando.ui.ShareCard.Pin(photo, at)
+            },
         )
         File("build/screenshots").mkdirs()
         File("build/screenshots/12b_share_day_card.png").outputStream().use { card.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }

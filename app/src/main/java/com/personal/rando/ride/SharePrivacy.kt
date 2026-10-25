@@ -47,6 +47,15 @@ object SharePrivacy {
         return pieces.filter { it.size >= 2 }
     }
 
+    /**
+     * 在 [p] 拍的照片该不该钉在图上：在隐私圈里不钉；没有圈时离哪次骑行的起点、终点不到 [TRIM_METERS] 也不钉
+     * （那段轨迹已经剪掉了，照片钉上去等于把起点标出来）
+     */
+    fun hides(p: LatLon, tracks: List<List<LatLon>>, zone: Zone?): Boolean {
+        if (zone != null) return Geo.distance(p, zone.center) <= zone.radius
+        return tracks.any { t -> t.isNotEmpty() && (Geo.distance(p, t.first()) < TRIM_METERS || Geo.distance(p, t.last()) < TRIM_METERS) }
+    }
+
     /** 头尾各剪掉 [TRIM_METERS]；太短的整段不要 */
     fun trim(track: List<LatLon>): List<LatLon> {
         fun cut(t: List<LatLon>): Int {

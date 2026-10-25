@@ -23,6 +23,7 @@ import com.personal.rando.i18n.tr
 import com.personal.rando.places.SavedPlace
 import com.personal.rando.rando
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.RidePhotos
 import com.personal.rando.ride.SharePrivacy
 import com.personal.rando.ride.timeOfDay
 import com.personal.rando.routing.LatLon
@@ -55,14 +56,23 @@ object ShareCard {
      */
     class Card(val bitmap: Bitmap, val name: String, val chooserTitle: String, val privacy: String)
 
-    /** 一次骑行的分享图；[hide] 打开时家附近的轨迹不画（见 [SharePrivacy]） */
-    suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true): Card =
-        render(context, "rando-${ride.id}", tr("分享骑行", "Share ride"), listOf(ride), hide) { map, tracks -> draw(map, tracks.first(), ride, record) }
+    /** 照片钉在图上的样子：小图和它拍的地方（像素） */
+    class Pin(val photo: Bitmap, val at: PointF)
+
+    /** 一次骑行的分享图；[hide] 打开时家附近的轨迹不画（见 [SharePrivacy]），[photos] 钉在拍的地方 */
+    suspend fun card(context: Context, ride: Ride, record: String?, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card =
+        render(context, "rando-${ride.id}", tr("分享骑行", "Share ride"), listOf(ride), hide, photos) { map, tracks, pins -> draw(map, tracks.first(), ride, record, pins) }
 
     /** 今天骑的几次：轨迹画在一张图上，数据加起来 */
-    suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true): Card? {
+    suspend fun dayCard(context: Context, rides: List<Ride>, hide: Boolean = true, photos: List<SharePhoto> = emptyList()): Card? {
         if (rides.isEmpty()) return null
-        return render(context, "rando-day-${rides.first().id}", tr("分享今天的骑行", "Share today's rides"), rides, hide) { map, tracks -> drawDay(map, tracks, rides) }
+        return render(context, "rando-day-${rides.first().id}", tr("分享今天的骑行", "Share today's rides"), rides, hide, photos) { map, tracks, pins -> drawDay(map, tracks, rides, pins) }
+    }
+
+    /** 分享图的隐私圈：收藏了家才有；没有的话隐私靠剪掉起点终点 */
+    fun privacyZone(context: Context): SharePrivacy.Zone? {
+        val home = context.rando.savedPlaces.places.value.firstOrNull { it.name == SavedPlace.HOME }?.location ?: return null
+        return SharePrivacy.zone(home, SharePrivacy.seed(context))
     }
 
     /** 拍地图、画图；每次骑行可能被隐私圈断成几段，所以是 骑行 → 段 → 点 */
@@ -72,38 +82,54 @@ object ShareCard {
         chooserTitle: String,
         rides: List<Ride>,
         hide: Boolean,
-        paint: (Bitmap?, List<List<List<PointF>>>) -> Bitmap,
+        photos: List<SharePhoto>,
+        paint: (Bitmap?, List<List<List<PointF>>>, List<Pin>) -> Bitmap,
     ): Card {
         val home = context.rando.savedPlaces.places.value.firstOrNull { it.name == SavedPlace.HOME }?.location
-        val zone = if (hide && home != null) SharePrivacy.zone(home, SharePrivacy.seed(context)) else null
-        val rideTracks = rides.map { r ->
-            val track = r.points.map { it.location }
-            if (hide) SharePrivacy.hide(track, zone) else listOf(track)
-        }
+        val zone = if (hide) privacyZone(context) else null
+        val tracks = rides.map { r -> r.points.map { it.location } }
+        val rideTracks = tracks.map { if (hide) SharePrivacy.hide(it, zone) else listOf(it) }
         val pieces = rideTracks.flatten()
+        // 隐藏掉的那段路上拍的不钉，不然照片把家标出来了
+        val pinned = photos.filter { p -> p.at != null && !(hide && SharePrivacy.hides(p.at, tracks, zone)) }.take(RidePhotos.MAX)
         // 地图只框住画出来的那些，不框到家
-        val snapshot = withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, pieces.flatten()) }
+        val framed = pieces.flatten()
+        // 选照片时一张张重画，地图还是那张就不再拍
+        val snapshot = lastSnapshot?.takeIf { it.first == framed }?.second
+            ?: withTimeoutOrNull(SNAPSHOT_TIMEOUT_MS) { snapshot(context, framed) }?.also { lastSnapshot = framed to it }
         val bitmap = withContext(Dispatchers.Default) {
-            val piecesPx = snapshot?.second?.let { project -> pieces.map { it.map(project) } } ?: fitAll(pieces, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
+            // 照片的点和轨迹一起缩放，没地图时也对得上
+            val places = pinned.map { listOf(it.at!!) }
+            val allPx = snapshot?.second?.let { project -> (pieces + places).map { it.map(project) } } ?: fitAll(pieces + places, WIDTH.toFloat(), MAP_HEIGHT.toFloat())
+            val piecesPx = allPx.subList(0, pieces.size)
             var from = 0
             val ridesPx = rideTracks.map { r -> piecesPx.subList(from, from + r.size).also { from += r.size } }
-            paint(snapshot?.first, ridesPx)
+            val pins = pinned.mapIndexed { i, p -> Pin(p.thumb, allPx[pieces.size + i].first()) }
+            paint(snapshot?.first, ridesPx, pins)
         }
         return Card(bitmap, name, chooserTitle, if (home != null) tr("隐藏家附近", "Hide near home") else tr("隐藏起点终点附近", "Hide start and finish"))
     }
 
-    /** 存到缓存，弹出系统分享 */
-    suspend fun send(context: Context, card: Card) {
-        val file = withContext(Dispatchers.IO) {
-            File(context.cacheDir, "share").apply { mkdirs() }.let { dir ->
-                File(dir, "${card.name}.png").also { f -> f.outputStream().use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+    /**
+     * 存到缓存，弹出系统分享；[originals] 是要一起发的照片：分享图排第一张，后面跟着去掉位置信息的原图，
+     * 朋友圈、小红书收到的就是一组图
+     */
+    suspend fun send(context: Context, card: Card, originals: List<SharePhoto> = emptyList()) {
+        val files = withContext(Dispatchers.IO) {
+            val dir = File(context.cacheDir, "share").apply { mkdirs() }
+            val cardFile = File(dir, "${card.name}.png").also { f -> f.outputStream().use { card.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            // 上次发的照片删掉，缓存里不留一堆
+            val photoDir = File(dir, "photos").apply { deleteRecursively(); mkdirs() }
+            listOf(cardFile) + originals.mapIndexedNotNull { i, p ->
+                File(photoDir, "${card.name}-${i + 1}.jpg").takeIf { SharePhotos.stripped(context, p.uri, it) }
             }
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        val intent = Intent(Intent.ACTION_SEND)
-            .setType("image/png")
-            .putExtra(Intent.EXTRA_STREAM, uri)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val uris = files.map { FileProvider.getUriForFile(context, "${context.packageName}.files", it) }
+        val intent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uris.first())
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).setType("image/*").putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(Intent.createChooser(intent, card.chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -140,6 +166,9 @@ object ShareCard {
             true
         }.getOrDefault(false)
     }
+
+    /** 上次拍的地图和它框住的点 */
+    private var lastSnapshot: Pair<List<LatLon>, Pair<Bitmap, (LatLon) -> PointF>>? = null
 
     /** 地图快照：框住整条轨迹；拍不到（没网）返回 null，就画在纯色底上 */
     private suspend fun snapshot(context: Context, track: List<LatLon>): Pair<Bitmap, (LatLon) -> PointF>? {
@@ -194,14 +223,14 @@ object ShareCard {
     }
 
     /** 一次骑行的整张图；[trackPx] 是这次骑行要画的几段 */
-    fun draw(map: Bitmap?, trackPx: List<List<PointF>>, ride: Ride, record: String?): Bitmap =
+    fun draw(map: Bitmap?, trackPx: List<List<PointF>>, ride: Ride, record: String?, pins: List<Pin> = emptyList()): Bitmap =
         drawCard(
             map, listOf(trackPx), ride.title, DATE.format(Date(ride.startedAt)), record,
-            ride.distanceMeters, ride.movingSeconds, ride.ascendMeters,
+            ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, pins,
         )
 
     /** 今天几次骑行合在一张图上：标题写骑了几次，下面是合计 */
-    fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>): Bitmap {
+    fun drawDay(map: Bitmap?, tracksPx: List<List<List<PointF>>>, rides: List<Ride>, pins: List<Pin> = emptyList()): Bitmap {
         val first = rides.first()
         val last = rides.last()
         val title = if (rides.size == 1) tr("今天${first.title}", "Today: ${first.title}") else tr("今天骑了 ${rides.size} 次", "${rides.size} rides today")
@@ -212,9 +241,10 @@ object ShareCard {
             rides.map { timeOfDay(it.startedAt) }.takeIf { it.distinct().size == it.size && it.size <= 4 }?.joinToString(" · ")
                 ?: "${CLOCK.format(Date(first.startedAt))}–${CLOCK.format(Date(last.endedAt))}"
         }
+        val note = if (pins.isEmpty()) time else time + tr(" · 拍了 ${pins.size} 张", " · ${pins.size} photo${if (pins.size == 1) "" else "s"}")
         return drawCard(
-            map, tracksPx, title, DAY.format(Date(first.startedAt)), time,
-            rides.sumOf { it.distanceMeters }, rides.sumOf { it.movingSeconds }, rides.sumOf { it.ascendMeters },
+            map, tracksPx, title, DAY.format(Date(first.startedAt)), note,
+            rides.sumOf { it.distanceMeters }, rides.sumOf { it.movingSeconds }, rides.sumOf { it.ascendMeters }, pins,
         )
     }
 
@@ -228,6 +258,7 @@ object ShareCard {
         meters: Double,
         movingSeconds: Long,
         ascendMeters: Double,
+        pins: List<Pin> = emptyList(),
     ): Bitmap {
         val out = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
@@ -245,6 +276,7 @@ object ShareCard {
             },
         )
         tracksPx.forEach { drawTrack(c, it) }
+        drawPins(c, pins, tracksPx.flatten().flatten())
 
         val ink = Color.parseColor("#1F2A24")
         val soft = Color.parseColor("#6B756F")
@@ -313,6 +345,40 @@ object ShareCard {
         }
         pin(drawn.first().first(), "#2E7D4F")
         pin(drawn.last().last(), "#E0672B")
+    }
+
+    /** 照片做成带白边的小卡片，一根细线连到拍的地方 */
+    private fun drawPins(c: Canvas, pins: List<Pin>, track: List<PointF>) {
+        if (pins.isEmpty()) return
+        val centers = PhotoPins.layout(pins.map { it.at.x to it.at.y }, WIDTH.toFloat(), MAP_HEIGHT.toFloat(), track.map { it.x to it.y })
+        val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeWidth = 5f; strokeCap = Paint.Cap.ROUND }
+        pins.forEachIndexed { i, p -> c.drawLine(p.at.x, p.at.y, centers[i].first, centers[i].second, line) }
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG)
+        pins.forEach { p ->
+            c.drawCircle(p.at.x, p.at.y, 12f, dot.apply { color = Color.WHITE })
+            c.drawCircle(p.at.x, p.at.y, 7f, dot.apply { color = Color.parseColor("#1F2A24") })
+        }
+        val size = PhotoPins.SIZE
+        val border = 8f
+        val frame = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            setShadowLayer(18f, 0f, 8f, Color.argb(56, 31, 42, 36))
+        }
+        val image = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        pins.forEachIndexed { i, p ->
+            val (cx, cy) = centers[i]
+            c.save()
+            c.rotate(PhotoPins.tilt(i), cx, cy)
+            c.drawRoundRect(RectF(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2), 20f, 20f, frame)
+            val inner = RectF(cx - size / 2 + border, cy - size / 2 + border, cx + size / 2 - border, cy + size / 2 - border)
+            c.clipPath(Path().apply { addRoundRect(inner, 14f, 14f, Path.Direction.CW) })
+            // 居中裁成正方形
+            val b = p.photo
+            val side = minOf(b.width, b.height)
+            val src = android.graphics.Rect((b.width - side) / 2, (b.height - side) / 2, (b.width + side) / 2, (b.height + side) / 2)
+            c.drawBitmap(b, src, inner, image)
+            c.restore()
+        }
     }
 
     private fun text(size: Float, color: Int, face: Typeface = Typeface.DEFAULT) = Paint(Paint.ANTI_ALIAS_FLAG).apply {

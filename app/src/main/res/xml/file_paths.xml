@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 分享骑行图：先存在缓存的 share 目录里，再通过 FileProvider 给别的 App -->
+<!-- 分享骑行图（和一起发的照片，在 share/photos 里）：先存在缓存的 share 目录里，再通过 FileProvider 给别的 App -->
 <paths>
     <cache-path name="share" path="share/" />
     <!-- 车位照片：相机 App 拍好写到这里 -->
