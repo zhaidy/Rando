@@ -239,22 +239,24 @@ object MapLayers {
 
     /**
      * 骑过的路：按骑过几次分段上色（浅黄、橙、红），次数多的压在上面。
-     * 用在单独的地图上，不和导航的图层混在一起
+     * 在「骑过的路」那页单独画；[faint] 是主页地图上垫在路线、轨迹下面的淡一点、细一点的版本
      */
-    fun showRidden(style: Style, pieces: List<HeatPiece>) {
+    fun showRidden(style: Style, pieces: List<HeatPiece>, faint: Boolean = false) {
         val id = "rando-ridden"
         val source = style.getSourceAs<GeoJsonSource>(id) ?: GeoJsonSource(id).also { src ->
             style.addSource(src)
+            // 主页地图上压在轨迹下面，路线、地点都盖得住它
+            val add = { layer: LineLayer -> if (style.getLayer(TRACK) != null) style.addLayerBelow(layer, TRACK) else style.addLayer(layer) }
             // 底图的马路是黄色的，垫一圈深色描边，浅黄的线才看得出来
-            style.addLayer(
+            add(
                 LineLayer("$id-casing", id).withProperties(
-                    lineColor(Color.parseColor("#3E2723")), lineWidth(6.5f), lineOpacity(0.55f),
+                    lineColor(Color.parseColor("#3E2723")), lineWidth(if (faint) 4.5f else 6.5f), lineOpacity(if (faint) 0.3f else 0.55f),
                     lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
                 )
             )
-            style.addLayer(
+            add(
                 LineLayer(id, id).withProperties(
-                    lineColor(Expression.toColor(Expression.get("color"))), lineWidth(4f),
+                    lineColor(Expression.toColor(Expression.get("color"))), lineWidth(if (faint) 2.5f else 4f), lineOpacity(if (faint) 0.7f else 1f),
                     lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
                 )
             )
