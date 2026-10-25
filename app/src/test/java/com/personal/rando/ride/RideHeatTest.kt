@@ -45,4 +45,33 @@ class RideHeatTest {
         assertEquals(HeatLevel.HIGH, pieces.last().level)
         assertEquals(HeatLevel.LOW, pieces.first().level)
     }
+
+    /** 在出发点附近来回乱跳 [n] 个点，每次十几米 */
+    private fun jitter(n: Int, at: LatLon) = (0 until n).map { i ->
+        LatLon(at.lat + (if (i % 2 == 0) 0.0001 else -0.0001) * (i % 3), at.lon + (if (i % 4 < 2) 0.00012 else -0.00012))
+    }
+
+    @Test
+    fun `开头结尾原地乱飘的剪掉`() {
+        val ride = north()
+        val track = jitter(30, ride.first()) + ride + jitter(30, ride.last())
+        val trimmed = RideHeat.trimStill(track)
+        // 头尾最多留下几个挨着出发点的飘点
+        assertTrue(trimmed.size in ride.size - 2..ride.size + 4)
+        assertTrue(trimmed.containsAll(ride.subList(2, ride.size - 2)))
+    }
+
+    @Test
+    fun `一直在原地乱飘就整条不画`() {
+        assertTrue(RideHeat.trimStill(jitter(60, LatLon(1.3, 103.8))).isEmpty())
+        assertTrue(RideHeat.pieces(listOf(jitter(60, LatLon(1.3, 103.8)))).isEmpty())
+    }
+
+    @Test
+    fun `正常骑的不剪`() {
+        val ride = north()
+        assertEquals(ride, RideHeat.trimStill(ride))
+        val back = ride + ride.asReversed()
+        assertEquals(back, RideHeat.trimStill(back))
+    }
 }

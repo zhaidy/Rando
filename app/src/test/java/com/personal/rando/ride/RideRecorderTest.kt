@@ -92,4 +92,25 @@ class RideRecorderTest {
         r.add(Fix(LatLon(1.3001, 103.8), accuracy = 5f, speed = 0.2f, time = 3_000))
         assertEquals(0.2, r.state().currentSpeed, 0.01)
     }
+
+    @Test
+    fun `在家里精度差，点在几十米里乱跳不算`() {
+        val r = RideRecorder(0)
+        r.add(fix(0, 0, accuracy = 20f))
+        // 每次跳 11 米，没跳出 20 米的精度圈
+        listOf(1, -1, 0, 1, -1).forEachIndexed { i, step -> assertFalse(r.add(fix(step, i + 1L, accuracy = 20f))) }
+        // GPS 说停着，却 6 秒跳了 33 米
+        assertFalse(r.add(fix(3, 6, accuracy = 8f).copy(speed = 0.1f)))
+        assertEquals(0.0, r.state().distanceMeters, 0.0)
+        assertEquals(1, r.state().track.size)
+    }
+
+    @Test
+    fun `精度差但 GPS 说在骑就照收`() {
+        val r = RideRecorder(0)
+        r.add(fix(0, 0, accuracy = 20f))
+        assertTrue(r.add(fix(1, 2, accuracy = 20f).copy(speed = 5.5f)))
+        // 没有 GPS 速度，骑出精度圈了也收
+        assertTrue(r.add(fix(3, 6, accuracy = 20f)))
+    }
 }

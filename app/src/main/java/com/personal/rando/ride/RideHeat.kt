@@ -41,7 +41,7 @@ object RideHeat {
     private fun cell(p: LatLon) = Cell(floor(p.lon * LON_METERS / CELL_METERS).toInt(), floor(p.lat * METERS_PER_DEGREE / CELL_METERS).toInt())
 
     fun pieces(tracks: List<List<LatLon>>): List<HeatPiece> {
-        val dense = tracks.map { densify(it) }
+        val dense = tracks.map { densify(trimStill(it)) }
         // 每格被哪几次骑行经过
         val rides = HashMap<Cell, MutableSet<Int>>()
         dense.forEachIndexed { i, track -> track.forEach { rides.getOrPut(cell(it)) { HashSet() } += i } }
@@ -70,6 +70,36 @@ object RideHeat {
         // 次数多的画在上面
         return result.sortedBy { it.level.ordinal }
     }
+
+    /**
+     * 剪掉开头、结尾原地乱飘的那截（以前的记录没滤掉在家里、车棚下飘的点）：
+     * 从头往后找，往前 [STRAIGHT_METERS] 的路走出去的直线距离不到 [STRAIGHT_SHARE] 就是在原地打转，剪掉；结尾倒过来一样
+     */
+    fun trimStill(track: List<LatLon>): List<LatLon> {
+        val start = firstMoving(track)
+        if (start < 0) return emptyList()
+        val end = track.size - 1 - firstMoving(track.asReversed())
+        return if (end > start) track.subList(start, end + 1) else emptyList()
+    }
+
+    /** 第一个开始真正往外走的点；一直在打转就是 -1 */
+    private fun firstMoving(track: List<LatLon>): Int {
+        for (i in 0 until track.size - 1) {
+            var path = 0.0
+            var j = i
+            while (j < track.size - 1 && path < STRAIGHT_METERS) {
+                path += Geo.distance(track[j], track[j + 1])
+                j++
+            }
+            // 剩下的不够一截就不剪了
+            if (path < STRAIGHT_METERS) return if (i == 0) 0 else -1
+            if (Geo.distance(track[i], track[j]) >= path * STRAIGHT_SHARE) return i
+        }
+        return if (track.size == 1) 0 else -1
+    }
+
+    private const val STRAIGHT_METERS = 100.0
+    private const val STRAIGHT_SHARE = 0.6
 
     /** 两点隔得比半格还远就在中间补点，免得跳过格子 */
     private fun densify(track: List<LatLon>): List<LatLon> {
