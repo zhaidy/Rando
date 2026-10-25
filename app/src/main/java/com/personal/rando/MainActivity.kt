@@ -14,6 +14,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.personal.rando.ride.RideWidget
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -57,6 +59,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 系统语言改了 Activity 会重建，这里跟着换（设置里选了固定语言就不变）
+        Lang.apply(rando.settings.settings.value.language, resources.configuration.locales[0])
         // 更新后已经回到应用了，“已更新，点这里打开”的通知就没用了
         UpdateNotifications.cancelUpdated(this)
         handle(intent)
@@ -124,7 +128,7 @@ private fun ComponentActivity.handle(intent: Intent?) {
     val located = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         .any { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
     if (located) rando.session.startRecording()
-    else Toast.makeText(this, "先允许 Rando 使用位置，才能记录", Toast.LENGTH_LONG).show()
+    else Toast.makeText(this, tr("先允许 Rando 使用位置，才能记录", "Allow Rando to use your location to record rides"), Toast.LENGTH_LONG).show()
 }
 
 /** 「骑过的路」那一页；0 是地图，-1 是记录列表，正数是某条记录 */

@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.personal.rando.i18n.tr
 import com.personal.rando.update.UpdateChecker
 import com.personal.rando.update.UpdateInfo
 import kotlinx.coroutines.CancellationException
@@ -52,12 +53,12 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
             if (info != null) {
                 update = info
             } else if (manual) {
-                notices.show("已是最新版本（build ${updater.currentBuild()}）")
+                notices.show(tr("已是最新版本（build ${updater.currentBuild()}）", "You're on the latest version (build ${updater.currentBuild()})"))
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (manual) notices.show("检查更新失败：${e.message}")
+            if (manual) notices.show(tr("检查更新失败：${e.message}", "Update check failed: ${e.message}"))
         }
     }
 
@@ -67,15 +68,15 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
         onDismissRequest = { if (!updating) update = null },
         shape = com.personal.rando.ui.glass.GlassShapes.Sheet,
         containerColor = androidx.compose.ui.graphics.Color(0xF7F7FAF8),
-        title = { Text("发现新版本 build ${info.build}") },
+        title = { Text(tr("发现新版本 build ${info.build}", "New version available: build ${info.build}")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (info.changes.isNotEmpty()) {
-                    Text("更新内容", style = MaterialTheme.typography.titleSmall)
+                    Text(tr("更新内容", "What's new"), style = MaterialTheme.typography.titleSmall)
                     info.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                     Spacer(Modifier.height(12.dp))
                 }
-                Text(message ?: if (updating) "正在下载安装…装好后应用会自动重新打开。" else "装好后应用会自动重新打开。")
+                Text(message ?: if (updating) tr("正在下载安装…装好后应用会自动重新打开。", "Downloading and installing… The app will reopen when done.") else tr("装好后应用会自动重新打开。", "The app will reopen once installed."))
             }
         },
         confirmButton = {
@@ -88,18 +89,18 @@ fun UpdatePrompt(navigating: Boolean, manualChecks: Int) {
                     scope.launch {
                         try {
                             val installing = updater.install(updater.download(info))
-                            if (installing) update = null else message = "请先允许安装未知应用，再点一次更新"
+                            if (installing) update = null else message = tr("请先允许安装未知应用，再点一次更新", "Allow installing unknown apps first, then tap Update again")
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            message = "下载失败：${e.message}"
+                            message = tr("下载失败：${e.message}", "Download failed: ${e.message}")
                         } finally {
                             updating = false
                         }
                     }
                 },
-            ) { Text("更新") }
+            ) { Text(tr("更新", "Update")) }
         },
-        dismissButton = { TextButton(enabled = !updating, onClick = { update = null }) { Text("以后再说") } },
+        dismissButton = { TextButton(enabled = !updating, onClick = { update = null }) { Text(tr("以后再说", "Later")) } },
     )
 }

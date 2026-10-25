@@ -2,6 +2,7 @@ package com.personal.rando.places
 
 import android.content.Context
 import androidx.core.content.edit
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,10 +14,19 @@ data class SavedPlace(val name: String, val location: LatLon) {
     /** 地图上点的位置和收藏的差不多就算同一个地方 */
     fun isAt(p: LatLon) = Geo.distance(location, p) <= SAME_PLACE_METERS
 
+    /** 显示的名字：[HOME]、[WORK] 存的是中文，英文界面换成 Home、Work；自己起的名字照原样 */
+    val label: String get() = label(name)
+
     companion object {
         const val HOME = "家"
         const val WORK = "公司"
         const val SAME_PLACE_METERS = 30.0
+
+        fun label(name: String): String = when (name) {
+            HOME -> tr("家", "Home")
+            WORK -> tr("公司", "Work")
+            else -> name
+        }
     }
 }
 

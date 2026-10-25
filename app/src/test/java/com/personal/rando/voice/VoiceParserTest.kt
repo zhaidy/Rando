@@ -57,4 +57,36 @@ class VoiceParserTest {
         assertEquals(100, VoiceParser.number("一百"))
         assertEquals(2, VoiceParser.number("两"))
     }
+
+    @Test
+    fun `英文说法`() {
+        assertEquals(VoiceCommand.GoTo("家"), p("Navigate home"))
+        assertEquals(VoiceCommand.GoTo("家"), p("take me home."))
+        assertEquals(VoiceCommand.GoTo("家"), p("Home"))
+        assertEquals(VoiceCommand.GoTo("Funan"), p("Take me to Funan"))
+        assertEquals(VoiceCommand.GoTo("Gardens by the Bay"), p("navigate to Gardens by the Bay"))
+        assertEquals(VoiceCommand.Loop(20), p("ride a 20 km loop"))
+        assertEquals(VoiceCommand.Loop(25), p("Loop twenty-five kilometres"))
+        assertEquals(VoiceCommand.Route("East Coast"), p("Ride the East Coast route"))
+        assertEquals(VoiceCommand.StopNavigation, p("Stop navigation"))
+        assertEquals(VoiceCommand.StopNavigation, p("stop"))
+        assertEquals(VoiceCommand.Remaining, p("How far is it?"))
+        assertEquals(VoiceCommand.Remaining, p("how much longer"))
+        assertEquals(VoiceCommand.Report(HazardType.CONSTRUCTION), p("There's construction here"))
+        assertEquals(VoiceCommand.Report(HazardType.CLOSED), p("road closed ahead"))
+        assertEquals(VoiceCommand.Report(HazardType.BAD_SURFACE), p("big pothole here"))
+        assertEquals(VoiceCommand.Walkie(true), p("turn on the walkie"))
+        assertEquals(VoiceCommand.Walkie(false), p("turn off walkie talkie"))
+        assertEquals(VoiceCommand.Weather, p("is it going to rain"))
+        assertEquals(VoiceCommand.MrtHome, p("take the MRT home"))
+        assertEquals(VoiceCommand.Unknown("what's for lunch"), p("what's for lunch"))
+    }
+
+    @Test
+    fun `英文数字`() {
+        assertEquals(20, VoiceParser.englishNumber("twenty"))
+        assertEquals(25, VoiceParser.englishNumber("twenty five"))
+        assertEquals(100, VoiceParser.englishNumber("a hundred"))
+        assertEquals(15, VoiceParser.englishNumber("15"))
+    }
 }

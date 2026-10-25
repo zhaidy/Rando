@@ -13,7 +13,8 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="本周"
+        android:id="@+id/widget_title"
+        android:text="@string/widget_row_title"
         android:textColor="#6B756F"
         android:textSize="12sp" />
 
@@ -31,7 +32,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="3dp"
-        android:text="公里"
+        android:id="@+id/widget_unit"
+        android:text="@string/widget_km_unit"
         android:textColor="#1F2A24"
         android:textSize="12sp" />
 
@@ -43,7 +45,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
-        android:text="还没骑"
+        android:text="@string/widget_no_rides"
         android:textColor="#6B756F"
         android:textSize="12sp" />
 
@@ -56,7 +58,7 @@
         android:maxLines="1"
         android:paddingHorizontal="12dp"
         android:paddingVertical="6dp"
-        android:text="开始记录"
+        android:text="@string/widget_start"
         android:textColor="#FFFFFF"
         android:textSize="13sp"
         android:textStyle="bold" />

@@ -1,5 +1,6 @@
 package com.personal.rando.nav
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.routing.CrossingType
 import com.personal.rando.routing.RoadKind
 import com.personal.rando.routing.RouteTimeline
@@ -21,21 +22,23 @@ class RoadAlerts(private val timeline: RouteTimeline) {
         timeline.ahead(along)?.next?.let { next ->
             val distance = next.startMeters - along
             if (next.kind == RoadKind.ROAD && distance <= ROAD_WARNING_METERS && announced.add(key(next.startMeters))) {
-                return "前方${Format.distance(round(distance))}要上马路，约${Format.distance(round(next.length))}"
+                val ahead = Format.distance(round(distance))
+                val length = Format.distance(round(next.length))
+                return tr("前方${ahead}要上马路，约$length", "Road section in $ahead, about $length long")
             }
         }
         timeline.nextStructure(along)?.let { a ->
             if (a.distance <= STRUCTURE_WARNING_METERS && announced.add(key(a.atMeters))) {
                 val s = a.structure
                 return when (s.kind) {
-                    StructureKind.OVERPASS -> "前方过天桥，${s.access}"
-                    StructureKind.UNDERPASS -> "前方走地下通道，${s.access}"
+                    StructureKind.OVERPASS -> tr("前方过天桥，${s.access}", "Overhead bridge ahead, ${s.access}")
+                    StructureKind.UNDERPASS -> tr("前方走地下通道，${s.access}", "Underpass ahead, ${s.access}")
                 }
             }
         }
         timeline.nextCrossing(along)?.let { c ->
             if (c.type == CrossingType.UNMARKED && c.distance <= CROSSING_WARNING_METERS && announced.add(key(c.atMeters))) {
-                return "前方过马路，没有红绿灯，注意来车"
+                return tr("前方过马路，没有红绿灯，注意来车", "Crossing ahead with no traffic lights, watch for cars")
             }
         }
         return null

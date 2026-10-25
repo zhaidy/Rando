@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.ride.NavigationState
 import com.personal.rando.routing.CrossingType
@@ -86,18 +87,18 @@ fun NavigationOverlay(
             Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                 if (progress != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        RollingStat(Format.distance(progress.remainingMeters.toInt()), "剩余")
-                        RollingStat(Format.duration(progress.remainingSeconds), "还要")
+                        RollingStat(Format.distance(progress.remainingMeters.toInt()), tr("剩余", "Left"))
+                        RollingStat(Format.duration(progress.remainingSeconds), tr("还要", "ETA"))
                     }
                     Spacer(Modifier.height(14.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GlassButton(onClick = onRideView, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text("骑行视图", color = Ink, fontSize = 15.sp)
+                        Text(tr("骑行视图", "Ride view"), color = Ink, fontSize = 15.sp)
                     }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton(onClick = onStop, color = RandoRed) {
-                        Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("结束", "End"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -147,8 +148,8 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
             Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
                     k == "wait" -> NavText(navigation.waitingText)
-                    k == "arrived" -> NavText("已到达目的地")
-                    k == "off" -> NavText("已偏离路线，正在重新规划…")
+                    k == "arrived" -> NavText(tr("已到达目的地", "You have arrived"))
+                    k == "off" -> NavText(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
                     progress != null -> {
                         val next = progress.next
                         TurnIcon(next, size = 64.dp)
@@ -160,10 +161,10 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
                                 fontSize = 30.sp,
                                 fontWeight = FontWeight.Bold,
                             )
-                            Text(next?.text ?: "到达终点", color = Color.White.copy(alpha = 0.92f), fontSize = 17.sp)
+                            Text(next?.text ?: tr("到达终点", "Arrive at destination"), color = Color.White.copy(alpha = 0.92f), fontSize = 17.sp)
                             val following = progress.following
                             if (following != null && progress.distanceNextToFollowing <= 100) {
-                                Text("然后${following.text}", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
+                                Text(tr("然后${following.text}", "Then ${following.text.replaceFirstChar { it.lowercase() }}"), color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
                             }
                         }
                     }
@@ -202,8 +203,8 @@ data class SegmentInfo(
  */
 fun SegmentInfo.markLabel(marked: Boolean): String? = when {
     points.size < 2 || kind == null -> null
-    marked && kind == RoadKind.ROAD -> "不是马路"
-    kind in setOf(RoadKind.PCN, RoadKind.CYCLEWAY, RoadKind.PATH) -> "其实是马路"
+    marked && kind == RoadKind.ROAD -> tr("不是马路", "Not a road")
+    kind in setOf(RoadKind.PCN, RoadKind.CYCLEWAY, RoadKind.PATH) -> tr("其实是马路", "Actually a road")
     else -> null
 }
 
@@ -234,7 +235,7 @@ fun Route.targets(target: NoteTarget): List<SegmentInfo> = when (target) {
     NoteTarget.ROAD -> piecesWithin(RoadKind.ROAD, skipEnds = false)
     NoteTarget.PUSH -> piecesWithin(RoadKind.PUSH, skipEnds = true)
     NoteTarget.CROSSINGS -> crossings().map {
-        SegmentInfo("过马路", RoadKind.CROSSING.color, 0, it.location, listOf(it.location), it.type.label)
+        SegmentInfo(tr("过马路", "Road crossing"), RoadKind.CROSSING.color, 0, it.location, listOf(it.location), it.type.label)
     }
     NoteTarget.STRUCTURES -> structures().map {
         // 看实景看入口：桥上、通道里面多半没有街景
@@ -245,8 +246,8 @@ fun Route.targets(target: NoteTarget): List<SegmentInfo> = when (target) {
         steepestClimb()?.let { c ->
             val path = points.subList(c.fromIndex, c.toIndex + 1)
             SegmentInfo(
-                "上坡", CLIMB_COLOR, c.lengthMeters.toInt(), path[path.size / 2], path,
-                "平均坡度 ${Format.percent(c.grade)}，爬 ${c.gainMeters.roundToInt()} 米",
+                tr("上坡", "Climb"), CLIMB_COLOR, c.lengthMeters.toInt(), path[path.size / 2], path,
+                tr("平均坡度 ${Format.percent(c.grade)}，爬 ${c.gainMeters.roundToInt()} 米", "Avg grade ${Format.percent(c.grade)}, ${c.gainMeters.roundToInt()} m up"),
             )
         }
     )
@@ -275,8 +276,8 @@ private fun Route.piecesWithin(kind: RoadKind, skipEnds: Boolean): List<SegmentI
 /** 有顶棚的路一段段看 */
 fun List<CoveredStretch>.coveredTargets(): List<SegmentInfo> = map {
     SegmentInfo(
-        "有顶棚的路", COVERED_COLOR, it.lengthMeters.toInt(), it.points[it.points.size / 2], it.points,
-        "第 ${Format.km(it.startMeters)} 公里，下雨可以躲",
+        tr("有顶棚的路", "Covered path"), COVERED_COLOR, it.lengthMeters.toInt(), it.points[it.points.size / 2], it.points,
+        tr("第 ${Format.km(it.startMeters)} 公里，下雨可以躲", "At km ${Format.km(it.startMeters)}, shelter from rain"),
     )
 }
 
@@ -292,8 +293,8 @@ fun List<AmenityOnRoute>.targets(): List<SegmentInfo> = map {
         0,
         a.location,
         listOf(a.location),
-        if (a.type == AmenityType.PARKING) "离终点 ${it.offRouteMeters.toInt()} 米"
-        else "第 ${Format.km(it.alongMeters)} 公里，离路线 ${it.offRouteMeters.toInt()} 米",
+        if (a.type == AmenityType.PARKING) tr("离终点 ${it.offRouteMeters.toInt()} 米", "${it.offRouteMeters.toInt()} m from destination")
+        else tr("第 ${Format.km(it.alongMeters)} 公里，离路线 ${it.offRouteMeters.toInt()} 米", "At km ${Format.km(it.alongMeters)}, ${it.offRouteMeters.toInt()} m off route"),
     )
 }
 
@@ -303,7 +304,7 @@ private fun Route.detailFor(kind: RoadKind, at: LatLon): String? {
     structures().firstOrNull { s -> s.path.any { Geo.distance(it, at) < 40 } }?.let { return "${it.kind.label} · ${it.access}" }
     if (kind == RoadKind.CROSSING) {
         val crossing = crossings().minByOrNull { Geo.distance(it.location, at) }?.takeIf { Geo.distance(it.location, at) < 60 }
-        return crossing?.type?.let { if (it == CrossingType.UNKNOWN) "路口类型没标明" else it.label }
+        return crossing?.type?.let { if (it == CrossingType.UNKNOWN) tr("路口类型没标明", "Crossing type not tagged") else it.label }
     }
     return null
 }
@@ -334,21 +335,21 @@ fun SegmentCard(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        info.title + if (count > 1) " · 第 ${index + 1}/$count 处" else "",
+                        info.title + if (count > 1) tr(" · 第 ${index + 1}/$count 处", " · ${index + 1} of $count") else "",
                         color = Ink,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    val parts = listOfNotNull(info.detail, info.lengthMeters.takeIf { it > 0 }?.let { "约 ${Format.distance(it)}" })
+                    val parts = listOfNotNull(info.detail, info.lengthMeters.takeIf { it > 0 }?.let { tr("约 ${Format.distance(it)}", "about ${Format.distance(it)}") })
                     if (parts.isNotEmpty()) Text(parts.joinToString(" · "), color = InkSoft, fontSize = 14.sp)
                 }
-                IconTap(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = InkSoft) }
+                IconTap(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = tr("关闭", "Close"), tint = InkSoft) }
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (count > 1) {
                     GlassButton(onClick = onNext, contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp)) {
-                        Text("下一处", color = Ink, fontSize = 15.sp)
+                        Text(tr("下一处", "Next"), color = Ink, fontSize = 15.sp)
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -358,7 +359,7 @@ fun SegmentCard(
                     }
                 }
                 PrimaryButton(onClick = onStreetView, color = RandoGreen) {
-                    Text("看实景", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("看实景", "Street view"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
             }

@@ -19,6 +19,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.rememberUpdatedState
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.ui.glass.GlassShapes
 import com.personal.rando.ui.glass.LocalHazeState
 import com.personal.rando.ui.glass.Motion
@@ -202,7 +204,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             AutoStart.apply(photoAppContext, true)
         } else {
             settingsStore.update(settingsStore.settings.value.copy(autoStart = false))
-            notices.show("没有「身体活动」权限，认不出在骑车", long = true)
+            notices.show(tr("没有「身体活动」权限，认不出在骑车", "Without Physical activity permission, rides can't be detected"), long = true)
         }
     }
     val backgroundPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -216,14 +218,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         val home = vm.savedPlaces.places.value.firstOrNull { it.name == SavedPlace.HOME }
         val here = vm.session.location.value
         when {
-            home == null -> vm.session.say("先把家收藏起来，才知道坐到哪个站").also {
-                notices.show("先把「家」收藏起来", long = true)
+            home == null -> vm.session.say(tr("先把家收藏起来，才知道坐到哪个站", "Save your home first so I know which station to ride to")).also {
+                notices.show(tr("先把「家」收藏起来", "Save your home first"), long = true)
             }
-            here == null -> notices.show("还没定位到")
+            here == null -> notices.show(tr("还没定位到", "No location yet"))
             else -> {
                 val plan = MrtHome.plan(mrtContext.rando.mrt, here, home.location)
                 if (plan == null) {
-                    vm.session.say("离家不远，直接骑回去吧")
+                    vm.session.say(tr("离家不远，直接骑回去吧", "You're close to home, just ride back"))
                     vm.goTo(SavedPlace.HOME) { vm.session.say(it) }
                 } else {
                     mrtPlan = plan
@@ -236,12 +238,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) {
             parking.photoTaken()
-            notices.show("车位照片存好了")
+            notices.show(tr("车位照片存好了", "Parking photo saved"))
         }
     }
     val photoParking = {
         val uri = FileProvider.getUriForFile(photoContext, "${photoContext.packageName}.files", parking.photoFile)
-        runCatching { takePhoto.launch(uri) }.onFailure { notices.show("打不开相机") }
+        runCatching { takePhoto.launch(uri) }.onFailure { notices.show(tr("打不开相机", "Can't open the camera")) }
         Unit
     }
     val voice = LocalContext.current.rando.voice
@@ -287,7 +289,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             m.addOnMapLongClickListener { latLng ->
                 val home = vm.state.value.pickingHome
                 vm.onMapLongPress(LatLon(latLng.latitude, latLng.longitude))
-                if (home) notices.show("家的位置设好了")
+                if (home) notices.show(tr("家的位置设好了", "Home is set"))
                 true
             }
             m.setStyle(MapLayers.STYLE_URL) { s ->
@@ -323,7 +325,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             walkie.turnOn()
             RideService.start(context)
         } else {
-            notices.show("没有麦克风权限，开不了对讲")
+            notices.show(tr("没有麦克风权限，开不了对讲", "No microphone permission, walkie-talkie unavailable"))
         }
     }
     val toggleTalk = {
@@ -352,37 +354,37 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         voice.handler = { cmd ->
             when (cmd) {
                 is VoiceCommand.GoTo -> {
-                    session.say("好的，去${cmd.place}")
+                    session.say(if (cmd.place == SavedPlace.HOME) tr("好的，去${cmd.place}", "OK, heading home") else tr("好的，去${cmd.place}", "OK, heading to ${cmd.place}"))
                     vm.goTo(cmd.place) { session.say(it) }
                 }
                 is VoiceCommand.Loop -> {
-                    session.say("好的，骑一圈 ${cmd.km} 公里")
+                    session.say(tr("好的，骑一圈 ${cmd.km} 公里", "OK, a ${cmd.km} km loop"))
                     vm.startLoop(cmd.km)
                 }
-                is VoiceCommand.Route -> if (vm.startSavedRoute(cmd.name)) session.say("好的，骑${cmd.name}") else session.say("没有叫${cmd.name}的收藏路线")
+                is VoiceCommand.Route -> if (vm.startSavedRoute(cmd.name)) session.say(tr("好的，骑${cmd.name}", "OK, riding ${cmd.name}")) else session.say(tr("没有叫${cmd.name}的收藏路线", "No saved route called ${cmd.name}"))
                 VoiceCommand.StopNavigation -> if (session.navigation.value != null) {
                     session.stopNavigation()
-                    session.say("导航已结束，还在记录")
+                    session.say(tr("导航已结束，还在记录", "Navigation ended, still recording"))
                 } else {
-                    session.say("现在没在导航")
+                    session.say(tr("现在没在导航", "Not navigating right now"))
                 }
                 VoiceCommand.Remaining -> session.say(session.remainingText())
-                is VoiceCommand.Report -> session.say(if (session.reportHazard(cmd.type)) "已标记${cmd.type.label}" else "还没定位到，标不了")
+                is VoiceCommand.Report -> session.say(if (session.reportHazard(cmd.type)) tr("已标记${cmd.type.label}", "Marked: ${cmd.type.label}") else tr("还没定位到，标不了", "No location yet, can't mark"))
                 is VoiceCommand.Walkie -> when {
-                    group.state.value == null -> session.say("先加入一起骑才能对讲")
+                    group.state.value == null -> session.say(tr("先加入一起骑才能对讲", "Join a group ride first to use the walkie-talkie"))
                     cmd.on -> {
                         walkie.turnOn()
                         RideService.start(context)
-                        session.say("对讲已打开")
+                        session.say(tr("对讲已打开", "Walkie-talkie on"))
                     }
                     else -> {
                         walkie.turnOff()
-                        session.say("对讲已关闭")
+                        session.say(tr("对讲已关闭", "Walkie-talkie off"))
                     }
                 }
                 VoiceCommand.Weather -> session.say(session.weatherText())
                 VoiceCommand.MrtHome -> mrtHome()
-                is VoiceCommand.Unknown -> session.say(if (cmd.text.isBlank()) "没听清，再说一次" else "没听懂：${cmd.text}")
+                is VoiceCommand.Unknown -> session.say(if (cmd.text.isBlank()) tr("没听清，再说一次", "Didn't catch that, please say it again") else tr("没听懂：${cmd.text}", "Didn't understand: ${cmd.text}"))
             }
         }
         onDispose {
@@ -391,7 +393,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         }
     }
     val voicePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) voice.listen() else notices.show("没有麦克风权限，用不了语音指令")
+        if (granted) voice.listen() else notices.show(tr("没有麦克风权限，用不了语音指令", "No microphone permission, voice commands unavailable"))
     }
     val listen = {
         if (voice.hasMicPermission()) voice.listen() else voicePermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -423,19 +425,19 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     }
     fun returnTrip(ride: Ride) {
         finished = null
-        notices.show("正在算原路返回的路线…")
+        notices.show(tr("正在算原路返回的路线…", "Planning the way back…"))
         askNotifications()
-        vm.returnTrip(ride.points.map { it.location }) { notices.show("原路返回失败：$it", action = "重试") { returnTrip(ride) } }
+        vm.returnTrip(ride.points.map { it.location }) { notices.show(tr("原路返回失败：$it", "Way back failed: $it"), action = tr("重试", "Retry")) { returnTrip(ride) } }
     }
     // 导航去某个地方（MRT 站、摔车的队友）；失败了提示条上可以重试
     fun navigateTo(to: LatLon, name: String) {
         askNotifications()
-        vm.navigateTo(to, name) { notices.show("导航失败：$it", action = "重试") { navigateTo(to, name) } }
+        vm.navigateTo(to, name) { notices.show(tr("导航失败：$it", "Navigation failed: $it"), action = tr("重试", "Retry")) { navigateTo(to, name) } }
     }
     fun followShared(offer: SharedRoute) {
         askNotifications()
-        notices.show("正在算${offer.name}的路线…")
-        vm.followShared(offer) { notices.show("跟着骑失败：$it", action = "重试") { followShared(offer) } }
+        notices.show(tr("正在算${offer.name}的路线…", "Planning ${offer.name}'s route…"))
+        vm.followShared(offer) { notices.show(tr("跟着骑失败：$it", "Follow failed: $it"), action = tr("重试", "Retry")) { followShared(offer) } }
     }
 
     // 以前骑过的路垫在底下；存了、删了记录就重画，设置里可以关
@@ -606,11 +608,11 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onTalkMode = walkie::setMode,
                         onVoice = listen,
                         onMrt = mrtHome,
-                        listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },
+                        listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { tr("请说…", "Speak now…") } },
                         weightKg = settings.weightKg,
                         onReport = { type ->
                             val ok = vm.session.reportHazard(type)
-                            notices.show(if (ok) "已标记：${type.label}" else "还没定位到，标不了")
+                            notices.show(if (ok) tr("已标记：${type.label}", "Marked: ${type.label}") else tr("还没定位到，标不了", "No location yet, can't mark"))
                         },
                     ) { modifier, cover -> RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, modifier, hazards, cover) }
                 }
@@ -629,10 +631,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         SearchBar(
                             query = state.query,
                             hint = when {
-                                state.pickingStart -> "搜索起点"
-                                state.pickingVia -> "搜索途经点"
-                                state.pickingHome -> "搜索家的地址"
-                                else -> "去哪儿骑？"
+                                state.pickingStart -> tr("搜索起点", "Search start")
+                                state.pickingVia -> tr("搜索途经点", "Search stop")
+                                state.pickingHome -> tr("搜索家的地址", "Search home address")
+                                else -> tr("去哪儿骑？", "Where to ride?")
                             },
                             results = state.results,
                             build = appBuild(),
@@ -641,7 +643,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                 focusManager.clearFocus()
                                 val home = state.pickingHome
                                 vm.choosePlace(it)
-                                if (home) notices.show("家设在「${it.name}」")
+                                if (home) notices.show(tr("家设在「${it.name}」", "Home set to ${it.name}"))
                             },
                             onCheckUpdate = onCheckUpdate,
                             onSettings = { settingsDialog = true },
@@ -651,18 +653,18 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             },
                         )
                         PrefsRow(state.prefs, vm::setPrefs)
-                        (voiceState as? VoiceState.Listening)?.let { HintPill("正在听：${it.partial.ifEmpty { "请说…" }}", onCancel = voice::cancel) }
+                        (voiceState as? VoiceState.Listening)?.let { HintPill(tr("正在听：", "Listening: ") + it.partial.ifEmpty { tr("请说…", "Speak now…") }, onCancel = voice::cancel) }
                         AnimatedVisibility(
                             state.pickingStart || state.pickingVia || state.pickingHome,
                             enter = fadeIn() + slideInVertically(Motion.bouncy()) { -it },
                             exit = fadeOut() + slideOutVertically { -it },
                         ) {
                             val what = when {
-                                state.pickingVia -> "途经点"
-                                state.pickingHome -> "家的位置"
-                                else -> "起点"
+                                state.pickingVia -> tr("途经点", "a stop")
+                                state.pickingHome -> tr("家的位置", "your home")
+                                else -> tr("起点", "a start")
                             }
-                            HintPill("长按地图选$what，或者在上面搜一个地方", onCancel = {
+                            HintPill(tr("长按地图选$what，或者在上面搜一个地方", "Long-press the map to pick $what, or search above"), onCancel = {
                                 focusManager.clearFocus()
                                 vm.cancelPicking()
                             })
@@ -682,7 +684,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             }) {
                                 Icon(
                                     NorthIcon,
-                                    contentDescription = "转回正北",
+                                    contentDescription = tr("转回正北", "Face north"),
                                     tint = RandoRed,
                                     modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = -bearing },
                                 )
@@ -773,7 +775,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                                         if (marked) vm.roadCorrections.removeCovering(item.points) else vm.roadCorrections.add(item.points)
                                         focus = null
                                         vm.retry()
-                                        notices.show(if (marked) "已撤销，重新算路" else "记下了，这里按马路算；开「不上马路」会绕开", long = true)
+                                        notices.show(if (marked) tr("已撤销，重新算路", "Undone, rerouting") else tr("记下了，这里按马路算；开「不上马路」会绕开", "Noted, counted as road now; \"No roads\" will avoid it"), long = true)
                                     },
                                 )
                             } else {
@@ -854,7 +856,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             plan,
             onGo = {
                 mrtPlan = null
-                navigateTo(plan.boardExit.location, "${plan.board.zh}站")
+                navigateTo(plan.boardExit.location, tr("${plan.board.label}站", "${plan.board.label} station"))
             },
             onDismiss = { mrtPlan = null },
         )
@@ -870,7 +872,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             here = here,
             onHomeHere = {
                 here?.let { vm.savedPlaces.save(SavedPlace(SavedPlace.HOME, it)) }
-                    ?: notices.show("还没定位到")
+                    ?: notices.show(tr("还没定位到", "No location yet"))
             },
             onPickHome = {
                 settingsDialog = false
@@ -879,6 +881,8 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onRemoveHome = { home?.let(vm.savedPlaces::remove) },
             onSave = {
                 settingsStore.update(it)
+                Lang.apply(it.language, context.resources.configuration.locales[0])
+                context.rando.session.languageChanged()
                 settingsDialog = false
                 if (it.autoStart && !AutoStart.hasRecognitionPermission(context) && Build.VERSION.SDK_INT >= 29) {
                     recognitionPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -891,7 +895,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onPreviewVoice = context.rando.session::previewVoice,
             onSystemVoices = {
                 runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    .onFailure { notices.show("打不开系统的文字转语音设置") }
+                    .onFailure { notices.show(tr("打不开系统的文字转语音设置", "Can't open system text-to-speech settings")) }
             },
             backgroundLocation = AutoStart.hasBackgroundLocation(context),
             onAskBackgroundLocation = {
@@ -909,14 +913,14 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         )
     }
     if (savingRoute) {
-        val suggested = state.destination?.name?.takeUnless { it.startsWith("地图上") }
-            ?: state.loop?.let { "骑一圈 ${it.targetMeters / 1000} 公里" }.orEmpty()
+        val suggested = state.destination?.name?.takeUnless(::isMapPlaceName)
+            ?: state.loop?.let { tr("骑一圈 ${it.targetMeters / 1000} 公里", "${it.targetMeters / 1000} km loop") }.orEmpty()
         SaveRouteDialog(
             suggested,
             onSave = { name ->
                 vm.saveRoute(name)
                 savingRoute = false
-                notices.show("已收藏「$name」")
+                notices.show(tr("已收藏「$name」", "Saved \"$name\""))
             },
             onDismiss = { savingRoute = false },
         )
@@ -936,15 +940,21 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             onDismissRequest = { confirmLeave = false },
             shape = GlassShapes.Sheet,
             containerColor = Color(0xF7F7FAF8),
-            title = { Text("退出这个队伍？") },
-            text = { Text("对讲会关掉，队友也看不到你的位置了。" + if (recording != null) "记录不受影响，还会接着记。" else "", color = InkSoft) },
+            title = { Text(tr("退出这个队伍？", "Leave the team?")) },
+            text = {
+                Text(
+                    tr("对讲会关掉，队友也看不到你的位置了。", "The walkie-talkie turns off and your team can no longer see you. ") +
+                        if (recording != null) tr("记录不受影响，还会接着记。", "Your ride keeps recording.") else "",
+                    color = InkSoft,
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirmLeave = false
                     leaveGroup()
-                }) { Text("退出", color = RandoRed, fontWeight = FontWeight.SemiBold) }
+                }) { Text(tr("退出", "Leave"), color = RandoRed, fontWeight = FontWeight.SemiBold) }
             },
-            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("取消", color = Ink) } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(tr("取消", "Cancel"), color = Ink) } },
         )
     }
     if (confirmFinish) {
@@ -969,7 +979,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
             me = fix?.location,
             onGo = {
                 group.dismissSos(alert.id)
-                navigateTo(alert.location, "${alert.name}的位置")
+                navigateTo(alert.location, tr("${alert.name}的位置", "${alert.name}'s location"))
             },
             onDismiss = { group.dismissSos(alert.id) },
         )
@@ -1058,23 +1068,23 @@ private fun FinishDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text(if (recording) "结束这次骑行？" else "结束导航？") },
+        title = { Text(if (recording) tr("结束这次骑行？", "End this ride?") else tr("结束导航？", "End navigation?")) },
         text = {
             Text(
                 when {
-                    recording && navigating -> "导航和记录一起停，记录会保存下来。只想停导航的话可以接着记录。"
-                    recording -> "记录会保存下来。"
-                    else -> "不再提示怎么走。"
+                    recording && navigating -> tr("导航和记录一起停，记录会保存下来。只想停导航的话可以接着记录。", "Stops navigation and recording; the ride will be saved. To stop only navigation, keep recording.")
+                    recording -> tr("记录会保存下来。", "The ride will be saved.")
+                    else -> tr("不再提示怎么走。", "Turn-by-turn directions will stop.")
                 },
                 color = InkSoft,
             )
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoGreen)) { Text("继续骑") }
+                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RandoGreen)) { Text(tr("继续骑", "Keep riding")) }
                 Row {
-                    if (recording && navigating) TextButton(onClick = onStopNavigation) { Text("只停导航", color = Ink) }
-                    TextButton(onClick = onFinish) { Text("结束", color = RandoRed, fontWeight = FontWeight.SemiBold) }
+                    if (recording && navigating) TextButton(onClick = onStopNavigation) { Text(tr("只停导航", "Stop navigation only"), color = Ink) }
+                    TextButton(onClick = onFinish) { Text(tr("结束", "End"), color = RandoRed, fontWeight = FontWeight.SemiBold) }
                 }
             }
         },
@@ -1085,27 +1095,27 @@ private fun FinishDialog(
 @Composable
 private fun SavePlaceDialog(place: Place, onSave: (SavedPlace) -> Unit, onDismiss: () -> Unit) {
     // 长按地图选的点没有名字，不拿「地图上的点」当默认名
-    var name by remember { mutableStateOf(if (place.detail.isEmpty() && place.name.startsWith("地图上")) "" else place.name) }
+    var name by remember { mutableStateOf(if (place.detail.isEmpty() && isMapPlaceName(place.name)) "" else place.name) }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("收藏这个地方") },
+        title = { Text(tr("收藏这个地方", "Save this place")) },
         text = {
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(SavedPlace.HOME, SavedPlace.WORK).forEach { preset ->
-                        FilterChip(selected = name == preset, onClick = { name = preset }, label = { Text(preset) })
+                        FilterChip(selected = name == preset, onClick = { name = preset }, label = { Text(SavedPlace.label(preset)) })
                     }
                 }
                 Spacer(Modifier.size(8.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("名字") }, singleLine = true)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(tr("名字", "Name")) }, singleLine = true)
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(SavedPlace(name.trim(), place.location)) }) { Text("收藏") }
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(SavedPlace(name.trim(), place.location)) }) { Text(tr("收藏", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } },
     )
 }
 
@@ -1153,16 +1163,16 @@ private fun flyToMyLocation(map: MapLibreMap) {
 
 /** 用微信、Telegram 之类把队伍码发给队友 */
 private fun shareTeamCode(context: Context, code: String) {
-    val text = "一起骑车！打开 Rando，点右边的「一起骑」，输入队伍码 $code"
+    val text = tr("一起骑车！打开 Rando，点右边的「一起骑」，输入队伍码 $code", "Let's ride together! Open Rando, tap Group ride on the right and enter team code $code")
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-    context.startActivity(Intent.createChooser(send, "分享队伍码"))
+    context.startActivity(Intent.createChooser(send, tr("分享队伍码", "Share team code")))
 }
 
 /** 结束这次骑行：导航和记录一起停，轨迹够长就存下来 */
 private fun finishRide(notices: Notices, session: RideSession): Ride? {
     session.stopNavigation()
     val ride = session.stopRecording()
-    if (ride == null) notices.show("骑得太短，没有保存记录")
+    if (ride == null) notices.show(tr("骑得太短，没有保存记录", "Ride too short, not saved"))
     return ride
 }
 

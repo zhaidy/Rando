@@ -2,6 +2,8 @@ package com.personal.rando.places
 
 import android.content.Context
 import androidx.core.content.edit
+import com.personal.rando.i18n.Lang
+import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.RouteTimeline
@@ -13,10 +15,12 @@ import org.json.JSONObject
 import java.util.UUID
 
 /** 路况：施工、封路以后算路绕开；路面不好照走，骑近了提醒 */
-enum class HazardType(val label: String, val color: String, val avoid: Boolean) {
-    CONSTRUCTION("施工", "#F57C00", true),
-    CLOSED("封路", "#D32F2F", true),
-    BAD_SURFACE("路面不好", "#8D6E63", false),
+enum class HazardType(private val zh: String, private val en: String, val color: String, val avoid: Boolean) {
+    CONSTRUCTION("施工", "Construction", "#F57C00", true),
+    CLOSED("封路", "Road closed", "#D32F2F", true),
+    BAD_SURFACE("路面不好", "Bad surface", "#8D6E63", false);
+
+    val label: String get() = tr(zh, en)
 }
 
 data class Hazard(
@@ -119,8 +123,13 @@ class HazardAlerts {
             }
             if (ahead == null || ahead > WARN_METERS) continue
             warned += h.id
+            val distance = Format.distance(ahead.toInt())
+            if (Lang.english) {
+                val verb = if (h.type.avoid) "detour if you can" else "slow down"
+                return "${h.type.label} in $distance, $verb"
+            }
             val verb = if (h.type.avoid) "注意绕行" else "注意减速"
-            return "前方 ${Format.distance(ahead.toInt())} ${h.type.label}，$verb"
+            return "前方 $distance ${h.type.label}，$verb"
         }
         return null
     }

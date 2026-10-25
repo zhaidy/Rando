@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.personal.rando.i18n.tr
 import com.personal.rando.group.GroupState
 import com.personal.rando.group.NearbyTeam
 import com.personal.rando.places.Hazard
@@ -88,39 +89,39 @@ fun GroupDialog(
         onDismissRequest = onDismiss,
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("一起骑") },
+        title = { Text(tr("一起骑", "Group ride")) },
         text = {
             if (!configured) {
-                Text("一起骑的服务器还没部署好，部署好以后更新一下 App 就能用。")
+                Text(tr("一起骑的服务器还没部署好，部署好以后更新一下 App 就能用。", "The group ride server isn't set up yet. Update the app once it is."))
                 return@AlertDialog
             }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("队友之间互相看到位置，掉队了会提醒。同一个队伍码的人在一个队里。", color = InkSoft, fontSize = 14.sp)
-                OutlinedTextField(value = myName, onValueChange = { myName = it.take(20) }, label = { Text("你的名字") }, singleLine = true)
+                Text(tr("队友之间互相看到位置，掉队了会提醒。同一个队伍码的人在一个队里。", "Riders see each other on the map and get alerted when someone falls behind. Everyone with the same team code is on one team."), color = InkSoft, fontSize = 14.sp)
+                OutlinedTextField(value = myName, onValueChange = { myName = it.take(20) }, label = { Text(tr("你的名字", "Your name")) }, singleLine = true)
                 when {
-                    nearby == null -> Text("正在找附近的队伍…", color = InkSoft, fontSize = 14.sp)
+                    nearby == null -> Text(tr("正在找附近的队伍…", "Looking for teams nearby…"), color = InkSoft, fontSize = 14.sp)
                     nearby.isNotEmpty() -> {
-                        Text("附近的队伍", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("附近的队伍", "Teams nearby"), color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         nearby.forEach { team ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(team.namesText.ifEmpty { "队伍 ${team.code}" }, color = Ink, fontSize = 15.sp)
+                                    Text(team.namesText.ifEmpty { tr("队伍 ${team.code}", "Team ${team.code}") }, color = Ink, fontSize = 15.sp)
                                     Text("${team.code} · ${Format.distance(team.meters)}", color = InkSoft, fontSize = 13.sp)
                                 }
-                                TextButton(enabled = myName.isNotBlank(), onClick = { onJoin(team.code, myName.trim()) }) { Text("加入") }
+                                TextButton(enabled = myName.isNotBlank(), onClick = { onJoin(team.code, myName.trim()) }) { Text(tr("加入", "Join")) }
                             }
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !joining, onClick = { joining = false }, label = { Text("建一个队") })
-                    FilterChip(selected = joining, onClick = { joining = true }, label = { Text("输入队伍码") })
+                    FilterChip(selected = !joining, onClick = { joining = false }, label = { Text(tr("建一个队", "New team")) })
+                    FilterChip(selected = joining, onClick = { joining = true }, label = { Text(tr("输入队伍码", "Enter code")) })
                 }
                 if (joining) {
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it.take(12) },
-                        label = { Text("队伍码") },
+                        label = { Text(tr("队伍码", "Team code")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                     )
@@ -134,10 +135,10 @@ fun GroupDialog(
                     onClick = {
                         if (joining) normalized?.let { onJoin(it, myName.trim()) } else onCreate(myName.trim())
                     },
-                ) { Text(if (joining) "加入" else "建队") }
+                ) { Text(if (joining) tr("加入", "Join") else tr("建队", "Create")) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(if (configured) "取消" else "知道了") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(if (configured) tr("取消", "Cancel") else tr("知道了", "OK")) } },
     )
 }
 
@@ -178,7 +179,7 @@ fun GroupPill(
                 tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                Text(if (walkie.on) "对讲开着" else "开对讲", color = if (walkie.on) Color.White else Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (walkie.on) tr("对讲开着", "Talk on") else tr("开对讲", "Talk"), color = if (walkie.on) Color.White else Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         if (walkie.on) {
@@ -193,12 +194,12 @@ fun GroupPill(
                     onClick = { onLevel(VoxLevel.entries[(walkie.level.ordinal + 1) % VoxLevel.entries.size]) },
                     tone = GlassTone.Light,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text("灵敏度：${walkie.level.label}", color = Ink, fontSize = 13.sp) }
+                ) { Text(tr("灵敏度：${walkie.level.label}", "Sensitivity: ${walkie.level.label}"), color = Ink, fontSize = 13.sp) }
                 GlassButton(
                     onClick = onTest,
                     tone = if (walkie.testing) GlassTone.Tinted(RandoGreen) else GlassTone.Light,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text("试一下", color = if (walkie.testing) Color.White else Ink, fontSize = 13.sp) }
+                ) { Text(tr("试一下", "Test"), color = if (walkie.testing) Color.White else Ink, fontSize = 13.sp) }
             }
         }
     }
@@ -206,27 +207,30 @@ fun GroupPill(
 
 /** 对讲现在怎样：一句话 */
 fun walkieText(w: WalkieState): String = when {
-    w.problem != null -> "对讲出问题了：${w.problem}"
-    w.talking.isNotEmpty() && w.sending -> "${w.talking.joinToString("、")} 和你都在说"
-    w.talking.isNotEmpty() -> "${w.talking.joinToString("、")} 在说话…"
-    !w.on -> "对讲没开：点「开对讲」队友才听得到你"
-    w.testing && w.sending -> "在录 3 秒：说一句话，录完放给你自己听"
-    w.testing -> "试一下：说一句话，会放给你自己听"
-    w.sending && w.mode == WalkieMode.CLIP -> "在录，说完停一下就发出去"
-    w.sending -> "队友正在听你说"
-    else -> "在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}" + directText(w)
+    w.problem != null -> tr("对讲出问题了：${w.problem}", "Talk problem: ${w.problem}")
+    w.talking.isNotEmpty() && w.sending -> tr("${w.talking.joinToString("、")} 和你都在说", "You and ${w.talking.joinToString(", ")} are talking")
+    w.talking.isNotEmpty() -> tr("${w.talking.joinToString("、")} 在说话…", "${w.talking.joinToString(", ")} ${if (w.talking.size == 1) "is" else "are"} talking…")
+    !w.on -> tr("对讲没开：点「开对讲」队友才听得到你", "Talk is off: tap Talk so your team can hear you")
+    w.testing && w.sending -> tr("在录 3 秒：说一句话，录完放给你自己听", "Recording 3 s: say something and it plays back to you")
+    w.testing -> tr("试一下：说一句话，会放给你自己听", "Test: say something and it plays back to you")
+    w.sending && w.mode == WalkieMode.CLIP -> tr("在录，说完停一下就发出去", "Recording; pause when done and it sends")
+    w.sending -> tr("队友正在听你说", "Your team can hear you")
+    else -> tr("在听 ${micBars(w.micBars)} · ${w.device ?: "手机"}", "Listening ${micBars(w.micBars)} · ${w.device ?: "Phone"}") + directText(w)
 }
 
+/** 英文的「2 riders」 */
+private fun riders(n: Int): String = if (n == 1) "1 rider" else "$n riders"
+
 /** 「 · 直连 2 人」：离得近的队友直接用蓝牙、Wi-Fi 连上了 */
-private fun directText(w: WalkieState): String = if (w.on && w.direct > 0) " · 直连 ${w.direct} 人" else ""
+private fun directText(w: WalkieState): String = if (w.on && w.direct > 0) tr(" · 直连 ${w.direct} 人", " · ${riders(w.direct)} direct") else ""
 
 /** 骑行视图上的对讲：有事（有人在说、你在说、出问题）说事，平常只说开没开、直连几个人 */
 fun rideWalkieText(w: WalkieState): String =
     walkieText(w).takeIf { w.problem != null || w.talking.isNotEmpty() || w.sending || w.testing }
         ?: when {
-            !w.on -> "对讲没开"
-            w.direct > 0 -> "直连 ${w.direct} 人"
-            else -> "对讲开着"
+            !w.on -> tr("对讲没开", "Talk off")
+            w.direct > 0 -> tr("直连 ${w.direct} 人", "${riders(w.direct)} direct")
+            else -> tr("对讲开着", "Talk on")
         }
 
 /**
@@ -278,7 +282,7 @@ fun RideWalkieRow(
             tone = if (walkie.on) GlassTone.Tinted(RandoGreen) else GlassTone.Dark,
             contentPadding = pad,
         ) {
-            Text(if (walkie.on) "关对讲" else "开对讲", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (walkie.on) tr("关对讲", "Talk off") else tr("开对讲", "Talk"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -292,19 +296,19 @@ private fun GroupHeader(state: GroupState, onShare: () -> Unit, onLeave: () -> U
         Box(Modifier.size(10.dp).clip(CircleShape).background(if (state.connected) Color(0xFF7CFFB2) else Color(0xFFBDBDBD)))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("一起骑 ${state.code}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("一起骑 ${state.code}", "Group ride ${state.code}"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                if (state.connected) "队里 ${state.teammates.size + 1} 人" else "正在连接…",
+                if (state.connected) tr("队里 ${state.teammates.size + 1} 人", "${riders(state.teammates.size + 1)} on the team") else tr("正在连接…", "Connecting…"),
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 12.sp,
             )
         }
         GlassButton(onClick = onShare, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text("分享", color = Ink, fontSize = 14.sp)
+            Text(tr("分享", "Share"), color = Ink, fontSize = 14.sp)
         }
         Spacer(Modifier.width(6.dp))
         GlassButton(onClick = onLeave, tone = GlassTone.Light, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-            Text("退出", color = RandoRed, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("退出", "Leave"), color = RandoRed, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -320,13 +324,13 @@ fun teammatesText(mates: List<Teammate>, me: LatLon?, now: Long = System.current
         .sortedWith(compareBy({ it.third || it.second == null }, { it.second ?: Double.MAX_VALUE }))
         .map { (m, d, stale) ->
             when {
-                m.location == null -> "${m.name} 还没定位"
-                stale -> "${m.name} 信号断了"
+                m.location == null -> tr("${m.name} 还没定位", "${m.name} no location yet")
+                stale -> tr("${m.name} 信号断了", "${m.name} lost signal")
                 d != null -> "${m.name} ${Format.distance(d.toInt())}"
                 else -> m.name
             }
         }
-    return "队友：" + parts.joinToString(" · ")
+    return tr("队友：", "Team: ") + parts.joinToString(" · ")
 }
 
 /** 骑行视图上的一行队友 */
@@ -346,15 +350,15 @@ fun SharedRouteDialog(route: SharedRoute, navigating: Boolean, onFollow: () -> U
         onDismissRequest = {},
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("${route.name}分享了路线") },
+        title = { Text(tr("${route.name}分享了路线", "${route.name} shared a route")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(sharedRouteText(route), color = Ink, fontSize = 16.sp)
-                if (navigating) Text("跟着骑会换掉你现在的导航", color = InkSoft, fontSize = 14.sp)
+                if (navigating) Text(tr("跟着骑会换掉你现在的导航", "Following replaces your current navigation"), color = InkSoft, fontSize = 14.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onFollow) { Text("跟着骑", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDecline) { Text("不用", color = InkSoft) } },
+        confirmButton = { TextButton(onClick = onFollow) { Text(tr("跟着骑", "Follow"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDecline) { Text(tr("不用", "No thanks"), color = InkSoft) } },
     )
 }
 
@@ -362,10 +366,13 @@ fun SharedRouteDialog(route: SharedRoute, navigating: Boolean, onFollow: () -> U
 fun sharedRouteText(route: SharedRoute): String {
     val options = listOfNotNull(
         route.profile.label,
-        "不上马路".takeIf { route.avoidRoads },
-        "不走天桥".takeIf { route.avoidBridges },
-    ).joinToString("、")
-    val where = if (route.title.startsWith("骑一圈") || route.title == "原路返回") route.title else "去 ${route.title}"
+        tr("不上马路", "No roads").takeIf { route.avoidRoads },
+        tr("不走天桥", "No overhead bridges").takeIf { route.avoidBridges },
+    ).joinToString(tr("、", ", "))
+    // 标题是队友手机按 TA 的语言起的，两种都认
+    val loopOrBack = route.title.startsWith("骑一圈") || route.title == "原路返回" ||
+        route.title.startsWith("Loop") || route.title == "Back the way you came"
+    val where = if (loopOrBack) route.title else tr("去 ${route.title}", "To ${route.title}")
     return listOfNotNull(where, route.meters.takeIf { it > 0 }?.let { Format.distance(it) }, options).joinToString(" · ")
 }
 
@@ -397,7 +404,7 @@ fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
         ) {
             Spacer(Modifier.weight(1f))
             Text(
-                if (alert.sent) "已经通知队友" else "你没事吧？",
+                if (alert.sent) tr("已经通知队友", "Team notified") else tr("你没事吧？", "Are you OK?"),
                 color = Color.White,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
@@ -405,10 +412,10 @@ fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             if (!alert.sent) {
                 Text("$left", color = Color(0xFFFF8A7A), fontSize = 120.sp, fontWeight = FontWeight.Bold)
-                Text("秒后把位置发给队友", color = Color.White.copy(alpha = 0.85f), fontSize = 20.sp)
+                Text(tr("秒后把位置发给队友", "seconds until your location is sent to the team"), color = Color.White.copy(alpha = 0.85f), fontSize = 20.sp)
             } else {
                 Text(
-                    "队友会看到你的位置。\n没事的话点「我没事」，队友那边会撤掉。",
+                    tr("队友会看到你的位置。\n没事的话点「我没事」，队友那边会撤掉。", "Your team can see your location.\nIf you're fine, tap I'm OK and the alert is withdrawn."),
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 20.sp,
                     textAlign = TextAlign.Center,
@@ -420,14 +427,14 @@ fun CrashDialog(alert: CrashAlert, onOk: () -> Unit, onSendNow: () -> Unit) {
                     onClick = onSendNow,
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     border = BorderStroke(2.dp, Color(0xFFFF8A7A)),
-                ) { Text("马上通知队友", color = Color(0xFFFF8A7A), fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+                ) { Text(tr("马上通知队友", "Notify team now"), color = Color(0xFFFF8A7A), fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
                 Spacer(Modifier.height(40.dp))
             }
             Button(
                 onClick = onOk,
                 modifier = Modifier.fillMaxWidth().height(96.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = RandoGreen),
-            ) { Text("我没事", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold) }
+            ) { Text(tr("我没事", "I'm OK"), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -439,13 +446,13 @@ fun SosDialog(alert: SosAlert, me: LatLon?, onGo: () -> Unit, onDismiss: () -> U
         onDismissRequest = {},
         shape = GlassShapes.Sheet,
         containerColor = Color(0xF7F7FAF8),
-        title = { Text("${alert.name}可能摔车了", color = RandoRed) },
+        title = { Text(tr("${alert.name}可能摔车了", "${alert.name} may have crashed"), color = RandoRed) },
         text = {
-            val far = me?.let { "离你 ${Format.distance(Geo.distance(it, alert.location).toInt())}。" }.orEmpty()
-            Text("${far}TA 的手机检测到可能摔车，还没有回应。", color = Ink, fontSize = 16.sp)
+            val far = me?.let { tr("离你 ${Format.distance(Geo.distance(it, alert.location).toInt())}。", "${Format.distance(Geo.distance(it, alert.location).toInt())} away. ") }.orEmpty()
+            Text(tr("${far}TA 的手机检测到可能摔车，还没有回应。", "${far}Their phone detected a possible crash and they haven't responded."), color = Ink, fontSize = 16.sp)
         },
-        confirmButton = { TextButton(onClick = onGo) { Text("导航过去", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("知道了", color = InkSoft) } },
+        confirmButton = { TextButton(onClick = onGo) { Text(tr("导航过去", "Navigate there"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("知道了", "OK"), color = InkSoft) } },
     )
 }
 
@@ -459,12 +466,12 @@ fun HazardDialog(hazard: Hazard, onDelete: () -> Unit, onDismiss: () -> Unit) {
         title = { Text(hazard.type.label) },
         text = {
             val days = ((System.currentTimeMillis() - hazard.createdAt) / 86_400_000L).toInt()
-            val whenText = if (days == 0) "今天" else "$days 天前"
-            val who = hazard.by?.let { "${it}标的" } ?: "你标的"
-            val effect = if (hazard.type.avoid) "算路时会绕开这里，30 天后自动失效。" else "骑到附近会提醒你减速。"
-            Text("$who，$whenText。$effect", color = Ink, fontSize = 16.sp)
+            val whenText = if (days == 0) tr("今天", "today") else tr("$days 天前", if (days == 1) "1 day ago" else "$days days ago")
+            val who = hazard.by?.let { tr("${it}标的", "Marked by $it") } ?: tr("你标的", "Marked by you")
+            val effect = if (hazard.type.avoid) tr("算路时会绕开这里，30 天后自动失效。", "Routes avoid this spot; it expires after 30 days.") else tr("骑到附近会提醒你减速。", "You'll be told to slow down when you ride nearby.")
+            Text(tr("$who，$whenText。$effect", "$who $whenText. $effect"), color = Ink, fontSize = 16.sp)
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("好", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
-        dismissButton = { TextButton(onClick = onDelete) { Text("已经好了，删掉", color = RandoRed) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("好", "OK"), color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDelete) { Text(tr("已经好了，删掉", "Cleared, remove it"), color = RandoRed) } },
     )
 }

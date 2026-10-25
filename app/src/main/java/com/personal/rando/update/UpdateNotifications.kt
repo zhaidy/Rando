@@ -1,5 +1,6 @@
 package com.personal.rando.update
 
+import com.personal.rando.i18n.tr
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -27,8 +28,8 @@ object UpdateNotifications {
             PackageManager.PERMISSION_GRANTED
         if (!granted) return
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "应用更新", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "新版本装好或安装失败时提醒"
+            NotificationChannel(CHANNEL, tr("应用更新", "App updates"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = tr("新版本装好或安装失败时提醒", "Lets you know when a new version is installed or fails to install")
             }
         )
         val open = PendingIntent.getActivity(

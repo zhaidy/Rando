@@ -1,5 +1,6 @@
 package com.personal.rando.ride
 
+import com.personal.rando.i18n.tr
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -110,8 +111,8 @@ class RideService : Service() {
     private fun crashNotification(alert: CrashAlert): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CRASH_CHANNEL, "摔车检测", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "一起骑时检测到可能摔车，问你没事吧"
+            NotificationChannel(CRASH_CHANNEL, tr("摔车检测", "Crash detection"), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = tr("一起骑时检测到可能摔车，问你没事吧", "Checks on you when a possible crash is detected during a group ride")
             }
         )
         fun action(name: String, code: Int) = PendingIntent.getService(
@@ -122,14 +123,14 @@ class RideService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .addAction(0, "我没事", action(ACTION_IM_OK, 1))
+            .addAction(0, tr("我没事", "I'm OK"), action(ACTION_IM_OK, 1))
         return if (alert.sent) {
-            builder.setContentTitle("已经通知队友").setContentText("没事的话点「我没事」，队友那边会撤掉").build()
+            builder.setContentTitle(tr("已经通知队友", "Your group has been alerted")).setContentText(tr("没事的话点「我没事」，队友那边会撤掉", "If you're fine, tap \"I'm OK\" to cancel the alert")).build()
         } else {
-            builder.setContentTitle("你可能摔车了")
-                .setContentText("没事就点「我没事」，否则 30 秒后通知队友")
+            builder.setContentTitle(tr("你可能摔车了", "You may have crashed"))
+                .setContentText(tr("没事就点「我没事」，否则 30 秒后通知队友", "Tap \"I'm OK\" if you're fine, otherwise your group is alerted in 30 seconds"))
                 .setWhen(alert.deadline).setUsesChronometer(true).setChronometerCountDown(true)
-                .addAction(0, "马上通知队友", action(ACTION_SOS_NOW, 2))
+                .addAction(0, tr("马上通知队友", "Alert group now"), action(ACTION_SOS_NOW, 2))
                 .build()
         }
     }
@@ -192,22 +193,24 @@ class RideService : Service() {
     private fun chip(nav: NavigationState?, rec: RecordingState?, team: GroupState?): String? {
         if (nav != null) return nav.progress?.let { chip(it, nav.rerouting) }
         return rec?.let { Format.shortDistance(it.distanceMeters.toInt()) }
-            ?: team?.takeIf { it.connected }?.let { "${it.teammates.size + 1}人" }
+            ?: team?.takeIf { it.connected }?.let { tr("${it.teammates.size + 1}人", "${it.teammates.size + 1} riders") }
     }
 
     private fun text(nav: NavigationState?, rec: RecordingState?, team: GroupState?): String {
         if (nav == null) {
-            return rec?.let { "已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}" }
-                ?: team?.let { if (it.connected) "队里 ${it.teammates.size + 1} 人" else "正在连接…" }
-                ?: "等待 GPS 定位…"
+            return rec?.let { tr("已骑 ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}", "Ridden ${Format.distance(it.distanceMeters.toInt())} · ${Format.clock(it.movingSeconds)}") }
+                ?: team?.let { if (it.connected) tr("队里 ${it.teammates.size + 1} 人", "${it.teammates.size + 1} riders in the group") else tr("正在连接…", "Connecting…") }
+                ?: tr("等待 GPS 定位…", "Waiting for GPS…")
         }
         val progress = nav.progress ?: return nav.waitingText
         return when {
-            progress.arrived -> "已到达目的地"
-            nav.rerouting || progress.offRoute -> "已偏离路线，正在重新规划"
+            progress.arrived -> tr("已到达目的地", "You have arrived")
+            nav.rerouting || progress.offRoute -> tr("已偏离路线，正在重新规划", "Off route, rerouting")
             else -> {
-                val next = progress.next?.text ?: "到达终点"
-                "${Format.distance(progress.distanceToNext.toInt())}后$next · 剩余 ${Format.distance(progress.remainingMeters.toInt())}"
+                val next = progress.next?.text ?: tr("到达终点", "arrive")
+                val toNext = Format.distance(progress.distanceToNext.toInt())
+                val left = Format.distance(progress.remainingMeters.toInt())
+                tr("${toNext}后$next · 剩余 $left", "In $toNext, $next · $left left")
             }
         }
     }
@@ -215,8 +218,8 @@ class RideService : Service() {
     private fun notification(nav: NavigationState?, rec: RecordingState?, team: GroupState?): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "骑行中", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "导航、记录轨迹、一起骑时常驻通知栏"
+            NotificationChannel(CHANNEL, tr("骑行中", "Riding"), NotificationManager.IMPORTANCE_LOW).apply {
+                description = tr("导航、记录轨迹、一起骑时常驻通知栏", "Stays in the notification bar while navigating, recording or riding with a group")
             }
         )
         // 和桌面图标点进来一样，回到已经开着的界面
@@ -227,10 +230,10 @@ class RideService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(
                 when {
-                    nav != null -> "Rando 导航中"
-                    rec != null -> "Rando 记录中"
-                    team != null -> "Rando 一起骑中"
-                    else -> "Rando 记录中"
+                    nav != null -> tr("Rando 导航中", "Rando navigating")
+                    rec != null -> tr("Rando 记录中", "Rando recording")
+                    team != null -> tr("Rando 一起骑中", "Rando group ride")
+                    else -> tr("Rando 记录中", "Rando recording")
                 }
             )
             .setContentText(text(nav, rec, team))
@@ -273,8 +276,8 @@ class RideService : Service() {
 
         /** 「↰ 300米」；偏了、到了也说一声 */
         fun chip(progress: NavProgress, rerouting: Boolean): String = when {
-            progress.arrived -> "已到达"
-            rerouting || progress.offRoute -> "已偏离"
+            progress.arrived -> tr("已到达", "Arrived")
+            rerouting || progress.offRoute -> tr("已偏离", "Off route")
             else -> listOfNotNull(progress.next?.turn?.arrow, Format.shortDistance(progress.distanceToNext.toInt())).joinToString(" ")
         }
 

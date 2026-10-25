@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import com.personal.rando.i18n.tr
 import com.personal.rando.ui.glass.GlassButton
 import com.personal.rando.ui.glass.GlassPanel
 import com.personal.rando.ui.glass.GlassTone
@@ -50,26 +53,42 @@ import kotlinx.coroutines.launch
 
 /**
  * 分享图先预览：画好了弹出来看一眼，下面「存到相册」「分享」。
- * 返回的函数传进去怎么画图，调用就开始画、弹出预览
+ * 返回的函数传进去怎么画图（参数是要不要隐藏家附近），调用就开始画、弹出预览；
+ * 预览里切开关会重新画一张
  */
 @Composable
-fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
+fun rememberSharePreview(): (suspend (hide: Boolean) -> ShareCard.Card?) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     var card by remember { mutableStateOf<ShareCard.Card?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var saved by remember { mutableStateOf(false) }
+    var make by remember { mutableStateOf<(suspend (Boolean) -> ShareCard.Card?)?>(null) }
+    // 每次打开都默认隐藏，免得上次关掉忘了开
+    var hide by remember { mutableStateOf(true) }
+    var privacyLabel by remember { mutableStateOf(tr("隐藏家附近", "Hide near home")) }
+
+    fun draw() {
+        val m = make ?: return
+        job?.cancel()
+        card = null
+        saved = false
+        job = scope.launch {
+            val c = m(hide)
+            if (c == null) open = false else { card = c; privacyLabel = c.privacy }
+        }
+    }
 
     fun save(c: ShareCard.Card) = scope.launch {
         val ok = ShareCard.save(context, c)
         saved = ok
-        Toast.makeText(context, if (ok) "存到相册了（Pictures/Rando）" else "没存上", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, if (ok) tr("存到相册了（Pictures/Rando）", "Saved to Photos (Pictures/Rando)") else tr("没存上", "Couldn't save"), Toast.LENGTH_SHORT).show()
     }
     // Android 9 以下存相册要「存储」权限
     val askStorage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val c = card
-        if (granted && c != null) save(c) else if (!granted) Toast.makeText(context, "没有存储权限，存不了", Toast.LENGTH_SHORT).show()
+        if (granted && c != null) save(c) else if (!granted) Toast.makeText(context, tr("没有存储权限，存不了", "No storage permission, can't save"), Toast.LENGTH_SHORT).show()
     }
 
     if (open) {
@@ -88,14 +107,23 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator(color = RandoGreen, modifier = Modifier.size(32.dp))
                                 Spacer(Modifier.height(10.dp))
-                                Text("正在画图…", color = InkSoft, fontSize = 14.sp)
+                                Text(tr("正在画图…", "Drawing…"), color = InkSoft, fontSize = 14.sp)
                             }
                         } else {
                             val image = remember(c) { c.bitmap.asImageBitmap() }
-                            Image(image, contentDescription = "分享图预览", modifier = Modifier.fillMaxWidth())
+                            Image(image, contentDescription = tr("分享图预览", "Share image preview"), modifier = Modifier.fillMaxWidth())
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(privacyLabel, Modifier.weight(1f), color = Ink, fontSize = 15.sp)
+                        Switch(
+                            checked = hide,
+                            onCheckedChange = { hide = it; draw() },
+                            colors = SwitchDefaults.colors(checkedTrackColor = RandoGreen),
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val c = card
                         GlassButton(
@@ -111,7 +139,7 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = RandoGreen, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                             }
-                            Text(if (saved) "已存到相册" else "存到相册", color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (saved) tr("已存到相册", "Saved to Photos") else tr("存到相册", "Save to Photos"), color = if (c == null) InkSoft else Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                         GlassButton(
                             onClick = { if (c != null) scope.launch { ShareCard.send(context, c) } },
@@ -120,7 +148,7 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("分享", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(tr("分享", "Share"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -128,14 +156,10 @@ fun rememberSharePreview(): (suspend () -> ShareCard.Card?) -> Unit {
         }
     }
 
-    return { make ->
-        job?.cancel()
-        card = null
-        saved = false
+    return { m ->
+        make = m
+        hide = true
         open = true
-        job = scope.launch {
-            val c = make()
-            if (c == null) open = false else card = c
-        }
+        draw()
     }
 }

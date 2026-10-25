@@ -1,5 +1,6 @@
 package com.personal.rando.group
 
+import com.personal.rando.i18n.tr
 import android.content.Context
 import androidx.core.content.edit
 import com.personal.rando.nav.Geo
@@ -119,7 +120,7 @@ class GroupRide(
             .addQueryParameter("lon", String.format(Locale.US, "%.5f", at.lon))
             .build()
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("找附近的队伍 HTTP ${response.code}")
+            if (!response.isSuccessful) throw IOException(tr("找附近的队伍 HTTP ${response.code}", "Finding nearby groups failed (HTTP ${response.code})"))
             NearbyTeam.parse(response.body.string())
         }
     }
@@ -229,7 +230,7 @@ class GroupRide(
             val d = Geo.distance(me, at)
             if (d > STRAGGLER_METERS && now - (warnedAt[m.id] ?: 0) > WARN_INTERVAL_MS) {
                 warnedAt[m.id] = now
-                return "${m.name}离你${Format.distance(d.toInt())}了"
+                return tr("${m.name}离你${Format.distance(d.toInt())}了", "${m.name} is ${Format.distance(d.toInt())} away from you")
             }
         }
         return null

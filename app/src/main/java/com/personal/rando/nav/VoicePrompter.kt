@@ -1,5 +1,6 @@
 package com.personal.rando.nav
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.ui.Format
 
 /**
@@ -15,18 +16,19 @@ class VoicePrompter {
 
     private enum class Stage { EARLY, NOW }
 
-    fun start(totalMeters: Double): String = "开始导航，全程 ${Format.distance(totalMeters.toInt())}"
+    fun start(totalMeters: Double): String =
+        tr("开始导航，全程 ${Format.distance(totalMeters.toInt())}", "Starting navigation, ${Format.distance(totalMeters.toInt())} in total")
 
     fun next(progress: NavProgress): String? {
         if (progress.arrived) {
             if (saidArrived) return null
             saidArrived = true
-            return "已到达目的地"
+            return tr("已到达目的地", "You have arrived")
         }
         if (progress.offRoute) {
             if (saidOffRoute) return null
             saidOffRoute = true
-            return "已偏离路线，正在重新规划"
+            return tr("已偏离路线，正在重新规划", "Off route, rerouting")
         }
         saidOffRoute = false
 
@@ -38,14 +40,15 @@ class VoicePrompter {
                 announced[next.pointIndex] = Stage.NOW
                 val following = progress.following
                 if (following != null && progress.distanceNextToFollowing <= THEN_METERS) {
-                    "${next.text}，然后${following.text}"
+                    tr("${next.text}，然后${following.text}", "${next.text}, then ${lower(following.text)}")
                 } else {
                     next.text
                 }
             }
             distance <= EARLY_METERS && distance > NOW_METERS * 2 && stage == null -> {
                 announced[next.pointIndex] = Stage.EARLY
-                "${Format.distance(roundDistance(distance))}后${next.text}"
+                val ahead = Format.distance(roundDistance(distance))
+                tr("${ahead}后${next.text}", "In $ahead, ${lower(next.text)}")
             }
             else -> null
         }
@@ -56,6 +59,9 @@ class VoicePrompter {
         announced.clear()
         saidOffRoute = false
     }
+
+    /** 「Turn left」放句中变成「turn left」 */
+    private fun lower(text: String) = text.replaceFirstChar { it.lowercase() }
 
     private fun roundDistance(meters: Double): Int =
         if (meters >= 100) (Math.round(meters / 50) * 50).toInt() else (Math.round(meters / 10) * 10).toInt()

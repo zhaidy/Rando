@@ -1,5 +1,6 @@
 package com.personal.rando.nav
 
+import com.personal.rando.i18n.tr
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -76,11 +77,12 @@ class DaylightAlerts {
             dark && !warnedDark -> {
                 warnedDark = true
                 warnedSoon = true
-                "天黑了，记得打开前后车灯"
+                tr("天黑了，记得打开前后车灯", "It's dark, turn on your front and rear lights")
             }
             !dark && sunset - now <= SOON_MS && !warnedSoon -> {
                 warnedSoon = true
-                "还有${(sunset - now) / 60_000}分钟日落，准备好车灯"
+                val minutes = (sunset - now) / 60_000
+                tr("还有${minutes}分钟日落，准备好车灯", "Sunset in $minutes ${if (minutes == 1L) "minute" else "minutes"}, get your lights ready")
             }
             else -> null
         }
@@ -99,9 +101,12 @@ class DaylightAlerts {
             val arrive = now + durationSeconds * 1000L
             val sunset = Sun.sunset(now)
             return when {
-                Sun.isDark(now) -> "天黑了，记得打开前后车灯"
-                arrive > sunset -> "预计 ${clock(arrive)} 到，${clock(sunset)} 日落，后半程要开车灯"
-                sunset - arrive < SOON_MS -> "${clock(sunset)} 日落，到的时候天快黑了"
+                Sun.isDark(now) -> tr("天黑了，记得打开前后车灯", "It's dark, turn on your front and rear lights")
+                arrive > sunset -> tr(
+                    "预计 ${clock(arrive)} 到，${clock(sunset)} 日落，后半程要开车灯",
+                    "Arriving around ${clock(arrive)}, sunset at ${clock(sunset)}: you'll need lights for the second half",
+                )
+                sunset - arrive < SOON_MS -> tr("${clock(sunset)} 日落，到的时候天快黑了", "Sunset at ${clock(sunset)}, it'll be getting dark when you arrive")
                 else -> null
             }
         }

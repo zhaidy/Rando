@@ -94,6 +94,9 @@ import java.io.File
 class UiScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
+    /** Robolectric 的系统语言是英文，应用启动时会跟着切成英文；截图默认看中文 */
+    @org.junit.Before fun chinese() = com.personal.rando.i18n.Lang.apply(com.personal.rando.i18n.Language.ZH)
+
     private val route = RouteParser.parse(File("src/test/resources/preview/route.json").readText())
     private val mbs = Place("Marina Bay Sands", "", LatLon(1.2838, 103.8591))
     private val prefs = RoutePrefs(BikeProfile.PCN, avoidRoads = true, mySpeed = 5.1)
@@ -265,6 +268,11 @@ class UiScreenshotTest {
         com.personal.rando.ui.NoticeHost(host)
     }
 
+    @Test fun plannerRouteEnglish() {
+        com.personal.rando.i18n.Lang.apply(com.personal.rando.i18n.Language.EN)
+        shot("16_en_planner_route") { Planner(destination = mbs, routeState = RouteState.Ready(route, emptyList())) }
+    }
+
     @Test fun crash() {
         compose.setContent { com.personal.rando.ui.CrashDialog(com.personal.rando.ride.CrashAlert(deadline = System.currentTimeMillis() + 23_000), {}, {}) }
         compose.mainClock.advanceTimeBy(1_000)
@@ -325,7 +333,7 @@ class UiScreenshotTest {
         val ride = rides[0]
         val track = ride.points.map { it.location }
         val plain = com.personal.rando.ui.ShareCard.draw(
-            null, com.personal.rando.ui.ShareCard.fit(track, 1080f, 900f), ride, "这条路第 3 次骑，比上次快 1 分 20 秒，最好成绩！",
+            null, listOf(com.personal.rando.ui.ShareCard.fit(track, 1080f, 900f)), ride, "这条路第 3 次骑，比上次快 1 分 20 秒，最好成绩！",
         )
         File("build/screenshots").mkdirs()
         File("build/screenshots/12_share_card.png").outputStream().use { plain.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
@@ -339,7 +347,7 @@ class UiScreenshotTest {
         )
         val day = listOf(rides[0], evening)
         val card = com.personal.rando.ui.ShareCard.drawDay(
-            null, com.personal.rando.ui.ShareCard.fitAll(day.map { r -> r.points.map { it.location } }, 1080f, 900f), day,
+            null, com.personal.rando.ui.ShareCard.fitAll(day.map { r -> r.points.map { it.location } }, 1080f, 900f).map { listOf(it) }, day,
         )
         File("build/screenshots").mkdirs()
         File("build/screenshots/12b_share_day_card.png").outputStream().use { card.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
