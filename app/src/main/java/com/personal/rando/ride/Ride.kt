@@ -2,6 +2,7 @@ package com.personal.rando.ride
 
 import com.personal.rando.routing.LatLon
 import java.util.Calendar
+import java.util.TimeZone
 
 data class TrackPoint(val location: LatLon, val altitude: Double?, val time: Long)
 
@@ -26,14 +27,16 @@ data class Ride(
     /** 「早上骑行」「傍晚骑行」，按开始时间 */
     val title: String
         get() {
-            val hour = Calendar.getInstance().apply { timeInMillis = startedAt }.get(Calendar.HOUR_OF_DAY)
-            val period = when (hour) {
-                in 5..10 -> "早上"
-                in 11..13 -> "中午"
-                in 14..16 -> "下午"
-                in 17..18 -> "傍晚"
-                else -> "夜里"
-            }
-            return "${period}骑行"
+            return "${timeOfDay(startedAt)}骑行"
         }
 }
+
+/** 「早上」「中午」「下午」「傍晚」「夜里」：[millis] 在 [zone] 是什么时候 */
+fun timeOfDay(millis: Long, zone: TimeZone = TimeZone.getDefault()): String =
+    when (Calendar.getInstance(zone).apply { timeInMillis = millis }.get(Calendar.HOUR_OF_DAY)) {
+        in 5..10 -> "早上"
+        in 11..13 -> "中午"
+        in 14..16 -> "下午"
+        in 17..18 -> "傍晚"
+        else -> "夜里"
+    }

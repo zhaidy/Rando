@@ -37,6 +37,9 @@ import com.personal.rando.ui.RandoTheme
 import com.personal.rando.ui.RideDetail
 import com.personal.rando.ui.RideList
 import com.personal.rando.ui.RiddenMap
+import com.personal.rando.ui.ReviewPage
+import com.personal.rando.ride.Reviews
+import com.personal.rando.ride.ReviewSpan
 import com.personal.rando.ui.RideView
 import com.personal.rando.ui.HintPill
 import com.personal.rando.ui.NavigationOverlay
@@ -254,6 +257,11 @@ class UiScreenshotTest {
     private val now = 1_729_771_200_000
 
     @Test fun rideList() = shot("8_ride_list") { RideList(rides, {}, {}, {}, now) }
+
+    @Test fun review() = shot("8d_review") {
+        val r = Reviews.of(rides, ReviewSpan.MONTH, now).copy(newPcnMeters = 12_300.0, previousMeters = 30_000.0)
+        ReviewPage(r, ReviewSpan.MONTH, {}, {}, {}, {}, {})
+    }
 
     @Test fun pcnMap() = shot("8c_pcn_map") {
         val loops = PcnData.parse(java.io.File("src/main/assets/pcn.json").readText())
