@@ -131,6 +131,7 @@ import com.personal.rando.routing.breakdown
 import com.personal.rando.search.Place
 import com.personal.rando.rando
 import com.personal.rando.group.TeamCode
+import com.personal.rando.places.MrtHome
 import com.personal.rando.ride.AutoStart
 import androidx.core.content.FileProvider
 import com.personal.rando.ride.Calories
@@ -192,6 +193,29 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val parking = LocalContext.current.rando.parking
     val parked by parking.bike.collectAsStateWithLifecycle()
     var parkedDialog by remember { mutableStateOf(false) }
+    var mrtPlan by remember { mutableStateOf<MrtHome?>(null) }
+    val mrtContext = LocalContext.current
+    // 骑累了坐 MRT 回家：离家近或者最近的站就是家门口的站，直接导航回家
+    val mrtHome: () -> Unit = {
+        val home = vm.savedPlaces.places.value.firstOrNull { it.name == SavedPlace.HOME }
+        val here = vm.session.location.value
+        when {
+            home == null -> vm.session.say("先把家收藏起来，才知道坐到哪个站").also {
+                Toast.makeText(mrtContext, "先把「家」收藏起来", Toast.LENGTH_LONG).show()
+            }
+            here == null -> Toast.makeText(mrtContext, "还没定位到", Toast.LENGTH_SHORT).show()
+            else -> {
+                val plan = MrtHome.plan(mrtContext.rando.mrt, here, home.location)
+                if (plan == null) {
+                    vm.session.say("离家不远，直接骑回去吧")
+                    vm.goTo(SavedPlace.HOME) { vm.session.say(it) }
+                } else {
+                    mrtPlan = plan
+                    vm.session.say(plan.text)
+                }
+            }
+        }
+    }
     val photoContext = LocalContext.current
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) {
@@ -322,6 +346,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                     }
                 }
                 VoiceCommand.Weather -> session.say(session.weatherText())
+                VoiceCommand.MrtHome -> mrtHome()
                 is VoiceCommand.Unknown -> session.say(if (cmd.text.isBlank()) "没听清，再说一次" else "没听懂：${cmd.text}")
             }
         }
@@ -510,6 +535,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         teammates = teammatesText(teammates, fix?.location),
                         walkie = walkieText(walkieState).takeIf { groupState != null },
                         onVoice = listen,
+                        onMrt = mrtHome,
                         listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },
                         weightKg = settings.weightKg,
                         onReport = { type ->
@@ -552,6 +578,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             onOpenRides = onOpenRides,
                             onCheckUpdate = onCheckUpdate,
                             onSettings = { settingsDialog = true },
+                            onMrtHome = mrtHome,
                             onOfflineMaps = {
                                 offlineMaps.refresh()
                                 offlineDialog = true
@@ -722,6 +749,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                 style?.let { MapLayers.showFocus(it, null) }
             },
             onDismiss = { parkedDialog = false },
+        )
+    }
+    mrtPlan?.let { plan ->
+        MrtHomeDialog(
+            plan,
+            onGo = {
+                mrtPlan = null
+                askNotifications()
+                vm.navigateTo(plan.boardExit.location, "${plan.board.zh}站") { Toast.makeText(context, "导航失败：$it", Toast.LENGTH_LONG).show() }
+            },
+            onDismiss = { mrtPlan = null },
         )
     }
     if (settingsDialog) {

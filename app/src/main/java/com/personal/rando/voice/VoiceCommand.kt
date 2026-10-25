@@ -16,6 +16,8 @@ sealed interface VoiceCommand {
     data class Report(val type: HazardType) : VoiceCommand
     data class Walkie(val on: Boolean) : VoiceCommand
     data object Weather : VoiceCommand
+    /** 骑累了坐 MRT 回家 */
+    data object MrtHome : VoiceCommand
     /** 没听懂 */
     data class Unknown(val text: String) : VoiceCommand
 }
@@ -33,6 +35,7 @@ object VoiceParser {
         if (Regex("(结束|停止|退出|取消|不要)(导航|骑行)?$|^别导航").containsMatchIn(text)) return VoiceCommand.StopNavigation
         if (Regex("还有多远|还要多久|多久到|还剩多少|还有多少|多远到").containsMatchIn(text)) return VoiceCommand.Remaining
         if (Regex("天气|下雨|会不会下|热不热|空气").containsMatchIn(text)) return VoiceCommand.Weather
+        if (Regex("(坐|搭)(地铁|MRT|捷运|车)回家", RegexOption.IGNORE_CASE).containsMatchIn(text)) return VoiceCommand.MrtHome
 
         when {
             "封路" in text || "不通" in text || "封了" in text -> return VoiceCommand.Report(HazardType.CLOSED)

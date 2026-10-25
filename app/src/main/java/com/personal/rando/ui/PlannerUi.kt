@@ -105,6 +105,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import com.personal.rando.nav.Geo
 import com.personal.rando.routing.LatLon
 import androidx.compose.material3.Switch
+import com.personal.rando.places.MrtHome
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.rando.places.SavedPlace
@@ -174,6 +175,7 @@ fun SearchBar(
     modifier: Modifier = Modifier,
     onOfflineMaps: () -> Unit = {},
     onSettings: () -> Unit = {},
+    onMrtHome: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -210,6 +212,7 @@ fun SearchBar(
                     ) {
                         DropdownMenuItem(text = { Text("骑行记录") }, onClick = { menuOpen = false; onOpenRides() })
                         DropdownMenuItem(text = { Text("离线地图") }, onClick = { menuOpen = false; onOfflineMaps() })
+                        DropdownMenuItem(text = { Text("坐 MRT 回家") }, onClick = { menuOpen = false; onMrtHome() })
                         DropdownMenuItem(text = { Text("设置") }, onClick = { menuOpen = false; onSettings() })
                         DropdownMenuItem(text = { Text("检查更新") }, onClick = { menuOpen = false; onCheckUpdate() })
                         DropdownMenuItem(text = { Text("当前版本 build $build") }, onClick = {}, enabled = false)
@@ -1451,5 +1454,24 @@ fun SettingsDialog(
             TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart)) }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+/** 坐 MRT 回家的方案：骑到哪个站、怎么坐、再骑多远；可以直接导航到站 */
+@Composable
+fun MrtHomeDialog(plan: MrtHome, onGo: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = GlassShapes.Sheet,
+        containerColor = Color(0xF7F7FAF8),
+        title = { Text("坐 MRT 回家") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(plan.text, color = Ink, fontSize = 16.sp)
+                Text("只有折叠车折好（不超过 114×64×36 厘米）才能上 MRT；普通自行车不能上车。高峰时段人多，尽量避开。", color = InkSoft, fontSize = 13.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onGo) { Text("导航到${plan.board.zh}站", color = RandoGreen, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("算了") } },
     )
 }
