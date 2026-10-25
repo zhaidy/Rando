@@ -56,6 +56,14 @@ android {
         compose = true
     }
 
+    // 小队对讲的降噪（RNNoise），原生代码在 src/main/cpp
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         // 截图测试要读 Android 资源
