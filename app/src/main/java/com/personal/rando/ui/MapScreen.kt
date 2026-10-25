@@ -147,6 +147,9 @@ import com.personal.rando.nav.Geo
 import com.personal.rando.places.Hazard
 import com.personal.rando.ride.RideService
 import com.personal.rando.ride.Ride
+import com.personal.rando.ride.RideHeat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -401,6 +404,17 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
         Toast.makeText(context, "正在算原路返回的路线…", Toast.LENGTH_SHORT).show()
         askNotifications()
         vm.returnTrip(ride.points.map { it.location }) { Toast.makeText(context, "原路返回失败：$it", Toast.LENGTH_LONG).show() }
+    }
+
+    // 以前骑过的路垫在底下；存了、删了记录就重画，设置里可以关
+    val rideChanges by vm.session.rides.changes.collectAsStateWithLifecycle()
+    LaunchedEffect(style, settings.showRidden, rideChanges) {
+        val s = style ?: return@LaunchedEffect
+        val pieces = if (settings.showRidden) {
+            val tracks = vm.session.rides.list().map { r -> r.points.map { it.location } }
+            withContext(Dispatchers.Default) { RideHeat.pieces(tracks) }
+        } else emptyList()
+        MapLayers.showRidden(s, pieces, faint = true)
     }
 
     // 记录中把骑过的轨迹画出来；按点数变化重画，不用每次重组都画

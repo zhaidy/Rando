@@ -37,8 +37,13 @@ object Calories {
     fun of(ride: Ride, weightKg: Double) = of(ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, weightKg)
 }
 
-/** 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑） */
-data class Settings(val weightKg: Double = DEFAULT_WEIGHT, val autoStart: Boolean = false, val voice: String? = null) {
+/** 设置：体重（算卡路里）、骑车时自动开始记录、播报用哪个声音（null 是自动挑）、主页地图上画不画骑过的路 */
+data class Settings(
+    val weightKg: Double = DEFAULT_WEIGHT,
+    val autoStart: Boolean = false,
+    val voice: String? = null,
+    val showRidden: Boolean = true,
+) {
     companion object {
         const val DEFAULT_WEIGHT = 65.0
     }
@@ -51,6 +56,7 @@ class SettingsStore(context: Context) {
             weightKg = prefs.getFloat(KEY_WEIGHT, Settings.DEFAULT_WEIGHT.toFloat()).toDouble(),
             autoStart = prefs.getBoolean(KEY_AUTO_START, false),
             voice = prefs.getString(KEY_VOICE, null),
+            showRidden = prefs.getBoolean(KEY_SHOW_RIDDEN, true),
         )
     )
     val settings: StateFlow<Settings> = _settings
@@ -61,6 +67,7 @@ class SettingsStore(context: Context) {
             putFloat(KEY_WEIGHT, s.weightKg.toFloat())
             putBoolean(KEY_AUTO_START, s.autoStart)
             putString(KEY_VOICE, s.voice)
+            putBoolean(KEY_SHOW_RIDDEN, s.showRidden)
         }
     }
 
@@ -68,5 +75,6 @@ class SettingsStore(context: Context) {
         const val KEY_WEIGHT = "weight"
         const val KEY_AUTO_START = "auto_start"
         const val KEY_VOICE = "voice"
+        const val KEY_SHOW_RIDDEN = "show_ridden"
     }
 }

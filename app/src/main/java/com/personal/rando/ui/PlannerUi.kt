@@ -1488,7 +1488,7 @@ fun OfflineMapsDialog(state: OfflineMapState, onDownload: () -> Unit, onCancel: 
 
 private fun megabytes(bytes: Long): String = String.format(java.util.Locale.US, "%.0f MB", bytes / 1_048_576.0)
 
-/** 设置：体重（算卡路里）、骑车自动开始记录、播报声音 */
+/** 设置：体重（算卡路里）、骑车自动开始记录、主页显示骑过的路、播报声音 */
 @Composable
 fun SettingsDialog(
     settings: Settings,
@@ -1506,6 +1506,7 @@ fun SettingsDialog(
 ) {
     var weight by remember { mutableStateOf(settings.weightKg.toInt().toString()) }
     var autoStart by remember { mutableStateOf(settings.autoStart) }
+    var showRidden by remember { mutableStateOf(settings.showRidden) }
     var voice by remember { mutableStateOf(settings.voice) }
     var voiceMenu by remember { mutableStateOf(false) }
     val kg = weight.toIntOrNull()?.takeIf { it in 25..250 }
@@ -1534,6 +1535,13 @@ fun SettingsDialog(
                 if (autoStart && !backgroundLocation) {
                     Text("定位不是「始终允许」时，检测到骑车会弹通知问一下，点了才开始。", color = InkSoft, fontSize = 13.sp)
                     LinkText("去设成始终允许", onAskBackgroundLocation)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("地图上显示骑过的路", color = Ink, fontSize = 16.sp)
+                        Text("按骑过几次上色，垫在路线下面", color = InkSoft, fontSize = 13.sp)
+                    }
+                    Switch(checked = showRidden, onCheckedChange = { showRidden = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1566,7 +1574,7 @@ fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice)) }) { Text("保存") }
+            TextButton(enabled = kg != null, onClick = { onSave(settings.copy(weightKg = kg!!.toDouble(), autoStart = autoStart, voice = voice, showRidden = showRidden)) }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
