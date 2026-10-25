@@ -162,10 +162,20 @@ test("可能摔车了告诉队友，后来加入的也能收到，我没事就�
   await c.next("roster");
   assert.equal((await c.next("sos")).id, "aaaaaaaa-9");
 
+  // 停了导航（清路线）不代表没事：之后加入的还要能收到求救
+  a.send({ t: "route_clear" });
+  await b.next("route_clear");
+  await c.next("route_clear");
+  const d = join("TEST03", "dddddddd-14", "小周");
+  await d.opened;
+  await d.next("roster");
+  assert.equal((await d.next("sos")).id, "aaaaaaaa-9");
+
   a.send({ t: "sos_clear" });
   assert.equal((await b.next("sos_clear")).id, "aaaaaaaa-9");
   await c.next("sos_clear");
-  for (const x of [a, b, c]) x.ws.close();
+  await d.next("sos_clear");
+  for (const x of [a, b, c, d]) x.ws.close();
 });
 
 test("标的路况转给队友", async () => {

@@ -19,6 +19,12 @@ class SavedPlacesTest {
     }
 
     @Test
+    fun `有一条坏了只跳过那条`() {
+        val json = """[{"name":"家","lat":1.35,"lon":103.82},{"name":"坏的"}]"""
+        assertEquals(listOf(home), SavedPlacesJson.decode(json))
+    }
+
+    @Test
     fun `家和公司排最前`() {
         var list = emptyList<SavedPlace>()
         list = SavedPlacesJson.upsert(list, park)

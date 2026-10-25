@@ -59,7 +59,8 @@ class RtcLink(
     }
 
     private var myId = ""
-    private var running = false
+    @Volatile var running = false
+        private set
     private var iceServers: List<IceSpec> = DEFAULT_ICE
     private var startJob: Job? = null
     /** 应该连上的队友 id；不知道的时候是 null */
@@ -137,7 +138,9 @@ class RtcLink(
             "hi" -> {
                 // 对方刚开对讲：手上那条多半是旧的（对方没说 bye 就走了），重新来
                 if (data.optBoolean("fresh")) close(from)
-                if (from in peers) return
+                // 已经通了就不用再来；没通的（offer、answer 半路丢了，卡着不会超时）重新打一遍
+                if (from in _peers.value) return
+                close(from)
                 if (offers(myId, from)) offer(from) else signal(from, JSONObject().put("k", "hi"))
             }
             "offer" -> answer(from, data.optString("sdp"))
@@ -159,9 +162,13 @@ class RtcLink(
             maxRetransmits = 0
         }
         p.attach(p.pc.createDataChannel(CHANNEL, init))
+        // 回调在 WebRTC 自己的线程上：回到主线程、确认这条还没被关掉（dispose 过再用会崩）再设
         p.pc.createOffer(Sdp { desc ->
-            p.pc.setLocalDescription(Sdp(), desc)
-            scope.launch { signal(to, JSONObject().put("k", "offer").put("sdp", desc.description)) }
+            scope.launch {
+                if (peers[to] !== p) return@launch
+                p.pc.setLocalDescription(Sdp(), desc)
+                signal(to, JSONObject().put("k", "offer").put("sdp", desc.description))
+            }
         }, MediaConstraints())
     }
 
@@ -173,8 +180,11 @@ class RtcLink(
                 if (peers[to] !== p) return@launch
                 p.remoteSet()
                 p.pc.createAnswer(Sdp { desc ->
-                    p.pc.setLocalDescription(Sdp(), desc)
-                    scope.launch { signal(to, JSONObject().put("k", "answer").put("sdp", desc.description)) }
+                    scope.launch {
+                        if (peers[to] !== p) return@launch
+                        p.pc.setLocalDescription(Sdp(), desc)
+                        signal(to, JSONObject().put("k", "answer").put("sdp", desc.description))
+                    }
                 }, MediaConstraints())
             }
         }), SessionDescription(SessionDescription.Type.OFFER, sdp))

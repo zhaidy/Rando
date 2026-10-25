@@ -134,10 +134,13 @@ class RoadCorrectionStore(context: Context) {
 
         fun decode(json: String): List<RoadCorrection> {
             val arr = JSONArray(json)
-            return (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                val p = o.getJSONArray("p")
-                RoadCorrection(o.getString("id"), (0 until p.length()).map { p.getJSONArray(it).let { q -> LatLon(q.getDouble(0), q.getDouble(1)) } }, o.getLong("ts"))
+            // 一条坏了只跳过那条，不要下次保存时把其他的全冲掉
+            return (0 until arr.length()).mapNotNull { i ->
+                runCatching {
+                    val o = arr.getJSONObject(i)
+                    val p = o.getJSONArray("p")
+                    RoadCorrection(o.getString("id"), (0 until p.length()).map { p.getJSONArray(it).let { q -> LatLon(q.getDouble(0), q.getDouble(1)) } }, o.getLong("ts"))
+                }.getOrNull()
             }
         }
     }

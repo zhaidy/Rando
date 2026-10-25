@@ -420,6 +420,10 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val finishRide = {
         finished = finishRide(notices, vm.session)
     }
+    // 又开始记录了（自动开始、进队）：上一次的卡片没用了，不然这次结束后又冒出来
+    LaunchedEffect(recording != null) {
+        if (recording != null) finished = null
+    }
     // 「结束」按钮先问一句：骑车时手套一蹭就把导航和记录都停了
     var confirmFinish by remember { mutableStateOf(false) }
     val askFinish = { confirmFinish = true }
