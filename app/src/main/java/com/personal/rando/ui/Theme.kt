@@ -65,7 +65,7 @@ val DarkPalette = Palette(
     glass = Color(0xFF111614).copy(alpha = 0.62f),
     glassFallback = Color(0xFF181D1B).copy(alpha = 0.94f),
     dialog = Color(0xFA1C2220),
-    card = Color.White.copy(alpha = 0.07f),
+    card = Color(0xFF1C2127),
     backdrop = Color(0xFF1A1E1D),
 )
 
