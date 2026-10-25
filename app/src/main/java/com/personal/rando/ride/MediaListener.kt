@@ -3,6 +3,7 @@ package com.personal.rando.ride
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -65,7 +66,18 @@ class Music(context: Context) {
                 playing = c.playbackState?.state == PlaybackState.STATE_PLAYING,
             )
         }
-        return if (audio?.isMusicActive == true) NowPlaying(null, null, null, playing = true) else null
+        return if (otherMusic()) NowPlaying(null, null, null, playing = true) else null
+    }
+
+    /**
+     * 没有通知使用权时猜有没有在放音乐。光看 isMusicActive 不行：自己的导航播报、提示音也走音乐那一路，
+     * 一念「空气不健康」就会当成在放歌；还得有个按「媒体」放的播放器（播报是导航语音，对讲是通话）
+     */
+    private fun otherMusic(): Boolean {
+        val am = audio ?: return false
+        if (!am.isMusicActive) return false
+        val players = runCatching { am.activePlaybackConfigurations }.getOrNull().orEmpty()
+        return players.any { it.audioAttributes.usage == AudioAttributes.USAGE_MEDIA || it.audioAttributes.usage == AudioAttributes.USAGE_UNKNOWN }
     }
 
     fun playPause() {
