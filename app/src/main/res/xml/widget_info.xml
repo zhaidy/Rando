@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 本周骑行小组件：一小时刷新一次（骑完、开始记录时也会马上刷新） -->
+<!-- 本周骑行小组件：一小时刷新一次（骑完、开始记录时也会马上刷新）；拉到一行高时换成 widget_row -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
     android:initialLayout="@layout/widget_week"
     android:minWidth="160dp"
     android:minHeight="110dp"
+    android:minResizeHeight="40dp"
+    android:minResizeWidth="160dp"
     android:previewLayout="@layout/widget_week"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="2"

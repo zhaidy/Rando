@@ -6,6 +6,9 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.util.SizeF
 import android.widget.RemoteViews
 import com.personal.rando.MainActivity
 import com.personal.rando.R
@@ -22,7 +25,7 @@ data class WidgetText(val km: String, val detail: String, val button: String)
 
 /**
  * 桌面小组件：本周骑了多少公里、几次、多久；下面「开始记录」，点了打开 Rando 开始记录。
- * 骑完一次、开始记录时马上刷新，平时一小时刷新一次
+ * 骑完一次、开始记录时马上刷新，平时一小时刷新一次。拉到一行高时换成一行的布局
  */
 class RideWidget : AppWidgetProvider() {
 
@@ -31,6 +34,19 @@ class RideWidget : AppWidgetProvider() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 render(context, manager, appWidgetIds)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    /** 旧系统（Android 12 以前）拉大拉小时自己按高度换布局 */
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                render(context, manager, intArrayOf(appWidgetId))
             } finally {
                 pending.finish()
             }
@@ -56,6 +72,11 @@ class RideWidget : AppWidgetProvider() {
             button = recording?.let { "记录中 · ${Format.distance(it.distanceMeters.toInt())}" } ?: "开始记录",
         )
 
+        /** 比这个矮就用一行的布局：两格高大约 110dp，一格高 40～60dp */
+        private const val ROW_MAX_HEIGHT_DP = 100
+
+        fun isRow(heightDp: Int): Boolean = heightDp in 1 until ROW_MAX_HEIGHT_DP
+
         private suspend fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {
             val session = context.rando.session
             val rides = session.rides.list()
@@ -71,14 +92,29 @@ class RideWidget : AppWidgetProvider() {
                 Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            val views = RemoteViews(context.packageName, R.layout.widget_week).apply {
+            fun views(layout: Int) = RemoteViews(context.packageName, layout).apply {
                 setTextViewText(R.id.widget_km, t.km)
                 setTextViewText(R.id.widget_detail, t.detail)
                 setTextViewText(R.id.widget_button, t.button)
                 setOnClickPendingIntent(R.id.widget_button, start)
                 setOnClickPendingIntent(R.id.widget_root, open)
             }
-            manager.updateAppWidget(ids, views)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // 桌面按实际大小挑：放得下两行就用完整的，否则用一行的
+                val views = RemoteViews(
+                    mapOf(
+                        SizeF(110f, 40f) to views(R.layout.widget_row),
+                        SizeF(110f, ROW_MAX_HEIGHT_DP.toFloat()) to views(R.layout.widget_week),
+                    ),
+                )
+                manager.updateAppWidget(ids, views)
+            } else {
+                // 竖屏时的高度是 MAX_HEIGHT
+                for (id in ids) {
+                    val height = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+                    manager.updateAppWidget(id, views(if (isRow(height)) R.layout.widget_row else R.layout.widget_week))
+                }
+            }
         }
     }
 }
