@@ -5,6 +5,7 @@ import com.personal.rando.routing.LatLon
 import com.personal.rando.places.Amenity
 import com.personal.rando.places.Hazard
 import com.personal.rando.ride.HeatPiece
+import com.personal.rando.places.PcnPiece
 import com.personal.rando.group.Teammate
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
@@ -267,6 +268,35 @@ object MapLayers {
             )
         )
     }
+
+    /** 公园连道：骑过的绿色，没骑过的灰色；[pieces] 为空就清掉 */
+    fun showPcn(style: Style, pieces: List<PcnPiece>) {
+        val id = "rando-pcn"
+        val source = style.getSourceAs<GeoJsonSource>(id) ?: GeoJsonSource(id).also { src ->
+            style.addSource(src)
+            style.addLayer(
+                LineLayer(id, id).withProperties(
+                    lineColor(Expression.toColor(Expression.get("color"))),
+                    lineWidth(Expression.toNumber(Expression.get("width"))),
+                    lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND),
+                )
+            )
+        }
+        source.setGeoJson(
+            FeatureCollection.fromFeatures(
+                // 骑过的画在上面
+                pieces.sortedBy { it.ridden }.map { piece ->
+                    Feature.fromGeometry(LineString.fromLngLats(piece.points.map { Point.fromLngLat(it.lon, it.lat) })).apply {
+                        addStringProperty("color", if (piece.ridden) PCN_RIDDEN else PCN_NOT_YET)
+                        addNumberProperty("width", if (piece.ridden) 4.5f else 3f)
+                    }
+                }
+            )
+        )
+    }
+
+    const val PCN_RIDDEN = "#1B7F3B"
+    const val PCN_NOT_YET = "#9E9E9E"
 
     fun showTrack(style: Style, track: List<LatLon>?) {
         style.getSourceAs<GeoJsonSource>(TRACK)?.setGeoJson(line(track))

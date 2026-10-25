@@ -62,6 +62,10 @@ import com.personal.rando.weather.AreaForecast
 import com.personal.rando.weather.RouteWeather
 import com.personal.rando.ui.SearchBar
 import com.personal.rando.ui.SegmentCard
+import com.personal.rando.ui.RiddenMap
+import com.personal.rando.ui.RiddenMode
+import com.personal.rando.places.PcnData
+import com.personal.rando.places.PcnCoverage
 import com.personal.rando.ui.SegmentInfo
 import com.personal.rando.ui.markLabel
 import com.personal.rando.routing.RoadKind
@@ -250,6 +254,12 @@ class UiScreenshotTest {
     private val now = 1_729_771_200_000
 
     @Test fun rideList() = shot("8_ride_list") { RideList(rides, {}, {}, {}, now) }
+
+    @Test fun pcnMap() = shot("8c_pcn_map") {
+        val loops = PcnData.parse(java.io.File("src/main/assets/pcn.json").readText())
+        val pcn = PcnCoverage.of(loops, rides.map { r -> r.points.map { it.location } } + listOf(loops[5].lines.take(80).flatten()))
+        RiddenMap(rides, {}, RiddenMode.PCN, {}, pcn) { Box(it) }
+    }
 
     @Test fun riddenMap() = shot("12_ridden_map") {
         RiddenMap(rides, {}) { m -> Image(mapImage("map_light.png"), null, m, contentScale = ContentScale.Crop) }

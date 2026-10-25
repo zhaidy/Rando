@@ -2,6 +2,10 @@ package com.personal.rando.ui
 
 import com.personal.rando.ride.HeatLevel
 import com.personal.rando.ride.RideHeat
+import com.personal.rando.ride.HeatPiece
+import com.personal.rando.places.PcnCoverage
+import com.personal.rando.places.PcnProgress
+import org.maplibre.android.maps.MapLibreMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -425,17 +429,32 @@ private fun TrackMap(ride: Ride, modifier: Modifier) {
 
 // ───────────────────────── 骑过的路 ─────────────────────────
 
-/** 所有记录的轨迹叠在一张地图上，看看哪些路骑过、哪些常骑 */
+/** 骑过的路有两种看法：常骑的路（热力），和全岛公园连道点亮了多少 */
+enum class RiddenMode(val label: String) { HEAT("常骑的路"), PCN("公园连道") }
+
+/** 所有记录的轨迹叠在一张地图上，看看哪些路骑过、哪些常骑；也可以看公园连道点亮了多少 */
 @Composable
 fun RiddenMapScreen(onBack: () -> Unit) {
-    val store = LocalContext.current.rando.session.rides
-    val rides by produceState<List<Ride>?>(null) { value = store.list() }
+    val app = LocalContext.current.rando
+    val rides by produceState<List<Ride>?>(null) { value = app.session.rides.list() }
     val list = rides ?: return
-    RiddenMap(list, onBack) { modifier -> RiddenTracks(list, modifier) }
+    var mode by rememberSaveable { mutableStateOf(RiddenMode.HEAT) }
+    // 对格子要点时间，放到后台算
+    val pcn by produceState<PcnProgress?>(null, list) {
+        value = withContext(Dispatchers.Default) { PcnCoverage.of(app.pcn, list.map { r -> r.points.map { it.location } }) }
+    }
+    RiddenMap(list, onBack, mode, { mode = it }, pcn) { modifier -> RiddenTracks(list, mode, pcn, modifier) }
 }
 
 @Composable
-fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier) -> Unit) {
+fun RiddenMap(
+    rides: List<Ride>,
+    onBack: () -> Unit,
+    mode: RiddenMode = RiddenMode.HEAT,
+    onMode: (RiddenMode) -> Unit = {},
+    pcn: PcnProgress? = null,
+    map: @Composable (Modifier) -> Unit,
+) {
     val haze = rememberHazeState()
     CompositionLocalProvider(LocalHazeState provides haze) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
@@ -449,24 +468,88 @@ fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier)
             ) {
                 GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Ink) }
                 Spacer(Modifier.width(10.dp))
-                GlassPanel(Modifier.weight(1f), shape = GlassShapes.Pill) {
-                    Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
-                        Text("骑过的路", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
-                            color = InkSoft,
-                            fontSize = 12.sp,
-                        )
-                        // 图例：每档一个色块
-                        Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            HeatLevel.entries.forEach { level ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(width = 14.dp, height = 4.dp).clip(GlassShapes.Pill).background(kindColor(level.color)))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(level.label, color = InkSoft, fontSize = 11.sp)
+                GlassPanel(Modifier.weight(1f), shape = GlassShapes.Card) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("骑过的路", Modifier.weight(1f), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            RiddenMode.entries.forEach { m ->
+                                val selected = m == mode
+                                Text(
+                                    m.label,
+                                    Modifier
+                                        .clip(GlassShapes.Pill)
+                                        .background(if (selected) RandoGreen else Color.Transparent)
+                                        .clickable { onMode(m) }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    color = if (selected) Color.White else Ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        when (mode) {
+                            RiddenMode.HEAT -> {
+                                Text(
+                                    "${rides.size} 次 · ${Format.distance(rides.sumOf { it.distanceMeters }.toInt())}",
+                                    color = InkSoft,
+                                    fontSize = 12.sp,
+                                )
+                                // 图例：每档一个色块
+                                Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    HeatLevel.entries.forEach { level -> LegendItem(level.color, level.label) }
+                                }
+                            }
+                            RiddenMode.PCN -> {
+                                Text(
+                                    pcn?.let { "全岛公园连道骑过 ${Format.share(it.share)} · ${Format.distance(it.riddenMeters.toInt())} / ${Format.distance(it.totalMeters.toInt())}" }
+                                        ?: "正在算…",
+                                    color = InkSoft,
+                                    fontSize = 12.sp,
+                                )
+                                Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    LegendItem(MapLayers.PCN_RIDDEN, "骑过")
+                                    LegendItem(MapLayers.PCN_NOT_YET, "还没骑")
                                 }
                             }
                         }
+                    }
+                }
+            }
+            if (mode == RiddenMode.PCN && pcn != null) {
+                LoopsCard(pcn, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: String, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(width = 14.dp, height = 4.dp).clip(GlassShapes.Pill).background(kindColor(color)))
+        Spacer(Modifier.width(4.dp))
+        Text(label, color = InkSoft, fontSize = 11.sp)
+    }
+}
+
+/** 6 个大环各骑了多少，骑得多的在前 */
+@Composable
+private fun LoopsCard(pcn: PcnProgress, modifier: Modifier) {
+    GlassPanel(modifier.fillMaxWidth(), shape = GlassShapes.Card) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            pcn.loops.sortedByDescending { it.share }.forEach { p ->
+                Column {
+                    Row {
+                        Text(p.loop.zh, Modifier.weight(1f), color = Ink, fontSize = 14.sp)
+                        Text("${Format.share(p.share)} · 共 ${Format.distance(p.totalMeters.toInt())}", color = InkSoft, fontSize = 13.sp)
+                    }
+                    Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(5.dp).clip(GlassShapes.Pill).background(Color(0x22000000))) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(p.share.toFloat().coerceIn(0f, 1f))
+                                .height(5.dp)
+                                .clip(GlassShapes.Pill)
+                                .background(kindColor(MapLayers.PCN_RIDDEN))
+                        )
                     }
                 }
             }
@@ -475,27 +558,42 @@ fun RiddenMap(rides: List<Ride>, onBack: () -> Unit, map: @Composable (Modifier)
 }
 
 @Composable
-private fun RiddenTracks(rides: List<Ride>, modifier: Modifier) {
+private fun RiddenTracks(rides: List<Ride>, mode: RiddenMode, pcn: PcnProgress?, modifier: Modifier) {
     val mapView = rememberMapView(textureMode = true)
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var style by remember { mutableStateOf<Style?>(null) }
+    val tracks = remember(rides) { rides.map { r -> r.points.map { it.location } } }
+    val heat by produceState<List<HeatPiece>?>(null, tracks) { value = withContext(Dispatchers.Default) { RideHeat.pieces(tracks) } }
     LaunchedEffect(mapView) {
         mapView.getMapAsync { m ->
             m.uiSettings.isRotateGesturesEnabled = false
             m.setStyle(MapLayers.STYLE_URL) { s ->
-                val tracks = rides.map { r -> r.points.map { it.location } }
-                // 数格子要点时间，放到后台算
-                scope.launch {
-                    val pieces = withContext(Dispatchers.Default) { RideHeat.pieces(tracks) }
-                    MapLayers.showRidden(s, pieces)
-                }
-                val all = tracks.flatten()
-                if (all.size >= 2) {
-                    val bounds = LatLngBounds.Builder().includes(all.map { LatLng(it.lat, it.lon) }).build()
-                    with(density) {
-                        m.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 40.dp.roundToPx(), 120.dp.roundToPx(), 40.dp.roundToPx(), 40.dp.roundToPx()))
-                    }
-                }
+                map = m
+                style = s
+            }
+        }
+    }
+    LaunchedEffect(style, mode, heat, pcn) {
+        val s = style ?: return@LaunchedEffect
+        val m = map ?: return@LaunchedEffect
+        val shown = when (mode) {
+            RiddenMode.HEAT -> {
+                MapLayers.showPcn(s, emptyList())
+                MapLayers.showRidden(s, heat.orEmpty())
+                tracks.flatten()
+            }
+            RiddenMode.PCN -> {
+                MapLayers.showRidden(s, emptyList())
+                MapLayers.showPcn(s, pcn?.pieces.orEmpty())
+                pcn?.pieces?.flatMap { it.points }.orEmpty()
+            }
+        }
+        if (shown.size >= 2) {
+            val bounds = LatLngBounds.Builder().includes(shown.map { LatLng(it.lat, it.lon) }).build()
+            val bottom = if (mode == RiddenMode.PCN) 300 else 40
+            with(density) {
+                m.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 40.dp.roundToPx(), 140.dp.roundToPx(), 40.dp.roundToPx(), bottom.dp.roundToPx()))
             }
         }
     }
