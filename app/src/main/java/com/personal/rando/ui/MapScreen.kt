@@ -535,7 +535,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                         onMap = { openRideView(false) },
                         onStop = finishRide,
                         teammates = teammatesText(teammates, fix?.location),
-                        walkie = walkieText(walkieState).takeIf { groupState != null },
+                        walkie = rideWalkieText(walkieState).takeIf { groupState != null },
                         onVoice = listen,
                         onMrt = mrtHome,
                         listening = (voiceState as? VoiceState.Listening)?.let { it.partial.ifEmpty { "请说…" } },
@@ -544,7 +544,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
                             val ok = vm.session.reportHazard(type)
                             Toast.makeText(context, if (ok) "已标记：${type.label}" else "还没定位到，标不了", Toast.LENGTH_SHORT).show()
                         },
-                    ) { RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, it, hazards) }
+                    ) { modifier, cover -> RideMap(navigation, fix, recording?.track?.map { t -> t.location }.orEmpty(), teammates, modifier, hazards, cover) }
                 }
                 Layer.NAVIGATION -> navigation?.let { nav ->
                     Box(Modifier.fillMaxSize()) {

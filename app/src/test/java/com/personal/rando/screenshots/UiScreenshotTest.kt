@@ -306,7 +306,7 @@ class UiScreenshotTest {
         )
         compose.setContent {
             RandoTheme {
-                RideView(nav, RecordingState(0, 2400.0, 600, currentSpeed = 5.4), {}, {}, map = { m ->
+                RideView(nav, RecordingState(0, 2400.0, 600, currentSpeed = 5.4), {}, {}, map = { m, _ ->
                     Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
                 })
             }
@@ -318,7 +318,7 @@ class UiScreenshotTest {
     @Test fun freeRide() {
         compose.setContent {
             RandoTheme {
-                RideView(null, RecordingState(System.currentTimeMillis() - 2_100_000, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, teammates = "队友：小红 120 米 · 阿明 1.4 公里", map = { m ->
+                RideView(null, RecordingState(System.currentTimeMillis() - 2_100_000, 8350.0, 1720, ascendMeters = 34.0, currentSpeed = 6.1), {}, {}, teammates = "队友：小红 120 米 · 阿明 1.4 公里", map = { m, _ ->
                     Image(mapImage("map_dark.png"), null, m, contentScale = ContentScale.Crop)
                 })
             }
