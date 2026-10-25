@@ -1,6 +1,13 @@
 package com.personal.rando.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,6 +119,7 @@ private const val CROSSING_SHOWN_METERS = 300.0
 /**
  * 骑行视图：黑底大字，只留骑车时要看的——下一个路口、当前速度、还剩多久多远。
  * 不导航只记录时（[navigation] 是 null）换成骑了多久、多远。
+ * 下面那块平时只留速度一行，点一下展开其余数据和按钮。
  * 地图倾斜跟着人走，只画道路轮廓
  */
 @Composable
@@ -149,6 +157,8 @@ fun RideView(
     val timeline = remember(navigation?.route) { navigation?.route?.let(::RouteTimeline) }
     val along = progress?.alongMeters ?: 0.0
     val haze = rememberHazeState()
+    // 下面那块平时只留速度那一行，点一下才展开其余数据和按钮
+    var expanded by rememberSaveable { mutableStateOf(false) }
     FullBrightness()
     val density = LocalDensity.current
     // 上面那块的下沿、下面那块的上沿、整个屏幕的高，都是像素
@@ -168,12 +178,12 @@ fun RideView(
                 Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(10.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .onGloballyPositioned { topEdge = it.boundsInParent().bottom.toInt() },
                 shape = GlassShapes.Card,
                 tone = PANEL,
             ) {
-                Column(Modifier.padding(vertical = 14.dp)) {
+                Column(Modifier.padding(vertical = 10.dp)) {
                     Box(Modifier.fillMaxWidth()) {
                         if (navigation != null) {
                             RideTurn(navigation, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
@@ -203,13 +213,26 @@ fun RideView(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(10.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .onGloballyPositioned { bottomEdge = it.boundsInParent().top.toInt() },
                 tone = PANEL,
             ) {
-                Column(Modifier.padding(vertical = 14.dp)) {
-                    timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) }
-                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier
+                        .animateContentSize(Motion.smooth())
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { expanded = !expanded }
+                        .padding(top = 6.dp, bottom = 10.dp),
+                ) {
+                    // 顶上一道小横条，提示能点开
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.35f))
+                    )
+                    timeline?.let { RouteStrip(it, along, Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 6.dp)) }
+                    Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (navigation != null) {
                             BigStat(progress?.let { (it.remainingSeconds + 59) / 60 }?.toString() ?: "--", "剩余 分", Modifier.weight(1f))
                         } else {
@@ -223,8 +246,8 @@ fun RideView(
                                         .togetherWith(slideOutVertically(Motion.smooth()) { -it / 3 } + fadeOut(tween(100)))
                                 },
                                 label = "speed",
-                            ) { v -> Text(v, color = Color.White, fontSize = 68.sp, fontWeight = FontWeight.Medium) }
-                            Text("公里/时", color = DIM, fontSize = 14.sp)
+                            ) { v -> Text(v, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Medium, lineHeight = 60.sp) }
+                            Text("公里/时", color = DIM, fontSize = 13.sp)
                         }
                         if (navigation != null) {
                             BigStat(
@@ -240,7 +263,9 @@ fun RideView(
                             )
                         }
                     }
-                    recording?.let { MoreStats(it, navigating = navigation != null, weightKg, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp)) }
+                    AnimatedVisibility(expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    Column {
+                    recording?.let { MoreStats(it, navigating = navigation != null, weightKg, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp)) }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -259,6 +284,8 @@ fun RideView(
                         GlassButton(onClick = onStop, modifier = Modifier.weight(1f), tone = GlassTone.Tinted(RandoRed)) {
                             Text("结束", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
+                    }
+                    }
                     }
                 }
             }
@@ -458,7 +485,7 @@ private fun RideMessage(text: String) {
 @Composable
 private fun BigStat(value: String, label: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Medium)
+        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Medium)
         Text(label, color = DIM, fontSize = 13.sp)
     }
 }
@@ -559,16 +586,21 @@ private const val AMENITY_SHOWN_METERS = 5000.0
 /** 不导航时顶上那块：在记录，骑了多久 */
 @Composable
 private fun FreeRide(recording: RecordingState?, modifier: Modifier) {
-    Column(modifier) {
-        RideMessage("自由骑行")
+    // 只占一行：骑了多远、多久下面那块已经有了
+    Row(modifier, verticalAlignment = Alignment.Bottom) {
+        Text("自由骑行", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.width(10.dp))
         Text(
             recording?.let {
-                "已骑 ${Format.distance(it.distanceMeters.toInt())} · 爬升 ${it.ascendMeters.toInt()} 米" +
+                "爬升 ${it.ascendMeters.toInt()} 米" +
                     // 停下来不算时间，告诉人一声
                     if (it.movingSeconds > 0 && it.currentSpeed == 0.0) " · 已自动暂停" else ""
             } ?: "记录中",
             color = DIM,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(bottom = 2.dp),
         )
     }
 }

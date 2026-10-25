@@ -231,7 +231,7 @@ fun RideWalkieRow(
     onMode: (WalkieMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pad = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    val pad = PaddingValues(horizontal = 12.dp, vertical = 5.dp)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
             Modifier.padding(end = 2.dp).size(10.dp).clip(CircleShape).background(
