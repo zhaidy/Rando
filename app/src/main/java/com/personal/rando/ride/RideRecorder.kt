@@ -31,6 +31,12 @@ class RideRecorder(private val startedAt: Long) {
     private var altitudeRef: Double? = null
     /** 上一个收下的点的定位精度 */
     private var lastAccuracy: Float? = null
+    private val teammates = linkedSetOf<String>()
+
+    /** 跟 [name] 一起骑过（TA 在身边出现过） */
+    fun rodeWith(name: String) {
+        if (name.isNotBlank()) teammates += name
+    }
 
     /** 收下这个定位就返回 true */
     fun add(fix: Fix): Boolean {
@@ -106,6 +112,7 @@ class RideRecorder(private val startedAt: Long) {
         ascendMeters = ascend,
         maxSpeed = maxSpeed,
         points = points.toList(),
+        teammates = teammates.toList(),
     )
 
     companion object {

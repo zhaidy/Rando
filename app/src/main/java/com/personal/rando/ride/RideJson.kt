@@ -15,6 +15,7 @@ object RideJson {
         put("moving", ride.movingSeconds)
         put("ascend", ride.ascendMeters)
         put("maxSpeed", ride.maxSpeed)
+        if (ride.teammates.isNotEmpty()) put("teammates", JSONArray(ride.teammates))
         put("points", JSONArray().apply {
             ride.points.forEach { p ->
                 put(JSONArray().apply {
@@ -37,6 +38,7 @@ object RideJson {
             movingSeconds = o.getLong("moving"),
             ascendMeters = o.getDouble("ascend"),
             maxSpeed = o.getDouble("maxSpeed"),
+            teammates = o.optJSONArray("teammates")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
             points = (0 until points.length()).map {
                 val p = points.getJSONArray(it)
                 TrackPoint(

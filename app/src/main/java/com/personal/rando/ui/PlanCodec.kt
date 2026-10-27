@@ -21,6 +21,7 @@ object PlanCodec {
         put("profile", s.prefs.profile.name)
         put("avoidRoads", s.prefs.avoidRoads)
         put("avoidBridges", s.prefs.avoidBridges)
+        put("avoidCrossings", s.prefs.avoidCrossings)
     }.toString()
 
     /** 读出来放进 [base]；读不了就原样返回 */
@@ -36,6 +37,7 @@ object PlanCodec {
                 profile = BikeProfile.entries.firstOrNull { it.name == json.optString("profile") } ?: base.prefs.profile,
                 avoidRoads = json.optBoolean("avoidRoads", base.prefs.avoidRoads),
                 avoidBridges = json.optBoolean("avoidBridges", base.prefs.avoidBridges),
+                avoidCrossings = json.optBoolean("avoidCrossings", base.prefs.avoidCrossings),
             ),
         )
     } catch (_: Exception) {

@@ -52,9 +52,10 @@ data class SharedRoute(
     val profile: BikeProfile,
     val avoidRoads: Boolean,
     val avoidBridges: Boolean,
+    val avoidCrossings: Boolean = false,
 ) {
     /** 跟着骑时用的配置：路线配置照分享的，预计时间还按我自己的速度 */
-    fun prefs(mine: RoutePrefs): RoutePrefs = mine.copy(profile = profile, avoidRoads = avoidRoads, avoidBridges = avoidBridges)
+    fun prefs(mine: RoutePrefs): RoutePrefs = mine.copy(profile = profile, avoidRoads = avoidRoads, avoidBridges = avoidBridges, avoidCrossings = avoidCrossings)
 }
 
 /** 队友可能摔车了：在哪儿、什么时候 */
@@ -124,6 +125,7 @@ object GroupProtocol {
         put("profile", r.profile.name)
         put("avoidRoads", r.avoidRoads)
         put("avoidBridges", r.avoidBridges)
+        put("avoidCrossings", r.avoidCrossings)
         put("stops", JSONArray().apply { r.stops.forEach { put(JSONArray().put(it.lat).put(it.lon)) } })
     }.toString()
 
@@ -177,6 +179,7 @@ object GroupProtocol {
                         profile = BikeProfile.entries.firstOrNull { it.name == o.optString("profile") } ?: BikeProfile.PCN,
                         avoidRoads = o.optBoolean("avoidRoads"),
                         avoidBridges = o.optBoolean("avoidBridges"),
+                        avoidCrossings = o.optBoolean("avoidCrossings"),
                     )
                 )
             }

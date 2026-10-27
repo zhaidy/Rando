@@ -424,6 +424,7 @@ fun sharedRouteText(route: SharedRoute): String {
         route.profile.label,
         tr("不上马路", "No roads").takeIf { route.avoidRoads },
         tr("不走天桥", "No overhead bridges").takeIf { route.avoidBridges },
+        tr("少过马路", "Fewer crossings").takeIf { route.avoidCrossings },
     ).joinToString(tr("、", ", "))
     // 标题是队友手机按 TA 的语言起的，两种都认
     val loopOrBack = route.title.startsWith("骑一圈") || route.title == "原路返回" ||

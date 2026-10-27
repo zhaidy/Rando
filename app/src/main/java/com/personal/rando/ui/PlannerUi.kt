@@ -346,10 +346,14 @@ fun PrefsRow(prefs: RoutePrefs, onChange: (RoutePrefs) -> Unit, modifier: Modifi
     if (dialog) PcnPrefsDialog(prefs, onSave = { dialog = false; if (it != prefs) onChange(it) }, onDismiss = { dialog = false })
 }
 
-/** 「偏好」胶囊：打开了「不上马路」「不走天桥」时直接写出来，免得忘了开着 */
+/** 「偏好」胶囊：打开了「不上马路」「不走天桥」「少过马路」时直接写出来，免得忘了开着 */
 @Composable
 private fun PcnPrefsChip(prefs: RoutePrefs, onClick: () -> Unit) {
-    val avoiding = listOfNotNull(tr("不上马路", "No roads").takeIf { prefs.avoidRoads }, tr("不走天桥", "No overpasses").takeIf { prefs.avoidBridges })
+    val avoiding = listOfNotNull(
+        tr("不上马路", "No roads").takeIf { prefs.avoidRoads },
+        tr("不走天桥", "No overpasses").takeIf { prefs.avoidBridges },
+        tr("少过马路", "Fewer crossings").takeIf { prefs.avoidCrossings },
+    )
     val on = avoiding.isNotEmpty()
     GlassButton(
         onClick = onClick,
@@ -374,6 +378,7 @@ fun PcnPrefsDialog(prefs: RoutePrefs, onSave: (RoutePrefs) -> Unit, onDismiss: (
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PrefSwitch(tr("不上马路", "Avoid roads"), tr("尽量避开马路，有人行道的走人行道", "Keep off roads where possible; use pavements where there are any"), edited.avoidRoads) { edited = edited.copy(avoidRoads = it) }
                 PrefSwitch(tr("不走天桥", "Avoid overpasses"), tr("绕开人行天桥，公园连道、自行车道上的桥照走", "Go around pedestrian overpasses; bridges on park connectors and cycle paths are fine"), edited.avoidBridges) { edited = edited.copy(avoidBridges = it) }
+                PrefSwitch(tr("少过马路", "Fewer crossings"), tr("宁可绕一点，少过几次马路", "Take a slightly longer route that crosses fewer roads"), edited.avoidCrossings) { edited = edited.copy(avoidCrossings = it) }
                 PrefSwitch(tr("中午挑有树荫的路", "Shade at midday"), tr("11 点到 4 点算路时，宁可绕一点也走树多的路", "Between 11am and 4pm, take a slightly longer route under more trees"), edited.shadeAtNoon) { edited = edited.copy(shadeAtNoon = it) }
                 PrefSwitch(tr("天黑挑有路灯的路", "Lit paths after dark"), tr("天黑或快黑时，少走没灯的小路", "After or near dark, avoid unlit paths"), edited.litAtNight) { edited = edited.copy(litAtNight = it) }
             }

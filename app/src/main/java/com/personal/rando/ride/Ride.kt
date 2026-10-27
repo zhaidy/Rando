@@ -19,6 +19,8 @@ data class Ride(
     /** 米/秒 */
     val maxSpeed: Double,
     val points: List<TrackPoint>,
+    /** 一起骑的队友名字（骑的时候在身边出现过的），按先后；以前的记录没有 */
+    val teammates: List<String> = emptyList(),
 ) {
     val startedAt: Long get() = id
 

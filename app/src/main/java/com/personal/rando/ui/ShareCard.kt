@@ -61,6 +61,9 @@ object ShareCard {
     /** 深色（默认，快拍里更显眼）还是浅色；预览里能切 */
     @Volatile var dark: Boolean = true
 
+    /** 队友名字不写出来，只说几位；预览里能切 */
+    @Volatile var hideTeammates: Boolean = false
+
     /**
      * 画好的分享图：先给人看一眼，再分享或者存到相册。
      * [privacy] 是预览里开关的名字：收藏了家是「隐藏家附近」，没收藏是剪掉起点终点
@@ -260,7 +263,7 @@ object ShareCard {
     fun draw(map: Bitmap?, trackPx: List<List<PointF>>, ride: Ride, record: String?, pins: List<Pin> = emptyList()): Bitmap =
         drawCard(
             map, listOf(trackPx), ride.title, DATE.format(Date(ride.startedAt)), record,
-            ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, pins,
+            ride.distanceMeters, ride.movingSeconds, ride.ascendMeters, pins, teammatesLine(ride.teammates, hideTeammates),
         )
 
     /** 同一天几次骑行合在一张图上：标题写骑了几次，下面是合计；以前某天的不说「今天」 */
@@ -287,7 +290,19 @@ object ShareCard {
         return drawCard(
             map, tracksPx, title, DAY.format(Date(first.startedAt)), note,
             rides.sumOf { it.distanceMeters }, rides.sumOf { it.movingSeconds }, rides.sumOf { it.ascendMeters }, pins,
+            teammatesLine(rides.flatMap { it.teammates }.distinct(), hideTeammates),
         )
+    }
+
+    /** 「和 爱妃、小王 一起骑」；[hide] 时只说几位；没跟队友骑是 null */
+    fun teammatesLine(names: List<String>, hide: Boolean): String? = when {
+        names.isEmpty() -> null
+        hide -> tr("和 ${names.size} 位队友一起骑", if (names.size == 1) "With a teammate" else "With ${names.size} teammates")
+        names.size > MAX_NAMES -> {
+            val shown = names.take(MAX_NAMES)
+            tr("和 ${shown.joinToString("、")} 等 ${names.size} 人一起骑", "With ${shown.joinToString(", ")} and ${names.size - MAX_NAMES} more")
+        }
+        else -> tr("和 ${names.joinToString("、")} 一起骑", "With ${names.joinToString(", ")}")
     }
 
     /** 画整张图；[note] 是标题下面绿色的那行（和以前比、几点骑的） */
@@ -301,6 +316,8 @@ object ShareCard {
         movingSeconds: Long,
         ascendMeters: Double,
         pins: List<Pin> = emptyList(),
+        /** 标题下面灰色的一行：跟谁一起骑的 */
+        mates: String? = null,
     ): Bitmap {
         val dark = dark
         val bg = if (dark) Color.parseColor("#0E1116") else Color.parseColor("#F3F1EC")
@@ -342,6 +359,10 @@ object ShareCard {
         if (note != null) {
             y += 64f
             c.drawText(note, left, y, text(36f, green, bold).also { fitWidth(it, note, WIDTH - 2 * left) })
+        }
+        if (mates != null) {
+            y += 56f
+            c.drawText(mates, left, y, text(34f, soft, bold).also { fitWidth(it, mates, WIDTH - 2 * left) })
         }
         // 大号距离：橙到黄的渐变字
         val distance = Format.distance(meters.toInt())
@@ -478,6 +499,8 @@ object ShareCard {
     private const val SNAPSHOT_TIMEOUT_MS = 15_000L
     /** 轨迹画在地图上面这么高的一块里，下面渐隐的地方留给字 */
     private const val TRACK_HEIGHT = 1060f
+    /** 一起骑的队友最多写几个名字，多了说「等几人」 */
+    private const val MAX_NAMES = 3
     /** 轨迹、照片从这儿往下画，上面留给快拍的头像和那行小字 */
     private const val TRACK_TOP = 340f
 }

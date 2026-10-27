@@ -88,6 +88,7 @@ private fun describe(option: RouteOption): String {
         p.profile.label,
         tr("不上马路", "no roads").takeIf { p.avoidRoads },
         tr("不走天桥", "no overhead bridges").takeIf { p.avoidBridges },
+        tr("少过马路", "fewer crossings").takeIf { p.avoidCrossings },
     ).joinToString(tr("、", ", "))
 }
 
