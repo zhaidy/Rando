@@ -112,6 +112,7 @@ class RideSession(
     val location: StateFlow<LatLon?> = _location
 
     private val _fix = MutableStateFlow<Fix?>(null)
+    private val fixFilter = FixFilter()
     /** 最近一次定位，带速度和方向；骑行视图的地图拿它画蓝点 */
     val fix: StateFlow<Fix?> = _fix
 
@@ -213,15 +214,8 @@ class RideSession(
         }
     }
 
-    fun onFix(fix: Fix) {
-        // GPS 和网络定位一起听：有了准的点，几秒内来的不准的（网络定位）就不要，免得蓝点来回跳；
-        // GPS 自己从 3 米变到 7 米这种还是准的，照样用，不然进树荫底下好几秒都不更新
-        val last = _fix.value
-        if (last != null && fix.accuracy != null && last.accuracy != null &&
-            fix.accuracy > NAV_MAX_ACCURACY_METERS && fix.accuracy > last.accuracy * 2 && fix.time - last.time < KEEP_PRECISE_MS
-        ) {
-            return
-        }
+    fun onFix(raw: Fix) {
+        val fix = fixFilter.accept(raw) ?: return
         _location.value = fix.location
         _fix.value = fix
         // 网络定位误差上百米，导航时会被当成骑偏了
@@ -672,8 +666,6 @@ class RideSession(
         const val WEATHER_INTERVAL_MS = 10 * 60_000L
         /** 下雨时前方这么远以内有地方躲才说 */
         const val SHELTER_MENTION_METERS = 1_000.0
-        /** 准的定位在这么久以内，不准的不要 */
-        const val KEEP_PRECISE_MS = 10_000L
         /** 骑到离途经点这么近就算经过了 */
         const val VIA_PASSED_METERS = 50.0
     }
