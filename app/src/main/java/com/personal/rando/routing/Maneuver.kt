@@ -1,6 +1,7 @@
 package com.personal.rando.routing
 
 import com.personal.rando.i18n.tr
+import com.personal.rando.nav.Geo
 
 /** 路线上第 pointIndex 个坐标处要做的动作 */
 data class Maneuver(val pointIndex: Int, val turn: Turn, val exit: Int = 0, val angle: Int = 0) {
@@ -38,8 +39,51 @@ enum class Turn(val code: Int, private val zh: String, private val en: String, v
     companion object {
         /** 偏离路线（13）、终点（100）这类不是路口动作的代码不要 */
         fun fromCode(code: Int): Turn? = entries.firstOrNull { it.code == code }
+
+        /** 按转角（左负右正）定动作，分界跟 BRouter 一样 */
+        fun fromAngle(angle: Int): Turn = when {
+            angle < -159 || angle > 159 -> U_TURN
+            angle < -135 -> SHARP_LEFT
+            angle < -45 -> LEFT
+            angle < -15 -> SLIGHT_LEFT
+            angle <= 15 -> STRAIGHT
+            angle <= 45 -> SLIGHT_RIGHT
+            angle <= 135 -> RIGHT
+            else -> SHARP_RIGHT
+        }
     }
 }
+
+/**
+ * BRouter 在错位路口、过马路的斜道上会连着给好几个挨得很近的提示，比如「稍向右」，5 米后「向左急转」：
+ * 人实际是左转，可先播的是「稍向右」。挨得这么近的合成一个，按加起来的转角说；环岛不合
+ */
+internal fun mergeClose(maneuvers: List<Maneuver>, points: List<LatLon>, meters: Double = MERGE_METERS): List<Maneuver> {
+    if (maneuvers.size < 2) return maneuvers
+    val cumulative = DoubleArray(points.size).also { acc ->
+        for (i in 1 until points.size) acc[i] = acc[i - 1] + Geo.distance(points[i - 1], points[i])
+    }
+    val groups = mutableListOf<MutableList<Maneuver>>()
+    for (m in maneuvers) {
+        val last = groups.lastOrNull()?.last()
+        if (last != null && !last.turn.isRoundabout && !m.turn.isRoundabout && cumulative[m.pointIndex] - cumulative[last.pointIndex] <= meters) {
+            groups.last().add(m)
+        } else {
+            groups.add(mutableListOf(m))
+        }
+    }
+    return groups.map { group ->
+        // 只有一个真要拐的（其余是「直行」）就用它，靠左走、出口这些说法留着
+        val turns = group.filter { it.turn != Turn.STRAIGHT }
+        if (turns.size <= 1) return@map turns.firstOrNull() ?: group.first()
+        // 掉头加起来会超过 180°，折回 -180..180
+        val angle = ((group.sumOf { it.angle } % 360 + 540) % 360) - 180
+        Maneuver(pointIndex = group.first().pointIndex, turn = Turn.fromAngle(angle), angle = angle)
+    }
+}
+
+/** 两个提示离这么近（米）就合成一个 */
+internal const val MERGE_METERS = 25.0
 
 /** 英文序数：1st、2nd、3rd、11th、22nd */
 internal fun ordinal(n: Int): String {
