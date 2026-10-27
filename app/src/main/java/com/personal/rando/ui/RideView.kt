@@ -918,4 +918,4 @@ fun RideMap(
 private const val RIDE_ZOOM = 17.5
 private const val RIDE_TILT = 55.0
 /** 拖开地图以后，在骑并且这么久没碰就自动跟回来 */
-private const val RIDE_RECENTER_MS = 7_000L
+private const val RIDE_RECENTER_MS = 4_000L
