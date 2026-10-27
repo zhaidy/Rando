@@ -24,7 +24,7 @@ object RouteParser {
             durationSeconds = props.intOf("total-time"),
             ascendMeters = props.intOf("filtered ascend"),
             segments = props.optJSONArray("messages")?.let { segments(it, points) }.orEmpty(),
-            maneuvers = props.optJSONArray("voicehints")?.let { maneuvers(it, points.size) }.orEmpty(),
+            maneuvers = props.optJSONArray("voicehints")?.let { mergeClose(maneuvers(it, points.size), points) }.orEmpty(),
             elevations = elevations,
         )
     }
