@@ -390,6 +390,8 @@ class UiScreenshotTest {
 
     @Test fun rideList() = shot("8_ride_list") { RideList(rides, {}, {}, {}, now) }
 
+    @Test fun rideCalendar() = shot("8e_ride_calendar") { RideList(rides, {}, {}, {}, now, startInCalendar = true) }
+
     @Test fun review() = shot("8d_review") {
         val r = Reviews.of(rides, ReviewSpan.MONTH, now).copy(newPcnMeters = 12_300.0, previousMeters = 30_000.0)
         ReviewPage(r, ReviewSpan.MONTH, {}, {}, {}, {}, {})

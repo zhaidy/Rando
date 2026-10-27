@@ -60,6 +60,47 @@ object RideStats {
         return rides.filter { it.startedAt in start.timeInMillis until end.timeInMillis }.sortedBy { it.startedAt }
     }
 
+    /** 那天零点（毫秒） */
+    fun dayStart(millis: Long, zone: TimeZone = TimeZone.getDefault()): Long =
+        Calendar.getInstance(zone).apply {
+            timeInMillis = millis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+    /** 按开始那天分组：那天零点 → 那天的骑行（先后排） */
+    fun byDay(rides: List<Ride>, zone: TimeZone = TimeZone.getDefault()): Map<Long, List<Ride>> =
+        rides.groupBy { dayStart(it.startedAt, zone) }.mapValues { (_, list) -> list.sortedBy { it.startedAt } }
+
+    /**
+     * 日历上 [month] 那个月（任意一天的毫秒）的格子：一行七天、周一开头，每格是那天零点，
+     * 月初之前、月底之后空着的是 null
+     */
+    fun monthGrid(month: Long, zone: TimeZone = TimeZone.getDefault()): List<Long?> {
+        val first = Calendar.getInstance(zone).apply {
+            timeInMillis = dayStart(month, zone)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val days = first.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        val cells = MutableList<Long?>(lead) { null }
+        repeat(days) { d ->
+            cells += (first.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, d) }.timeInMillis
+        }
+        while (cells.size % 7 != 0) cells += null
+        return cells
+    }
+
+    /** [month] 所在月往后挪 [by] 个月，返回那个月一号零点 */
+    fun shiftMonth(month: Long, by: Int, zone: TimeZone = TimeZone.getDefault()): Long =
+        Calendar.getInstance(zone).apply {
+            timeInMillis = dayStart(month, zone)
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, by)
+        }.timeInMillis
+
     /** [now] 所在的那周（月）往前数 [back] 个的开始时间；back 为 -1 是下一个 */
     private fun startOf(now: Long, period: Period, zone: TimeZone, back: Int): Long =
         Calendar.getInstance(zone).apply {

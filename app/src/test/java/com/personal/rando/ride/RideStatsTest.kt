@@ -54,4 +54,26 @@ class RideStatsTest {
         )
         assertEquals(listOf(4.0, 6.0), RideStats.today(rides, now, zone).map { it.distanceMeters / 1000 })
     }
+
+    @Test
+    fun `日历：周一开头，月初前面空着，凑满整行`() {
+        // 2026 年 10 月 1 日是周四：前面空三格；31 天 + 3 = 34，凑到 35
+        val cells = RideStats.monthGrid(at(2026, 10, 20), zone)
+        assertEquals(35, cells.size)
+        assertEquals(listOf(null, null, null), cells.take(3))
+        assertEquals(at(2026, 10, 1, hour = 0), cells[3])
+        assertEquals(at(2026, 10, 31, hour = 0), cells[33])
+        assertEquals(null, cells[34])
+        assertEquals(at(2026, 9, 1, hour = 0), RideStats.shiftMonth(at(2026, 10, 20), -1, zone))
+    }
+
+    @Test
+    fun `按开始那天分组，半夜后骑完的算开始那天`() {
+        val late = ride(at(2026, 10, 25, hour = 23), 10.0)
+        val morning = ride(at(2026, 10, 26, hour = 7), 5.0)
+        val evening = ride(at(2026, 10, 26, hour = 18), 8.0)
+        val days = RideStats.byDay(listOf(evening, late, morning), zone)
+        assertEquals(listOf(late), days[at(2026, 10, 25, hour = 0)])
+        assertEquals(listOf(morning, evening), days[at(2026, 10, 26, hour = 0)])
+    }
 }

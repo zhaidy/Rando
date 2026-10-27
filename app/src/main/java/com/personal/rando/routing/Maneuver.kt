@@ -2,9 +2,13 @@ package com.personal.rando.routing
 
 import com.personal.rando.i18n.tr
 import com.personal.rando.nav.Geo
+import kotlin.math.abs
 
 /** 路线上第 pointIndex 个坐标处要做的动作 */
 data class Maneuver(val pointIndex: Int, val turn: Turn, val exit: Int = 0, val angle: Int = 0) {
+
+    /** 往左拐的：看 BRouter 给的转角，没有就看动作 */
+    val isLeft: Boolean get() = if (angle != 0) angle < 0 else "LEFT" in turn.name
 
     /** 播报和显示用的说法，比如「左转」「进入环岛，从第 2 个出口出」 */
     val text: String
@@ -55,13 +59,30 @@ enum class Turn(val code: Int, private val zh: String, private val en: String, v
 }
 
 /**
- * BRouter 在错位路口、过马路的斜道上会连着给好几个挨得很近的提示，比如「稍向右」，5 米后「向左急转」：
- * 人实际是左转，可先播的是「稍向右」。挨得这么近的合成一个，按加起来的转角说；环岛不合
+ * BRouter 在错位路口、过马路的斜道上会连着给好几个挨得很近的提示，比如「稍向右」，5 米后「向左急转」；
+ * 还会把明明拐了大弯的地方标成「直行」（过马路中间的安全岛上先右后左，标成直行、右转、左转）。
+ * 挨得这么近的合成一个，往哪拐看路线本身的形状：进来前那 [LOOK_METERS] 米朝哪、出去后那 [LOOK_METERS] 米朝哪。
+ * 只有一个真拐弯、形状也是往这边拐的，照用 BRouter 的说法（「靠左走」「出口」这些留着）；环岛不合
  */
 internal fun mergeClose(maneuvers: List<Maneuver>, points: List<LatLon>, meters: Double = MERGE_METERS): List<Maneuver> {
-    if (maneuvers.size < 2) return maneuvers
+    if (maneuvers.isEmpty() || points.size < 2) return maneuvers
     val cumulative = DoubleArray(points.size).also { acc ->
         for (i in 1 until points.size) acc[i] = acc[i - 1] + Geo.distance(points[i - 1], points[i])
+    }
+    fun pointAt(m: Double): LatLon {
+        val at = m.coerceIn(0.0, cumulative.last())
+        val i = (1 until points.size).firstOrNull { cumulative[it] >= at } ?: return points.last()
+        val length = cumulative[i] - cumulative[i - 1]
+        val t = if (length > 0) (at - cumulative[i - 1]) / length else 0.0
+        val a = points[i - 1]
+        val b = points[i]
+        return LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
+    }
+    /** 从 [from] 米进来、[to] 米出去，路线拐了多少度（左负右正） */
+    fun shapeAngle(from: Double, to: Double): Int {
+        val entry = Geo.bearing(pointAt(from - LOOK_METERS), pointAt(from))
+        val exit = Geo.bearing(pointAt(to), pointAt(to + LOOK_METERS))
+        return (((exit - entry) % 360 + 540) % 360 - 180).toInt()
     }
     val groups = mutableListOf<MutableList<Maneuver>>()
     for (m in maneuvers) {
@@ -73,17 +94,27 @@ internal fun mergeClose(maneuvers: List<Maneuver>, points: List<LatLon>, meters:
         }
     }
     return groups.map { group ->
-        // 只有一个真要拐的（其余是「直行」）就用它，靠左走、出口这些说法留着
+        val first = group.first()
+        if (first.turn.isRoundabout) return@map first
+        val angle = shapeAngle(cumulative[first.pointIndex], cumulative[group.last().pointIndex])
         val turns = group.filter { it.turn != Turn.STRAIGHT }
-        if (turns.size <= 1) return@map turns.firstOrNull() ?: group.first()
-        // 掉头加起来会超过 180°，折回 -180..180
-        val angle = ((group.sumOf { it.angle } % 360 + 540) % 360) - 180
-        Maneuver(pointIndex = group.first().pointIndex, turn = Turn.fromAngle(angle), angle = angle)
+        val only = turns.singleOrNull()
+        when {
+            only != null && (abs(angle) <= SAME_WAY_DEGREES || (angle < 0) == only.isLeft) -> only
+            turns.isEmpty() && abs(angle) <= STRAIGHT_DEGREES -> first
+            else -> Maneuver(pointIndex = first.pointIndex, turn = Turn.fromAngle(angle), angle = angle)
+        }
     }
 }
 
 /** 两个提示离这么近（米）就合成一个 */
 internal const val MERGE_METERS = 25.0
+/** 看路线形状时往前、往后各看这么远（米）；BRouter 标的点比实际拐弯早几米，太短会看错 */
+private const val LOOK_METERS = 20.0
+/** 形状拐得比这小（度），不跟 BRouter 唯一那个拐弯的方向较真 */
+private const val SAME_WAY_DEGREES = 20
+/** 标成「直行」的，形状拐得比这大（度）才改成拐弯 */
+private const val STRAIGHT_DEGREES = 45
 
 /** 英文序数：1st、2nd、3rd、11th、22nd */
 internal fun ordinal(n: Int): String {
