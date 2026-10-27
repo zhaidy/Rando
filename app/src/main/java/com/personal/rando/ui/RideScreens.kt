@@ -50,6 +50,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -126,10 +128,19 @@ fun RideList(
     onRiddenMap: () -> Unit = {},
     now: Long = System.currentTimeMillis(),
     onReview: () -> Unit = {},
-    /** 分享今天骑的几次；今天没骑就不显示按钮 */
+    /** 分享一天骑的几次：顶上「分享今天」（今天没骑就不显示），日历里选中的那天 */
     onShareToday: (List<Ride>) -> Unit = {},
+    /** 一打开就是日历（截图用） */
+    startInCalendar: Boolean = false,
 ) {
     val today = remember(rides, now) { rides?.let { RideStats.today(it, now) }.orEmpty() }
+    // 列表 / 日历；打开日历时翻到最近骑的那天
+    val byDay = remember(rides) { rides?.let { RideStats.byDay(it) }.orEmpty() }
+    var calendar by rememberSaveable { mutableStateOf(startInCalendar) }
+    var month by rememberSaveable { mutableStateOf(now) }
+    var selected by rememberSaveable { mutableStateOf<Long?>(null) }
+    val openLatest = { byDay.keys.maxOrNull()?.let { month = it; selected = it } }
+    LaunchedEffect(byDay.isNotEmpty()) { if (calendar && selected == null) openLatest() }
     GlassPanel(
         Modifier
             .fillMaxSize()
@@ -142,6 +153,19 @@ fun RideList(
                 IconTap(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("返回", "Back"), tint = Ink) }
                 Spacer(Modifier.width(4.dp))
                 Text(tr("骑行记录", "Rides"), Modifier.weight(1f), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                if (!rides.isNullOrEmpty()) {
+                    IconTap(onClick = {
+                        calendar = !calendar
+                        if (calendar && selected == null) openLatest()
+                    }) {
+                        Icon(
+                            if (calendar) Icons.AutoMirrored.Filled.List else Icons.Default.DateRange,
+                            contentDescription = if (calendar) tr("列表", "List") else tr("日历", "Calendar"),
+                            tint = Ink,
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (today.isNotEmpty()) {
                     GlassButton(onClick = { onShareToday(today) }, tone = GlassTone.Tinted(RandoAccent), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
                         Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -166,8 +190,19 @@ fun RideList(
                     contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    item { StatsCard(rides, now, onRiddenMap, onReview) }
-                    itemsIndexed(rides, key = { _, r -> r.id }) { i, ride -> RideRow(ride, i) { onOpen(ride.id) } }
+                    if (calendar) {
+                        item(key = "calendar") {
+                            RideCalendar(byDay, month, selected, now, onMonth = { month = it; selected = null }, onSelect = { selected = it })
+                        }
+                        val day = selected?.let { byDay[it] }
+                        if (day != null) {
+                            item(key = "day") { RideDayHeader(selected!!, day) { onShareToday(day) } }
+                            itemsIndexed(day, key = { _, r -> r.id }) { i, ride -> RideRow(ride, i) { onOpen(ride.id) } }
+                        }
+                    } else {
+                        item { StatsCard(rides, now, onRiddenMap, onReview) }
+                        itemsIndexed(rides, key = { _, r -> r.id }) { i, ride -> RideRow(ride, i) { onOpen(ride.id) } }
+                    }
                 }
             }
         }
@@ -278,7 +313,7 @@ private fun TotalStat(value: String, label: String) {
 
 /** 一条记录：错开一点时间从下面浮上来 */
 @Composable
-private fun RideRow(ride: Ride, index: Int, onClick: () -> Unit) {
+internal fun RideRow(ride: Ride, index: Int, onClick: () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     AnimatedVisibility(

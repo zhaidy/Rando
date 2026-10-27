@@ -415,7 +415,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val finishRide = {
         finished = finishRide(notices, vm.session)
     }
-    // 又开始记录了（进队）：上一次的卡片没用了，不然这次结束后又冒出来
+    // 又开始记录了：上一次的卡片没用了，不然这次结束后又冒出来
     LaunchedEffect(recording != null) {
         if (recording != null) finished = null
     }
@@ -424,12 +424,12 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val askFinish = { confirmFinish = true }
     // 「退出」紧挨着「分享」，点错就退队、关对讲，也先问一句
     var confirmLeave by remember { mutableStateOf(false) }
-    // 一起骑就是一次骑行：进队就开始记录，前台服务让定位和连接在锁屏后也不断
+    // 进队只是组队，要不要记录自己点；前台服务让定位和连接在锁屏后也不断
     val joinGroup = { code: String, name: String ->
         groupDialog = false
         askNotifications()
         group.join(code, name)
-        vm.session.startRecording()
+        RideService.start(context)
     }
     LaunchedEffect(style, teammates) {
         val s = style ?: return@LaunchedEffect
@@ -489,8 +489,7 @@ fun MapScreen(vm: RouteViewModel = viewModel(), onOpenRides: () -> Unit, onCheck
     val viewPrefs = remember { context.getSharedPreferences("planner", Context.MODE_PRIVATE) }
     var rideView by rememberSaveable { mutableStateOf(false) }
     val riding = navigating || recording != null
-    // 进队也会开始记录，但这时多半还在集合点看队友、分享路线，不跳进去；队里开始导航照样进
-    val autoRideView = navigating || (recording != null && groupState == null)
+    val autoRideView = navigating || recording != null
     LaunchedEffect(autoRideView) {
         if (autoRideView && viewPrefs.getBoolean(KEY_RIDE_VIEW, false)) rideView = true
     }
