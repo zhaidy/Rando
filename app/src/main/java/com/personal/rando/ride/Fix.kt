@@ -2,6 +2,7 @@ package com.personal.rando.ride
 
 import android.location.Location
 import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
 import com.personal.rando.routing.LatLon
 
@@ -14,6 +15,10 @@ data class Fix(
     /** 前进方向，正北 0°；停着时没有 */
     val bearing: Float? = null,
     val time: Long = System.currentTimeMillis(),
+    /** 网络定位（基站、Wi-Fi）给的，差几十米，GPS 在出点时不用它 */
+    val network: Boolean = false,
+    /** 在骑（不是停着等红灯）：镜头按前进方向转；停着时镜头不转。[FixFilter] 会按前后几个点改准 */
+    val moving: Boolean = (speed ?: 0f) >= MOVING_SPEED,
 ) {
     /** 喂给地图的蓝点 */
     fun toLocation(): Location = Location("rando").also { l ->
@@ -26,10 +31,6 @@ data class Fix(
         l.time = time
     }
 
-    /** 在骑（不是停着等红灯）：镜头按前进方向转；停着时按手机朝向 */
-    val moving: Boolean get() = (speed ?: 0f) >= MOVING_SPEED
-
-
     companion object {
         fun of(l: Location) = Fix(
             location = LatLon(l.latitude, l.longitude),
@@ -38,6 +39,7 @@ data class Fix(
             speed = if (l.hasSpeed()) l.speed else null,
             bearing = if (l.hasBearing()) l.bearing else null,
             time = l.time,
+            network = l.provider == LocationManager.NETWORK_PROVIDER,
         )
 
         /**

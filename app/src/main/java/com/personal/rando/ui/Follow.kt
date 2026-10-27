@@ -26,7 +26,9 @@ import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 
 /**
- * 导航时镜头跟着人走：在骑就按前进方向转（GPS 方向稳），停下来按手机朝向转（指南针）。
+ * 导航时镜头跟着人走：在骑就按前进方向转（GPS 方向稳），停下来镜头不转，停在刚才骑的方向。
+ * 停下不按指南针转：手机夹在车把上，动一下车头镜头就跟着甩，车把、支架上的磁铁还会把指南针带偏；
+ * 绿点外面的小三角照样指手机朝向。
  * 用手拖了地图就不跟了，返回的 State 变成 false，「回到我的位置」再跟上
  */
 @Composable
@@ -80,7 +82,7 @@ class Follow internal constructor(
     internal fun apply(moving: Boolean) {
         val component = map?.locationComponent ?: return
         if (!component.isLocationComponentActivated) return
-        component.cameraMode = if (moving) CameraMode.TRACKING_GPS else CameraMode.TRACKING_COMPASS
+        component.cameraMode = if (moving) CameraMode.TRACKING_GPS else CameraMode.TRACKING
         component.renderMode = if (moving) RenderMode.GPS else RenderMode.COMPASS
         component.zoomWhileTracking(zoom)
         component.tiltWhileTracking(tilt)
