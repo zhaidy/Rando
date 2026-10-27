@@ -20,6 +20,14 @@ class RandoProfilesTest {
     }
 
     @Test
+    fun `少过马路给路口点和斑马线加代价`() {
+        assertTrue(RandoProfiles.pcn(false, false).contains("assign avoidCrossings = 0"))
+        val p = RoutePrefs(BikeProfile.PCN, avoidCrossings = true).customProfile!!
+        assertTrue(p.contains("assign avoidCrossings = 1"))
+        assertTrue(p.contains("then ${RandoProfiles.CROSSING_COST} else 0"))
+    }
+
+    @Test
     fun `只有公园连道要上传配置`() {
         assertEquals(
             RandoProfiles.pcn(avoidRoads = true, avoidBridges = false),

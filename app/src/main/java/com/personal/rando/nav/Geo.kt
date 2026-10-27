@@ -35,6 +35,12 @@ object Geo {
         )
     }
 
+    /** 从 [a] 看 [b] 的方向：正北 0°，顺时针 */
+    fun bearing(a: LatLon, b: LatLon): Double {
+        val (x, y) = toMeters(b, origin = a)
+        return (Math.toDegrees(kotlin.math.atan2(x, y)) + 360) % 360
+    }
+
     private fun toMeters(p: LatLon, origin: LatLon): Pair<Double, Double> {
         val x = (p.lon - origin.lon) * METERS_PER_DEGREE * cos(Math.toRadians(origin.lat))
         val y = (p.lat - origin.lat) * METERS_PER_DEGREE

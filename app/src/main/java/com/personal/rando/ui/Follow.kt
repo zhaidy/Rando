@@ -29,7 +29,8 @@ import org.maplibre.android.maps.MapLibreMap
 import kotlinx.coroutines.delay
 
 /**
- * 导航时镜头跟着人走：在骑就按前进方向转（GPS 方向稳），停下来镜头不转，停在刚才骑的方向。
+ * 导航时镜头跟着人走：在骑就按前进方向转（GPS 方向稳），停下来镜头不转，停在刚才骑的方向；
+ * [headingWhenStopped] 时停下也按喂给定位组件的方向转（骑行视图停下等灯时喂的是路线往前的方向）。
  * 停下不按指南针转：手机夹在车把上，动一下车头镜头就跟着甩，车把、支架上的磁铁还会把指南针带偏；
  * 绿点外面的小三角照样指手机朝向。
  * 用手拖了地图就不跟了，返回的 State 变成 false，「回到我的位置」再跟上。
@@ -37,7 +38,15 @@ import kotlinx.coroutines.delay
  * 停下来看地图也不会被拉回去
  */
 @Composable
-fun rememberFollow(map: MapLibreMap?, active: Boolean, moving: Boolean, zoom: Double, tilt: Double, autoRecenterMs: Long? = null): Follow {
+fun rememberFollow(
+    map: MapLibreMap?,
+    active: Boolean,
+    moving: Boolean,
+    zoom: Double,
+    tilt: Double,
+    autoRecenterMs: Long? = null,
+    headingWhenStopped: Boolean = false,
+): Follow {
     val following = remember { mutableStateOf(true) }
     val touchedAt = remember { mutableLongStateOf(0L) }
     val follow = remember(map) { Follow(map, following, zoom, tilt) }
@@ -62,8 +71,8 @@ fun rememberFollow(map: MapLibreMap?, active: Boolean, moving: Boolean, zoom: Do
             map?.removeOnCameraMoveStartedListener(touch)
         }
     }
-    LaunchedEffect(map, active, moving, following.value) {
-        if (active && following.value) follow.apply(moving)
+    LaunchedEffect(map, active, moving, headingWhenStopped, following.value) {
+        if (active && following.value) follow.apply(moving, headingWhenStopped)
     }
     LaunchedEffect(active, moving, following.value, touchedAt.longValue) {
         val wait = autoRecenterMs ?: return@LaunchedEffect
@@ -100,10 +109,10 @@ class Follow internal constructor(
         following.value = true
     }
 
-    internal fun apply(moving: Boolean) {
+    internal fun apply(moving: Boolean, headingWhenStopped: Boolean = false) {
         val component = map?.locationComponent ?: return
         if (!component.isLocationComponentActivated) return
-        component.cameraMode = if (moving) CameraMode.TRACKING_GPS else CameraMode.TRACKING
+        component.cameraMode = if (moving || headingWhenStopped) CameraMode.TRACKING_GPS else CameraMode.TRACKING
         component.renderMode = if (moving) RenderMode.GPS else RenderMode.COMPASS
         component.zoomWhileTracking(zoom)
         component.tiltWhileTracking(tilt)

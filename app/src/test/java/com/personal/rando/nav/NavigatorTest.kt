@@ -36,6 +36,14 @@ class NavigatorTest {
     )
 
     @Test
+    fun `路线往前的方向：先朝北，拐过去朝东`() {
+        val nav = Navigator(route)
+        assertEquals(0.0, nav.update(LatLon(1.300 + step / 2, 103.800)).heading!!, 1.0)
+        nav.update(LatLon(1.300 + 1.5 * step, 103.800))
+        assertEquals(90.0, nav.update(LatLon(1.300 + 2 * step, 103.800 + step / 2)).heading!!, 1.0)
+    }
+
+    @Test
     fun `在路线上：算出离下一个路口多远`() {
         val progress = Navigator(route).update(LatLon(1.300 + step / 2, 103.800))
         assertEquals(metersPerStep / 2, progress.alongMeters, 1.0)

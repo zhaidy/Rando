@@ -176,6 +176,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             putString(KEY_PROFILE, prefs.profile.name)
             putBoolean(KEY_AVOID_ROADS, prefs.avoidRoads)
             putBoolean(KEY_AVOID_BRIDGES, prefs.avoidBridges)
+            putBoolean(KEY_AVOID_CROSSINGS, prefs.avoidCrossings)
             putBoolean(KEY_SHADE_AT_NOON, prefs.shadeAtNoon)
             putBoolean(KEY_LIT_AT_NIGHT, prefs.litAtNight)
             putString(KEY_PACE, prefs.pace.name)
@@ -216,6 +217,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             profile = BikeProfile.entries.firstOrNull { it.name == name } ?: BikeProfile.PCN,
             avoidRoads = stored.getBoolean(KEY_AVOID_ROADS, false),
             avoidBridges = stored.getBoolean(KEY_AVOID_BRIDGES, false),
+            avoidCrossings = stored.getBoolean(KEY_AVOID_CROSSINGS, false),
             shadeAtNoon = stored.getBoolean(KEY_SHADE_AT_NOON, true),
             litAtNight = stored.getBoolean(KEY_LIT_AT_NIGHT, true),
             pace = Pace.entries.firstOrNull { it.name == stored.getString(KEY_PACE, null) } ?: Pace.MINE,
@@ -374,7 +376,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
             SavedRoute(
                 name = name, stops = ready.stops, profile = prefs.profile, avoidRoads = prefs.avoidRoads,
                 avoidBridges = prefs.avoidBridges, meters = ready.route.distanceMeters, savedAt = System.currentTimeMillis(),
-                alternative = ready.chosenAlternative,
+                alternative = ready.chosenAlternative, avoidCrossings = prefs.avoidCrossings,
             )
         )
     }
@@ -635,6 +637,7 @@ class RouteViewModel(app: Application, private val saved: SavedStateHandle) : An
         const val KEY_PROFILE = "profile"
         const val KEY_AVOID_ROADS = "avoid_roads"
         const val KEY_AVOID_BRIDGES = "avoid_bridges"
+        const val KEY_AVOID_CROSSINGS = "avoid_crossings"
         const val KEY_SHADE_AT_NOON = "shade_at_noon"
         const val KEY_LIT_AT_NIGHT = "lit_at_night"
         const val KEY_PACE = "pace"

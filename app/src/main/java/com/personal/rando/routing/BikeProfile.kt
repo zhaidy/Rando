@@ -21,6 +21,8 @@ data class RoutePrefs(
     val profile: BikeProfile = BikeProfile.PCN,
     val avoidRoads: Boolean = false,
     val avoidBridges: Boolean = false,
+    /** 少过马路：宁可绕一点 */
+    val avoidCrossings: Boolean = false,
     val pace: Pace = Pace.MINE,
     /** 我骑过的平均速度（米/秒），骑得还不够多时是 null，这时「按我的速度」用 BRouter 的默认 */
     val mySpeed: Double? = null,
@@ -41,5 +43,5 @@ data class RoutePrefs(
 
     /** 要上传的配置内容；用服务器自带的配置时是 null */
     val customProfile: String?
-        get() = if (profile.custom) RandoProfiles.pcn(avoidRoads, avoidBridges, shade, night) else null
+        get() = if (profile.custom) RandoProfiles.pcn(avoidRoads, avoidBridges, shade, night, avoidCrossings) else null
 }

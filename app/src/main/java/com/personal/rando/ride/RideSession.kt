@@ -233,6 +233,10 @@ class RideSession(
             fix.speed?.let { crashDetector.onSpeed(SystemClock.elapsedRealtime(), it.toDouble()) }
         }
         recorder?.let {
+            // 队友在身边出现过就算一起骑的；同一个队里在别处骑的不算
+            group?.state?.value?.teammates?.forEach { t ->
+                if (t.location != null && Geo.distance(t.location, fix.location) <= RIDE_TOGETHER_METERS) it.rodeWith(t.name)
+            }
             if (it.add(fix)) checkpoint(it)
             val state = it.state()
             _recording.value = state
@@ -482,6 +486,7 @@ class RideSession(
             SharedRoute(
                 ts = System.currentTimeMillis(), title = title, meters = route.distanceMeters, stops = stops,
                 profile = prefs.profile, avoidRoads = prefs.avoidRoads, avoidBridges = prefs.avoidBridges,
+                avoidCrossings = prefs.avoidCrossings,
             ).also { group?.shareRoute(it) }
         } else {
             group?.clearRoute()
@@ -666,6 +671,8 @@ class RideSession(
         const val WEATHER_INTERVAL_MS = 10 * 60_000L
         /** 下雨时前方这么远以内有地方躲才说 */
         const val SHELTER_MENTION_METERS = 1_000.0
+        /** 队友离我这么近（米）算一起骑 */
+        const val RIDE_TOGETHER_METERS = 300.0
         /** 骑到离途经点这么近就算经过了 */
         const val VIA_PASSED_METERS = 50.0
     }

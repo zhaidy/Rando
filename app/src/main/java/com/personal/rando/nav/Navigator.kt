@@ -17,6 +17,8 @@ data class NavProgress(
     val distanceNextToFollowing: Double,
     val offRoute: Boolean,
     val arrived: Boolean,
+    /** 路线从这儿往前的方向（正北 0°，顺时针）；停下等灯时地图朝这边 */
+    val heading: Double? = null,
 )
 
 /** 把定位对到路线上，算出离下一个路口多远、是不是骑偏了 */
@@ -79,7 +81,20 @@ class Navigator(val route: Route) {
             },
             offRoute = missedFixes >= OFF_ROUTE_FIXES,
             arrived = remaining <= ARRIVED_METERS,
+            heading = if (located && remaining > ARRIVED_METERS) Geo.bearing(pointAt(along), pointAt(along + HEADING_METERS)) else null,
         )
+    }
+
+    /** 沿路线第 [meters] 米处的点 */
+    private fun pointAt(meters: Double): LatLon {
+        val m = meters.coerceIn(0.0, total)
+        val i = cumulative.indexOfFirst { it >= m }.let { if (it <= 0) 0 else it - 1 }.coerceAtMost(points.size - 2)
+        if (i < 0) return points.first()
+        val length = cumulative[i + 1] - cumulative[i]
+        val t = if (length > 0) (m - cumulative[i]) / length else 0.0
+        val a = points[i]
+        val b = points[i + 1]
+        return LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
     }
 
     private data class Snap(val segment: Int, val along: Double, val distance: Double)
@@ -113,6 +128,8 @@ class Navigator(val route: Route) {
         private const val JUMP_METERS = 200.0
         /** 连续这么多次对不上，才跳到远处 */
         private const val JUMP_AFTER_MISSES = 2
+        /** 停下时地图朝的方向：看路线往前这么远 */
+        private const val HEADING_METERS = 25.0
         /** 过了路口这么远，就看下一个 */
         private const val PASSED_METERS = 5.0
     }

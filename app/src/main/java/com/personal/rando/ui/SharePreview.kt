@@ -106,6 +106,7 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
     // 上次选的深色 / 浅色记下来
     val uiPrefs = UiPrefs(LocalContext.current)
     var darkCard by remember { mutableStateOf(uiPrefs.shareDark.also { ShareCard.dark = it }) }
+    var hideMates by remember { mutableStateOf(uiPrefs.shareHideTeammates.also { ShareCard.hideTeammates = it }) }
     var privacyLabel by remember { mutableStateOf(tr("隐藏家附近", "Hide near home")) }
     var rides by remember { mutableStateOf(emptyList<Ride>()) }
     // 找到的和自己挑的照片；选上的按选的先后
@@ -303,6 +304,17 @@ fun rememberSharePreview(): (rides: List<Ride>, make: suspend (hide: Boolean, ph
                                 onCheckedChange = { hide = it; draw() },
                                 colors = SwitchDefaults.colors(checkedTrackColor = RandoAccent),
                             )
+                        }
+                        // 跟队友一起骑过才有这个开关；选了下次还是一样
+                        if (rides.any { it.teammates.isNotEmpty() }) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("隐藏队友名字", "Hide teammates' names"), Modifier.weight(1f), color = Ink, fontSize = 15.sp)
+                                Switch(
+                                    checked = hideMates,
+                                    onCheckedChange = { hideMates = it; ShareCard.hideTeammates = it; uiPrefs.shareHideTeammates = it; draw() },
+                                    colors = SwitchDefaults.colors(checkedTrackColor = RandoAccent),
+                                )
+                            }
                         }
                         if (chosen.isNotEmpty()) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {

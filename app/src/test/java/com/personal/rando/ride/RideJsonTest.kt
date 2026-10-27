@@ -21,5 +21,7 @@ class RideJsonTest {
             ),
         )
         assertEquals(ride, RideJson.decode(RideJson.encode(ride)))
+        val withMates = ride.copy(teammates = listOf("爱妃", "小王"))
+        assertEquals(withMates, RideJson.decode(RideJson.encode(withMates)))
     }
 }

@@ -877,9 +877,12 @@ fun RideMap(
             }
         }
     }
-    LaunchedEffect(map, fix) {
+    // 停下等灯时地图朝路线往前的方向，看得出灯绿了往哪走；不在导航、骑偏了就停在刚才骑的方向
+    val stoppedHeading = navigation?.progress?.takeIf { fix?.moving == false && !it.offRoute }?.heading
+    LaunchedEffect(map, fix, stoppedHeading) {
         val m = map ?: return@LaunchedEffect
-        fix?.let { m.locationComponent.forceLocationUpdate(it.toLocation()) }
+        val f = fix ?: return@LaunchedEffect
+        m.locationComponent.forceLocationUpdate((stoppedHeading?.let { f.copy(bearing = it.toFloat()) } ?: f).toLocation())
     }
     LaunchedEffect(map, navigation?.route, navigation?.via) {
         val s = map?.style ?: return@LaunchedEffect
@@ -902,7 +905,10 @@ fun RideMap(
         val s = map?.style ?: return@LaunchedEffect
         MapLayers.showTrack(s, track)
     }
-    val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT, autoRecenterMs = RIDE_RECENTER_MS)
+    val follow = rememberFollow(
+        map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT,
+        autoRecenterMs = RIDE_RECENTER_MS, headingWhenStopped = stoppedHeading != null,
+    )
     val density = LocalDensity.current
     LaunchedEffect(follow, cover) {
         val top = with(density) { cover.calculateTopPadding().toPx() }.toDouble()

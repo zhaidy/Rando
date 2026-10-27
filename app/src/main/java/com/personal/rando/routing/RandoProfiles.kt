@@ -6,17 +6,23 @@ package com.personal.rando.routing
  * 这里让它代价最低，自行车道、人行道次之，马路最高。
  * 「不上马路」模式把马路的代价再乘 15（有人行道的马路按人行道算，新加坡允许在人行道上骑车）；
  * 「不走天桥」把人行天桥的代价乘 20（公园连道、自行车道上的桥不算天桥，跨河的平桥照走）。
+ * 「少过马路」每过一个路口点（斑马线、红绿灯）、每进一段单独画的斑马线都加一笔代价，
+ * 相当于多骑 [CROSSING_COST] 米公园连道，宁可绕一点也少过几次。
  * 中午（[shade]）没树荫的路贵一点，挑树多的走；天黑（[night]）没路灯的小路贵一点。
  * 树荫用的是 BRouter 自带的 estimated_forest_class（按路两边的树林、绿地估的 1–6 级）。
  * 算路前先上传到服务器，换回一个 custom_xxx 的配置名。
  */
 object RandoProfiles {
 
-    fun pcn(avoidRoads: Boolean, avoidBridges: Boolean, shade: Boolean = false, night: Boolean = false): String =
+    fun pcn(avoidRoads: Boolean, avoidBridges: Boolean, shade: Boolean = false, night: Boolean = false, avoidCrossings: Boolean = false): String =
         PCN.replace("assign avoidRoads = 0", "assign avoidRoads = ${if (avoidRoads) 1 else 0}")
             .replace("assign avoidBridges = 0", "assign avoidBridges = ${if (avoidBridges) 1 else 0}")
+            .replace("assign avoidCrossings = 0", "assign avoidCrossings = ${if (avoidCrossings) 1 else 0}")
             .replace("assign shade = 0", "assign shade = ${if (shade) 1 else 0}")
             .replace("assign night = 0", "assign night = ${if (night) 1 else 0}")
+
+    /** 「少过马路」过一次马路的代价，相当于多骑这么多米公园连道 */
+    const val CROSSING_COST = 100
 
     private val PCN = """
 # Rando：新加坡公园连道（PCN）优先
@@ -26,6 +32,8 @@ assign validForBikes = true
 assign avoidRoads = 0
 # 1 = 尽量不走人行天桥
 assign avoidBridges = 0
+# 1 = 少过马路：每过一次加一笔代价
+assign avoidCrossings = 0
 # 1 = 中午，挑有树荫的路
 assign shade = 0
 # 1 = 天黑，挑有路灯的路
@@ -132,9 +140,12 @@ assign hasForest = estimated_forest_class=1|2|3|4|5|6
 assign isLit = lit=yes
 
 assign turncost = 20
-assign initialcost = 0
+# 少过马路：单独画的斑马线（路口点另外在下面算）
+assign initialcost if ( and avoidCrossings isCrossingWay ) then $CROSSING_COST else 0
 
 ---context:node
-assign initialcost = 0
+# 少过马路：斑马线、红绿灯这些路口点
+assign isCrossingNode = or highway=crossing|traffic_signals crossing=traffic_signals|zebra|marked|uncontrolled|unmarked|yes
+assign initialcost if ( and avoidCrossings isCrossingNode ) then $CROSSING_COST else 0
 """.trimIndent() + "\n"
 }
