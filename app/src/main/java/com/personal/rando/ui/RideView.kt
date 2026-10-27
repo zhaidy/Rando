@@ -902,7 +902,7 @@ fun RideMap(
         val s = map?.style ?: return@LaunchedEffect
         MapLayers.showTrack(s, track)
     }
-    val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT)
+    val follow = rememberFollow(map, active = map != null, moving = fix?.moving == true, zoom = RIDE_ZOOM, tilt = RIDE_TILT, autoRecenterMs = RIDE_RECENTER_MS)
     val density = LocalDensity.current
     LaunchedEffect(follow, cover) {
         val top = with(density) { cover.calculateTopPadding().toPx() }.toDouble()
@@ -917,3 +917,5 @@ fun RideMap(
 
 private const val RIDE_ZOOM = 17.5
 private const val RIDE_TILT = 55.0
+/** 拖开地图以后，在骑并且这么久没碰就自动跟回来 */
+private const val RIDE_RECENTER_MS = 7_000L
