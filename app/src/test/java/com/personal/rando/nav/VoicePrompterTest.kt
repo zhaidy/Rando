@@ -71,6 +71,12 @@ class VoicePrompterTest {
     }
 
     @Test
+    fun `骑偏时先说原路线在哪边`() {
+        val off = progress(100.0, offRoute = true).copy(rejoin = Rejoin(meters = 120.0, relative = 135.0))
+        assertEquals("已偏离路线，原路线在右后方 ${Format.distance(120)}，正在重新规划", VoicePrompter().next(off))
+    }
+
+    @Test
     fun `到达只说一次`() {
         val p = VoicePrompter()
         assertEquals("已到达目的地", p.next(progress(0.0, next = null, arrived = true)))

@@ -1,8 +1,10 @@
 package com.personal.rando.nav
 
+import com.personal.rando.i18n.tr
 import com.personal.rando.routing.LatLon
 import com.personal.rando.routing.Maneuver
 import com.personal.rando.routing.Route
+import com.personal.rando.ui.Format
 import kotlin.math.abs
 
 data class NavProgress(
@@ -19,7 +21,31 @@ data class NavProgress(
     val arrived: Boolean,
     /** 路线从这儿往前的方向（正北 0°，顺时针）；停下等灯时地图朝这边 */
     val heading: Double? = null,
+    /** 骑偏了：最近能回到原路线的地方；新路线还没算出来时先告诉人往哪边回 */
+    val rejoin: Rejoin? = null,
 )
+
+/** 回到原路线最近的地方：[meters] 米远，在 [relative] 方向（相对骑行方向，0° 正前方，顺时针；不知道骑行方向时是 null） */
+data class Rejoin(val meters: Double, val relative: Double?) {
+    /** 「原路线在右后方 120 米」 */
+    val text: String
+        get() {
+            val d = Format.distance(meters.toInt())
+            val side = relative?.let { side(it) } ?: return tr("离原路线 $d", "$d from the route")
+            return tr("原路线在${side.first} $d", "route is $d ${side.second}")
+        }
+
+    private fun side(degrees: Double): Pair<String, String> = when (((degrees % 360) + 360) % 360) {
+        in 22.5..67.5 -> "右前方" to "ahead on your right"
+        in 67.5..112.5 -> "右边" to "to your right"
+        in 112.5..157.5 -> "右后方" to "behind you on the right"
+        in 157.5..202.5 -> "后方" to "behind you"
+        in 202.5..247.5 -> "左后方" to "behind you on the left"
+        in 247.5..292.5 -> "左边" to "to your left"
+        in 292.5..337.5 -> "左前方" to "ahead on your left"
+        else -> "前方" to "ahead"
+    }
+}
 
 /** 把定位对到路线上，算出离下一个路口多远、是不是骑偏了 */
 class Navigator(val route: Route) {
@@ -37,11 +63,13 @@ class Navigator(val route: Route) {
     /** 对上过路线没有；第一次对上的不算跳 */
     private var located = false
 
-    fun update(location: LatLon): NavProgress {
+    /** [bearing]：骑行方向（正北 0°），在骑时才有；离路线有点远、方向又不对，不用等到 [OFF_ROUTE_METERS] 就算偏 */
+    fun update(location: LatLon, bearing: Double? = null): NavProgress {
         // 先在当前位置附近往前找，找不到再全线找（比如抄了近路又回到路线上）
-        val found = nearest(location, (segment - 3)..(segment + 80))
-            ?.takeIf { it.distance <= OFF_ROUTE_METERS }
-            ?: nearest(location, 0 until points.size - 1)?.takeIf { it.distance <= OFF_ROUTE_METERS }
+        val found = (
+            nearest(location, (segment - 3)..(segment + 80))?.takeIf { it.distance <= OFF_ROUTE_METERS }
+                ?: nearest(location, 0 until points.size - 1)?.takeIf { it.distance <= OFF_ROUTE_METERS }
+            )?.takeIf { s -> !(bearing != null && s.distance > WRONG_WAY_METERS && angle(bearing, segmentBearing(s.segment)) > WRONG_WAY_DEGREES) }
         // 一下子跳很远（抄近路、出隧道）要连着几次都在那边才跳：环线起点终点挨着，起步时飘一下别跳到终点算到达；
         // 还没骑到一半就直接跳到终点的不跳，当成骑偏了
         val snapped = found?.takeIf { s ->
@@ -56,8 +84,19 @@ class Navigator(val route: Route) {
         } else {
             missedFixes++
         }
-        return progress()
+        val progress = progress()
+        if (!progress.offRoute) return progress
+        // 往前找最近的那段（抄近路接回后面也算）；骑过的不算，不然总是叫人掉头回去
+        val back = nearest(location, (segment - 3) until points.size - 1, followProgress = false) ?: return progress
+        val at = pointAt(back.along)
+        val relative = bearing?.let { (Geo.bearing(location, at) - it + 360) % 360 }
+        return progress.copy(rejoin = Rejoin(back.distance, relative))
     }
+
+    private fun segmentBearing(i: Int): Double = Geo.bearing(points[i], points[i + 1])
+
+    /** 两个方向差多少度（0..180） */
+    private fun angle(a: Double, b: Double): Double = abs(((a - b) % 360 + 540) % 360 - 180)
 
     /** 某个点对到路线上，离起点多远（米）；不跟着当前进度走，全线找最近的 */
     fun alongOf(p: LatLon): Double = nearest(p, 0 until points.size - 1, followProgress = false)?.along ?: 0.0
@@ -121,6 +160,9 @@ class Navigator(val route: Route) {
         const val OFF_ROUTE_METERS = 40.0
         /** 连续这么多次定位都偏，才认定骑错路，免得一次飘点就重新算路 */
         const val OFF_ROUTE_FIXES = 3
+        /** 离路线超过这么远、骑的方向和路线差 [WRONG_WAY_DEGREES] 以上，也算偏（拐进了岔路，不用等到 40 米） */
+        const val WRONG_WAY_METERS = 25.0
+        const val WRONG_WAY_DEGREES = 60.0
         const val ARRIVED_METERS = 25.0
         /** 离路线的距离差这么点算一样近 */
         private const val SAME_DISTANCE_METERS = 5.0

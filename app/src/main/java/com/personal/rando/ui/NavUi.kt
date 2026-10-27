@@ -156,7 +156,7 @@ fun NavBanner(navigation: NavigationState, modifier: Modifier = Modifier, tone: 
                 when {
                     k == "wait" -> NavText(shown.waitingText)
                     k == "arrived" -> NavText(tr("已到达目的地", "You have arrived"))
-                    k == "off" -> NavText(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
+                    k == "off" -> NavText(shown.offRouteText)
                     progress != null -> {
                         val next = progress.next
                         Box(Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {

@@ -30,8 +30,15 @@ class BRouterClient(
 
     suspend fun route(from: LatLon, to: LatLon, prefs: RoutePrefs): Route = route(listOf(from, to), prefs)
 
-    /** 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点；[alternative] 是第几条备选（0 是最好的那条） */
-    suspend fun route(stops: List<LatLon>, asked: RoutePrefs, alternative: Int = 0): Route = withContext(Dispatchers.IO) {
+    /** 导航中重新算路用：网不好卡住时早点放弃再试，别让人干等一分钟 */
+    private val quickHttp: OkHttpClient by lazy { http.newBuilder().callTimeout(QUICK_TIMEOUT_SECONDS, TimeUnit.SECONDS).build() }
+
+    /**
+     * 按顺序经过 [stops]：第一个是起点，最后一个是终点，中间是途经点；[alternative] 是第几条备选（0 是最好的那条）。
+     * [quick]：导航中骑偏了重新算，每次请求最多等 [QUICK_TIMEOUT_SECONDS] 秒
+     */
+    suspend fun route(stops: List<LatLon>, asked: RoutePrefs, alternative: Int = 0, quick: Boolean = false): Route = withContext(Dispatchers.IO) {
+        val client = if (quick) quickHttp else http
         // 中午挑树荫、天黑挑路灯：按现在的时间，规划和导航中重新算路都一样
         val prefs = with(RideTime) { asked.at(clock()) }
         val watts = prefs.pace.watts
@@ -39,24 +46,24 @@ class BRouterClient(
         val marked = corrections()
         val polylines = RoadCorrections.polylines(stops, marked, prefs.avoidRoads)
         val route = run {
-            val custom = prefs.customProfile ?: return@run fetch(url(stops, prefs.profile.brouterName, watts, nogos, polylines, alternative))
+            val custom = prefs.customProfile ?: return@run fetch(client, url(stops, prefs.profile.brouterName, watts, nogos, polylines, alternative))
             // 服务器上传过的配置过一阵会被清掉，这时返回 500（没有说明）；重新上传再试一次。
             // 超时、点不可达这些重新上传也没用，直接报错，免得白等一轮
             val cached = uploaded[custom]
             if (cached != null) {
                 try {
-                    return@run fetch(url(stops, cached, watts, nogos, polylines, alternative))
+                    return@run fetch(client, url(stops, cached, watts, nogos, polylines, alternative))
                 } catch (e: RouteHttpException) {
                     if (!e.profileGone) throw e
                     uploaded.remove(custom)
                 }
             }
-            fetch(url(stops, upload(custom), watts, nogos, polylines, alternative))
+            fetch(client, url(stops, upload(client, custom), watts, nogos, polylines, alternative))
         }
         RoadCorrections.apply(route, marked).let { it.copy(durationSeconds = prefs.duration(it)) }
     }
 
-    private fun fetch(url: String): Route =
+    private fun fetch(http: OkHttpClient, url: String): Route =
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
             val body = response.body.string()
             // 出错时服务器返回纯文本说明，比如 "target island detected"
@@ -81,7 +88,7 @@ class BRouterClient(
     }
 
     /** 上传自己的配置，换回 custom_xxx 的配置名 */
-    private fun upload(profile: String): String {
+    private fun upload(http: OkHttpClient, profile: String): String {
         val request = Request.Builder()
             .url("$baseUrl/profile")
             .post(profile.toRequestBody("text/plain".toMediaType()))
@@ -116,6 +123,7 @@ class BRouterClient(
     private fun coord(p: LatLon) = String.format(Locale.US, "%.6f,%.6f", p.lon, p.lat)
 
     private companion object {
+        const val QUICK_TIMEOUT_SECONDS = 12L
         /** 配置内容 → 服务器给的名字；进程内共用，规划和导航里重新算路都不用重复上传 */
         val uploaded = ConcurrentHashMap<String, String>()
     }

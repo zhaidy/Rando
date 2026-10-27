@@ -28,7 +28,9 @@ class VoicePrompter {
         if (progress.offRoute) {
             if (saidOffRoute) return null
             saidOffRoute = true
-            return tr("已偏离路线，正在重新规划", "Off route, rerouting")
+            // 先说原路线在哪边，新路线算出来之前也知道往哪回
+            val back = progress.rejoin?.text
+            return if (back != null) tr("已偏离路线，$back，正在重新规划", "Off route, $back, rerouting") else tr("已偏离路线，正在重新规划", "Off route, rerouting")
         }
         saidOffRoute = false
 
