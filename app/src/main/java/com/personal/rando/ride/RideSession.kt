@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.personal.rando.nav.NavProgress
 import com.personal.rando.nav.Navigator
+import com.personal.rando.nav.Reroute
 import com.personal.rando.nav.RoadAlerts
 import com.personal.rando.nav.Speaker
 import com.personal.rando.nav.VoicePrompter
@@ -36,6 +37,8 @@ import com.personal.rando.weather.ClimateClient
 import com.personal.rando.weather.HydrationReminder
 import com.personal.rando.places.AmenityType
 import com.personal.rando.weather.along
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +76,11 @@ data class NavigationState(
         get() = gpsAccuracy?.takeIf { it > NAV_MAX_ACCURACY_METERS }
             ?.let { tr("GPS 信号弱，误差约 ${Math.round(it)} 米，到空旷处会好些", "Weak GPS signal (±${Math.round(it)} m), try somewhere more open") }
             ?: tr("等待 GPS 定位…", "Waiting for GPS…")
+
+    /** 骑偏了还没换上新路线时显示的话：先说原路线在哪边 */
+    val offRouteText: String
+        get() = progress?.rejoin?.let { tr("已偏离，${it.text}，正在重新规划…", "Off route, ${it.text}, rerouting…") }
+            ?: tr("已偏离路线，正在重新规划…", "Off route, rerouting…")
 }
 
 /** 可能摔车后等这么久没回答就告诉队友 */
@@ -160,7 +168,10 @@ class RideSession(
     private var rerouteJob: Job? = null
     /** 还没经过的途经点在当前路线上的位置（米） */
     private var viaAlong: List<Double> = emptyList()
-    private var lastRerouteAt = 0L
+    /** 这个时间以前不再重算：刚算出来又偏了很快可以再算，没算出来（没网）隔久一点 */
+    private var nextRerouteAt = 0L
+    /** 最近一次在骑时的方向；重新算路时顺着这个方向往前算 */
+    private var heading: Double? = null
     /** 这次导航分享给队友的路线；导航中才进队的，进队时补发 */
     private var shared: SharedRoute? = null
 
@@ -222,7 +233,10 @@ class RideSession(
         val precise = fix.accuracy == null || fix.accuracy <= NAV_MAX_ACCURACY_METERS
         if (navigator != null) {
             if (fix.accuracy != _navigation.value?.gpsAccuracy) _navigation.update { it?.copy(gpsAccuracy = fix.accuracy) }
-            if (precise) navigate(fix.location)
+            if (precise) {
+                heading = fix.bearing?.takeIf { fix.moving }?.toDouble()
+                navigate(fix.location)
+            }
         }
         if (navigator != null || recorder != null) daylight.next(System.currentTimeMillis())?.let(speaker::say)
         if (precise && (navigator != null || recorder != null)) hazardAlert(fix.location)?.let(speaker::say)
@@ -542,14 +556,14 @@ class RideSession(
 
     private fun navigate(point: LatLon) {
         val nav = navigator ?: return
-        val progress = nav.update(point)
+        val progress = nav.update(point, heading)
         val passed = if (progress.offRoute) 0 else viaAlong.takeWhile { progress.alongMeters >= it - VIA_PASSED_METERS }.size
         if (passed > 0) viaAlong = viaAlong.drop(passed)
         _navigation.update { it?.copy(progress = progress, via = it.via.drop(passed)) }
         prompter.next(progress)?.let(speaker::say)
         if (!progress.offRoute && !progress.arrived) roadAlerts?.next(progress.alongMeters)?.let(speaker::say)
         // 到了以后接着骑走（去停车、继续兜风）不要再算路回终点
-        if (progress.offRoute && !progress.arrived) reroute(point)
+        if (progress.offRoute && !progress.arrived) reroute(point, heading)
     }
 
     /** 查路线两旁的补给点；查不到就算了，不影响导航 */
@@ -638,33 +652,52 @@ class RideSession(
         return points.subList(from, points.size)
     }
 
-    /** 骑偏了：从当前位置重新算到终点；隔一会儿才重算一次，免得一路狂发请求 */
-    private fun reroute(from: LatLon) {
+    /**
+     * 骑偏了：从当前位置重新算到终点。在骑的话同时算一条先顺着骑行方向往前的，
+     * 直接算的那条要掉头就用它（见 [Reroute]）；隔一会儿才重算一次，免得一路狂发请求
+     */
+    private fun reroute(from: LatLon, heading: Double?) {
         val state = _navigation.value ?: return
         val now = System.currentTimeMillis()
-        if (rerouteJob?.isActive == true || now - lastRerouteAt < REROUTE_INTERVAL_MS) return
-        lastRerouteAt = now
+        if (rerouteJob?.isActive == true || now < nextRerouteAt) return
+        nextRerouteAt = now + REROUTE_RETRY_MS
         _navigation.update { it?.copy(rerouting = true) }
         rerouteJob = scope.launch {
-            try {
-                val via = _navigation.value?.via ?: return@launch
-                val route = router.route(listOf(from) + via + state.destination, state.prefs)
-                if (navigator == null) return@launch
-                follow(route, via)
-                loadAmenities(route)
-                _navigation.update { it?.copy(route = route, via = via, rerouting = false) }
-                _location.value?.let(::navigate)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
+            val via = _navigation.value?.via ?: return@launch
+            val rest = via + state.destination
+            val route = coroutineScope {
+                val ahead = heading?.let { h -> async { routeOrNull(Reroute.aheadStops(from, h, rest), state.prefs) } }
+                val direct = routeOrNull(listOf(from) + rest, state.prefs)
+                Reroute.pick(direct, ahead?.await(), heading)
+            }
+            if (navigator == null) return@launch
+            if (route == null) {
                 // 没网之类的，过一会儿还偏着会再试
                 _navigation.update { it?.copy(rerouting = false) }
+                return@launch
             }
+            nextRerouteAt = System.currentTimeMillis() + REROUTE_AGAIN_MS
+            follow(route, via)
+            loadAmenities(route)
+            _navigation.update { it?.copy(route = route, via = via, rerouting = false) }
+            _location.value?.let(::navigate)
         }
     }
 
+    private suspend fun routeOrNull(stops: List<LatLon>, prefs: RoutePrefs): Route? =
+        try {
+            router.route(stops, prefs, quick = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+
     private companion object {
-        const val REROUTE_INTERVAL_MS = 15_000L
+        /** 没算出来，过这么久再试 */
+        const val REROUTE_RETRY_MS = 10_000L
+        /** 刚换上新路线又偏了，过这么久就能再算（判定骑偏本身也要好几秒） */
+        const val REROUTE_AGAIN_MS = 3_000L
         const val MIN_RIDE_METERS = 100.0
         /** 骑行中多久存一次盘 */
         const val CHECKPOINT_MS = 30_000L

@@ -367,7 +367,7 @@ private fun TopLine(navigation: NavigationState?, recording: RecordingState?, mu
                 when {
                     progress == null -> navigation.waitingText
                     progress.arrived -> tr("已到达目的地", "You have arrived")
-                    else -> tr("已偏离路线，正在重新规划…", "Off route, rerouting…")
+                    else -> navigation.offRouteText
                 },
                 Modifier.weight(1f), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
@@ -673,7 +673,7 @@ private fun RideTurn(navigation: NavigationState, modifier: Modifier) {
         when {
             progress == null -> RideMessage(navigation.waitingText)
             progress.arrived -> RideMessage(tr("已到达目的地", "You have arrived"))
-            navigation.rerouting || progress.offRoute -> RideMessage(tr("已偏离路线，正在重新规划…", "Off route, rerouting…"))
+            navigation.rerouting || progress.offRoute -> RideMessage(navigation.offRouteText)
             else -> {
                 val next = progress.next
                 Row(verticalAlignment = Alignment.CenterVertically) {

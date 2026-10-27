@@ -163,4 +163,37 @@ class NavigatorTest {
         val progress = nav.update(LatLon(1.3000, 103.8005))
         assertFalse(progress.arrived)
     }
+
+    @Test
+    fun `拐进岔路方向不对，离路线 25 米多就算偏，不用等到 40 米`() {
+        val nav = Navigator(route)
+        nav.update(LatLon(1.300 + step / 2, 103.800), bearing = 0.0)
+        // 往东拐进岔路，离路线 30 米左右
+        val side = LatLon(1.300 + step / 2, 103.80027)
+        repeat(Navigator.OFF_ROUTE_FIXES - 1) { assertFalse(nav.update(side, bearing = 90.0).offRoute) }
+        assertTrue(nav.update(side, bearing = 90.0).offRoute)
+    }
+
+    @Test
+    fun `离路线 30 米但顺着路线骑，不算偏`() {
+        val nav = Navigator(route)
+        val side = LatLon(1.300 + step / 2, 103.80027)
+        repeat(Navigator.OFF_ROUTE_FIXES + 1) { assertFalse(nav.update(side, bearing = 0.0).offRoute) }
+    }
+
+    @Test
+    fun `骑偏了告诉人原路线在哪边、多远`() {
+        val nav = Navigator(route)
+        nav.update(LatLon(1.300 + step / 2, 103.800))
+        // 在路线东边 160 多米（离拐过去那段更远），往东骑：原路线在后方
+        val far = LatLon(1.3002, 103.8015)
+        repeat(Navigator.OFF_ROUTE_FIXES - 1) { assertNull(nav.update(far, bearing = 90.0).rejoin) }
+        val rejoin = nav.update(far, bearing = 90.0).rejoin!!
+        assertEquals(1.5 * metersPerStep, rejoin.meters, 3.0)
+        assertTrue(rejoin.text, rejoin.text.startsWith("原路线在后方"))
+        // 往北骑：在左边
+        assertTrue(nav.update(far, bearing = 0.0).rejoin!!.text.startsWith("原路线在左边"))
+        // 不知道方向就只说多远
+        assertTrue(nav.update(far).rejoin!!.text.startsWith("离原路线"))
+    }
 }
